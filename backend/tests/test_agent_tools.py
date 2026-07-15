@@ -332,5 +332,6 @@ async def test_build_toolkit_registers_all_tools(prepared_project):
         "partial_resolve_foreshadow", "abandon_foreshadow",
         "update_character_state",
         "add_prop", "mark_prop_used",
+        "list_source_documents", "search_source_documents", "expand_source_chunk",
     }
     assert tool_names == expected

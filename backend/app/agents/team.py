@@ -283,6 +283,60 @@ def make_tools(project_id: int) -> dict[str, Callable[..., Awaitable[ToolRespons
             await db.commit()
         return _text_response({"ok": True})
 
+    async def list_source_documents() -> ToolResponse:
+        """查看项目上传的所有参考资料（改编原著、原剧本、大纲等）。
+
+        每份文档只返回元数据 + 简短摘要（<400 字），你可以据此判断哪份值得深入检索。
+        真正的正文用 search_source_documents / expand_source_chunk 逐层展开。
+        """
+        from app.services import source_retriever
+        sources = await source_retriever.list_sources(project_id)
+        # Trim to what's useful — no raw file paths / created_at
+        light = [
+            {
+                "id": s["id"],
+                "filename": s["filename"],
+                "chunks": s["chunk_count"],
+                "chars": s["total_chars"],
+                "summary": s["summary"],
+                "status": s["status"],
+            }
+            for s in sources
+        ]
+        return _text_response({"sources": light})
+
+    async def search_source_documents(query: str, k: int = 5) -> ToolResponse:
+        """在项目参考资料中做语义检索，返回最相关的 k 个片段（每段 <=200 字预览）。
+
+        看到相关预览后，用 expand_source_chunk(chunk_id) 拉取该片段的完整正文。
+        这是"渐进式披露"的第二层 —— 保持上下文精简的同时保证 Agent 有能力查真相。
+
+        Args:
+            query: 检索关键词或短句（中文/英文均可）。
+            k: 返回条数，默认 5，最多 10。
+        """
+        from app.services import source_retriever
+        k = max(1, min(10, k))
+        hits = await source_retriever.search_source(project_id, query, k=k)
+        return _text_response({"hits": hits})
+
+    async def expand_source_chunk(chunk_id: int, ctx: int = 0) -> ToolResponse:
+        """展开某一片段的完整正文，可选带 ``ctx`` 个上下片段作为上下文。
+
+        Args:
+            chunk_id: 由 search_source_documents 返回的 ``chunk_id``。
+            ctx: 邻居数（前后各 ``ctx`` 个片段），范围 0-3。默认 0（只当前片段）。
+        """
+        from app.services import source_retriever
+        result = await source_retriever.expand_chunk(chunk_id, ctx=ctx)
+        if not result:
+            return _text_response({"ok": False, "error": f"chunk {chunk_id} not found"})
+        # Guard: chunk must belong to this project
+        owner = await source_retriever.project_id_for_chunk(chunk_id)
+        if owner != project_id:
+            return _text_response({"ok": False, "error": "chunk not in this project"})
+        return _text_response({"ok": True, **result})
+
     return {
         "save_episode": save_episode,
         "query_characters": query_characters,
@@ -293,6 +347,9 @@ def make_tools(project_id: int) -> dict[str, Callable[..., Awaitable[ToolRespons
         "update_character_state": update_character_state,
         "add_prop": add_prop,
         "mark_prop_used": mark_prop_used,
+        "list_source_documents": list_source_documents,
+        "search_source_documents": search_source_documents,
+        "expand_source_chunk": expand_source_chunk,
     }
 
 
