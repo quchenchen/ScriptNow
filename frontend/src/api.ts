@@ -67,6 +67,39 @@ export const updateStage = (id: number, stage: string) =>
   api.put(`/projects/${id}/stage`, null, { params: { stage } })
 export const listPipelines = () => api.get('/projects/pipelines')
 
+// ── Source documents (adaption/rewrite RAG) ───────────────────
+export const listSources = (projectId: number) => api.get(`/projects/${projectId}/sources`)
+export const getSource = (projectId: number, sourceId: number) =>
+  api.get(`/projects/${projectId}/sources/${sourceId}`)
+export const deleteSource = (projectId: number, sourceId: number) =>
+  api.delete(`/projects/${projectId}/sources/${sourceId}`)
+export const searchSources = (projectId: number, q: string, k = 5) =>
+  api.get(`/projects/${projectId}/sources-search`, { params: { q, k } })
+export const expandChunk = (projectId: number, chunkId: number, ctx = 0) =>
+  api.get(`/projects/${projectId}/chunks/${chunkId}`, { params: { ctx } })
+
+/**
+ * Upload one source document. ``kind`` is informational for now (future
+ * filtering); ``onProgress`` fires with 0-100 as axios reports xhr progress.
+ */
+export const uploadSource = (
+  projectId: number,
+  file: File,
+  kind: string = 'adaptation',
+  onProgress?: (pct: number) => void,
+) => {
+  const fd = new FormData()
+  fd.append('file', file)
+  fd.append('kind', kind)
+  return api.post(`/projects/${projectId}/sources/upload`, fd, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    onUploadProgress: (e) => {
+      if (onProgress && e.total) onProgress(Math.round((e.loaded / e.total) * 100))
+    },
+  })
+}
+
+
 // ── Workspace ─────────────────────────────────────────────────
 export const listEpisodes = (projectId: number, status?: string) =>
   api.get(`/workspace/${projectId}/episodes`, { params: status ? { status } : {} })

@@ -20,7 +20,7 @@
           <div class="pj-type">{{ typeLabel(p.type) }} · {{ p.target_audience || '未设定' }}</div>
           <div class="pj-meta">
             <span :class="stageBadge(p.current_stage)">{{ stageLabel(p.current_stage) }}</span>
-            <span class="pj-ver">v1</span>
+            <span v-if="p.source_mode && p.source_mode !== 'original_pitch'" class="pj-tag">{{ sourceModeLabel(p.source_mode) }}</span>
             <button class="btn-del" @click.stop="handleDelete(p.id)" title="删除">🗑</button>
           </div>
           <div class="pj-bar"><div class="pj-fill" :style="{ width: progressPct(p) + '%' }"></div></div>
@@ -29,80 +29,54 @@
       <div v-else class="empty-state">
         <div class="es-icon">🎬</div>
         <div class="es-title">开始你的第一个剧本</div>
-        <div class="es-desc">选择类型和风格，AI Agent 将帮助你从灵感到成品全流程创作</div>
+        <div class="es-desc">选择创作起点，Agent 会陪你从灵感到成品走完全流程</div>
         <div class="es-steps">
-          <div class="es-step"><span class="es-step-num">1</span> 输入创意</div>
-          <div class="es-step"><span class="es-step-num">2</span> 选择方案</div>
-          <div class="es-step"><span class="es-step-num">3</span> 逐集生成</div>
+          <div class="es-step"><span class="es-step-num">1</span> 选择来源</div>
+          <div class="es-step"><span class="es-step-num">2</span> 填写基本信息</div>
+          <div class="es-step"><span class="es-step-num">3</span> 播下种子</div>
         </div>
         <button class="btn-p" style="margin-top:16px" @click="showCreate = true">+ 新建项目</button>
       </div>
     </main>
 
-    <!-- Create Dialog -->
-    <div class="overlay" v-if="showCreate" @click.self="showCreate = false">
-      <div class="dialog">
-        <h3>新建项目</h3>
-        <div class="form-row"><label>创作类型</label>
-          <div class="radio-group">
-            <label class="radio" :class="{sel: form.type==='novel'}"><input type="radio" v-model="form.type" value="novel" /> 📖 小说</label>
-            <label class="radio" :class="{sel: form.type==='script'}"><input type="radio" v-model="form.type" value="script" /> 🎬 剧本</label>
-            <label class="radio" :class="{sel: form.type==='video_prompt'}"><input type="radio" v-model="form.type" value="video_prompt" /> 🎥 视频提示词</label>
-          </div>
-        </div>
-        <div class="form-row"><label>标题</label><input v-model="form.title" placeholder="输入剧本标题" /></div>
-        <div class="form-row"><label>目标受众</label>
-          <select v-model="form.target_audience"><option value="男频">男频</option><option value="女频">女频</option><option value="通用">通用</option></select>
-        </div>
-        <div class="form-row"><label>文化背景</label>
-          <select v-model="form.cultural_background"><option value="国内">国内</option><option value="海外">海外</option></select>
-        </div>
-        <div class="form-row"><label>题材类型 <span class="hint">（可多选，Agent 生成方案时依据）</span></label>
-          <div class="chips">
-            <span v-for="g in genreOptions" :key="g"
-              :class="['chip', {on: form.genre.includes(g)}]" @click="toggleGenre(g)">{{ g }}</span>
-          </div>
-        </div>
-        <div class="form-row"><label>叙事风格 <span class="hint">（单选，可留空）</span></label>
-          <div class="chips">
-            <span v-for="s in styleOptions" :key="s"
-              :class="['chip', {on: form.style_preference===s}]"
-              @click="form.style_preference = form.style_preference===s ? '' : s">{{ s }}</span>
-          </div>
-        </div>
-        <div class="dialog-actions">
-          <button class="btn" @click="showCreate = false">取消</button>
-          <button class="btn-p" @click="handleCreate" :disabled="!form.title">创建</button>
-        </div>
-      </div>
+    <div class="overlay" v-if="showCreate" @click.self="onCancel">
+      <CreateProjectWizard @done="onCreated" @cancel="onCancel" />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { listProjects, createProject, deleteProject as apiDelete } from '../api'
+import { listProjects, deleteProject as apiDelete } from '../api'
+import CreateProjectWizard from '../components/CreateProjectWizard.vue'
 
 defineProps<{ user: any }>()
 const emit = defineEmits(['select', 'logout', 'create'])
 
 const projects = ref<any[]>([])
 const showCreate = ref(false)
-const form = ref({ type: 'script', title: '', target_audience: '男频', cultural_background: '国内' })
 
 onMounted(async () => {
-  try { const { data } = await listProjects(); projects.value = data } catch {}
+  try { const { data } = await listProjects(); projects.value = data } catch { /* ignore */ }
 })
 
-async function handleCreate() {
-  try {
-    const { data } = await createProject({ ...form.value, user_id: 1, genre: '[]' })
-    emit('create', data); showCreate.value = false
-  } catch {}
+function onCreated(project: any) {
+  showCreate.value = false
+  emit('create', project)
 }
+function onCancel() { showCreate.value = false }
 
 function openProject(p: any) { emit('select', p) }
 function typeLabel(t: string) { return ({ novel: '📖 小说', script: '🎬 剧本', video_prompt: '🎥 视频' } as any)[t] || t }
+function sourceModeLabel(m: string) {
+  return ({
+    original_pitch: '灵感',
+    original_synopsis: '梗概',
+    original_theme: '主题',
+    adapted: '📚 改编',
+    rewrite: '✂️ 改写',
+  } as any)[m] || m
+}
 const stageLabel = (s: string) => ({ ideation: '灵感', structure: '架构', writing: '撰写', review: '审核', polish: '润色', assets: '资产', prompts: '提示词',
   story_design:'故事设计',characters:'角色',outline:'大纲',proofread:'校对' } as any)[s] || s
 const stageBadge = (s: string) => { const early=['ideation','structure','story_design','characters']; if(early.includes(s)) return 'badge badge-p'; if(s==='writing'||s==='outline') return 'badge badge-blue'; return 'badge badge-g' }
@@ -115,7 +89,7 @@ function progressPct(p: any) {
 
 async function handleDelete(id: number) {
   if (!confirm('确定删除此项目？所有剧集/章节将被永久删除。')) return
-  try { await apiDelete(id); projects.value = projects.value.filter((p: any) => p.id !== id) } catch {}
+  try { await apiDelete(id); projects.value = projects.value.filter((p: any) => p.id !== id) } catch { /* ignore */ }
 }
 </script>
 
@@ -124,7 +98,6 @@ async function handleDelete(id: number) {
 header { display: flex; align-items: center; justify-content: space-between; padding: 0 24px; height: 48px; background: var(--bg-panel); border-bottom: 1px solid var(--bs); flex-shrink: 0 }
 header h1 { font-size: 16px; font-weight: 590; color: var(--t1) }
 .user-info { display: flex; align-items: center; gap: 12px; font-size: 12px; color: var(--t2) }
-.user-info .points { font-family: monospace; color: var(--t3) }
 main { flex: 1; max-width: 900px; margin: 0 auto; padding: 32px 24px; width: 100% }
 .top-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px }
 .top-bar h2 { font-size: 18px; font-weight: 590; color: var(--t1) }
@@ -134,7 +107,7 @@ main { flex: 1; max-width: 900px; margin: 0 auto; padding: 32px 24px; width: 100
 .pj-name { font-size: 14px; font-weight: 590; color: var(--t1); margin-bottom: 2px }
 .pj-type { font-size: 11px; color: var(--t4); margin-bottom: 8px }
 .pj-meta { display: flex; align-items: center; gap: 6px; margin-bottom: 8px }
-.pj-ver { font-size: 10px; color: var(--t4) }
+.pj-tag { font-size: 10px; color: var(--t3); background: var(--bg-active); padding: 2px 6px; border-radius: 4px }
 .toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px }
 .toolbar h2 { font-size: 20px; font-weight: 590; color: var(--t1) }
 .tb-right { display: flex; align-items: center; gap: 8px }
@@ -152,13 +125,4 @@ main { flex: 1; max-width: 900px; margin: 0 auto; padding: 32px 24px; width: 100
 .es-step { display:flex;align-items:center;gap:6px;font-size:12px;color:var(--t4) }
 .es-step-num { width:22px;height:22px;border-radius:50%;background:var(--bg-active);color:var(--t2);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:590 }
 .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 50 }
-.dialog { background: var(--bg-panel); border: 1px solid var(--bw); border-radius: 12px; padding: 24px; width: 400px }
-.dialog h3 { font-size: 16px; font-weight: 590; color: var(--t1); margin-bottom: 16px }
-.form-row { margin-bottom: 12px }
-.form-row label { display: block; font-size: 11px; color: var(--t4); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px }
-.form-row input, .form-row select { width: 100%; background: rgba(255,255,255,0.03); border: 1px solid var(--bs); border-radius: var(--r-md); padding: 8px 10px; color: var(--t1); font-size: 13px; outline: none }
-.form-row input:focus, .form-row select:focus { border-color: var(--accent) }
-.radio-group { display: flex; gap: 16px }
-.radio { display: flex; align-items: center; gap: 4px; font-size: 13px; color: var(--t2); cursor: pointer }
-.dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px }
 </style>

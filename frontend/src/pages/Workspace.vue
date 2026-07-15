@@ -21,7 +21,7 @@
       </div>
       <div class="main-row">
         <aside class="left-panel">
-          <div class="lp-section"><h4>📄 素材</h4><div class="lp-upload">📤 拖拽上传</div></div>
+          <div class="lp-section"><SourcePanel :project-id="project.id" :kind="project.source_mode === 'rewrite' ? 'rewrite' : 'adaptation'" /></div>
           <div class="lp-section"><h4>📖 分集 ({{ episodes.filter((e:any)=>e.status==='done').length }}/{{ project.total_episodes||80 }})</h4>
             <div v-for="ep in episodes" :key="ep.episode_number" :class="['lp-ep',{sel:viewingEp?.episode_number===ep.episode_number}]" @click="viewEp(ep)">
               <span class="lp-ep-num">{{ String(ep.episode_number).padStart(2,'0') }}</span><span class="lp-ep-name">{{ ep.title||'待生成' }}</span><span v-if="ep.status==='done'" class="lp-ep-ok">✓</span>
@@ -108,6 +108,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import ModelSelect from '../components/ModelSelect.vue'
+import SourcePanel from '../components/SourcePanel.vue'
 import { useWorkspace, stageLabelMap, stageBadgeMap } from '../composables/useWorkspace'
 
 const props = defineProps<{ user:any; project:any }>()
