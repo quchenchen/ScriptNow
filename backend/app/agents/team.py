@@ -71,25 +71,41 @@ def make_tools(project_id: int) -> dict[str, Callable[..., Awaitable[ToolRespons
         Args:
             episode_number: 剧集编号（从 1 开始，自动递增到下一集）。
             title: 剧集标题，例如 "第3集 · 相遇"。
-            content: 剧本正文（场景 + 动作 + 对白，完整一集）。
+            content: 剧本正文（场景 + 动作 + 对白，完整一集，用 【场景N】location·time 分场）。
         """
+        from app.services.scene_splitter import split_scenes
+
         async with aiosqlite.connect(DB_PATH) as db:
             cur = await db.execute(
                 "SELECT MAX(episode_number) FROM episodes WHERE project_id = ?", (project_id,)
             )
             row = await cur.fetchone()
             next_num = (row[0] or 0) + 1
-            # Trust the model's episode_number if reasonable; otherwise use next
             ep_num = episode_number if episode_number and episode_number >= next_num else next_num
             word_count = len(content)
-            scenes = json.dumps([{"content": content}], ensure_ascii=False)
-            await db.execute(
-                "INSERT INTO episodes (project_id, episode_number, title, scenes, "
-                "word_count, status) VALUES (?,?,?,?,?,?)",
-                (project_id, ep_num, title or f"第{ep_num}集", scenes, word_count, "done"),
+
+            ins = await db.execute(
+                "INSERT INTO episodes (project_id, episode_number, title, "
+                "word_count, status) VALUES (?,?,?,?,?)",
+                (project_id, ep_num, title or f"第{ep_num}集", word_count, "done"),
             )
+            episode_id = ins.lastrowid
+
+            # Split into scenes and write scene rows
+            scenes = split_scenes(content)
+            for s in scenes:
+                await db.execute(
+                    "INSERT INTO scenes (episode_id, scene_number, location, time, content) "
+                    "VALUES (?,?,?,?,?)",
+                    (episode_id, s["scene_number"], s["location"], s["time"], s["content"]),
+                )
             await db.commit()
-        return _text_response({"ok": True, "episode_number": ep_num, "words": word_count})
+        return _text_response({
+            "ok": True,
+            "episode_number": ep_num,
+            "words": word_count,
+            "scene_count": len(scenes),
+        })
 
     async def query_characters() -> ToolResponse:
         """查询项目中已有的角色列表，用于保持角色一致性。返回所有活跃角色。"""

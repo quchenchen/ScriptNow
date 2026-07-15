@@ -1,5 +1,5 @@
 import { ref, computed, watch, onMounted } from 'vue'
-import { listEpisodes, updateStage, agentChat, updateProjectSettings } from '../api'
+import { listEpisodes, getEpisode, updateStage, agentChat, updateProjectSettings } from '../api'
 import axios from 'axios'
 
 export function useWorkspace(projectId: number, initialStage: string) {
@@ -111,7 +111,16 @@ export function useWorkspace(projectId: number, initialStage: string) {
     })
   }
 
-  function viewEp(ep:any) { viewingEp.value = ep }
+  async function viewEp(ep: any) {
+    // ``ep`` from the list has no scenes — fetch the full record.
+    try {
+      const { data } = await getEpisode(projectId, ep.episode_number)
+      viewingEp.value = data
+    } catch {
+      // Fall back to the summary row so the user still sees title/status
+      viewingEp.value = ep
+    }
+  }
   function parseScenes(s:string) { try { const a = JSON.parse(s); if (Array.isArray(a)) return a.map((x:any)=>x.content||'').join('\n\n') } catch {} return s }
 
   // Filter functions
@@ -122,17 +131,13 @@ export function useWorkspace(projectId: number, initialStage: string) {
 
   // Asset functions
   async function loadAssets() {
+    // ``/memory`` bundles characters, foreshadows and scene location counts
+    // — the last is now backed by the ``scenes`` table (post-issue #06).
     try {
-      const [cr, fr] = await Promise.all([
-        axios.get(`/api/memory/${projectId}/characters`),
-        axios.get(`/api/memory/${projectId}/foreshadows`)
-      ])
-      chars.value = cr.data || []; allForeshadows.value = fr.data || []
-      const locs:Record<string,number> = {}
-      for (const ep of episodes.value) {
-        try { const scs = JSON.parse(ep.scenes||'[]'); for (const s of scs) { const m = (s.content||'').match(/【场景\d+】(.+?)(?:·|\s*-|\n)/); if (m) locs[m[1].trim()] = (locs[m[1].trim()]||0)+1 } } catch {}
-      }
-      sceneList.value = Object.entries(locs).map(([k,v])=>({name:k,count:v}))
+      const { data } = await axios.get(`/api/memory/${projectId}/memory`)
+      chars.value = data.characters || []
+      allForeshadows.value = data.foreshadows || []
+      sceneList.value = data.scenes || []
     } catch {}
   }
   async function addCharacter(name:string, role:string) { await axios.post(`/api/memory/${projectId}/characters`,{name,role}); await loadAssets() }
@@ -165,6 +170,23 @@ export function useWorkspace(projectId: number, initialStage: string) {
     toggleGenre, resetFilters, resetIdeation,
     loadAssets, addCharacter, saveChar, deleteChar, addForeshadow, resolveFores, deleteFores,
     confirmStructure, exportAll,
+  }
+}
+
+// Helpers
+function now() { return new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}) }
+export const stageLabelMap:Record<string,string> = {
+  ideation:'灵感孵化',structure:'故事架构',writing:'剧本撰写',review:'质量审核',polish:'润色',assets:'资产提取',prompts:'提示词',
+  story_design:'故事设计',characters:'角色',outline:'大纲',proofread:'校对'
+}
+export const stageBadgeMap:Record<string,string> = {
+  ideation:'badge-p',structure:'badge-blue',writing:'badge-g',story_design:'badge-p',characters:'badge-blue',outline:'badge-blue'
+}
+export const agentNameMap:Record<string,string> = {
+  ideation:'创意总监',structure:'编剧架构师',writing:'WritingAgent',story_design:'故事策划师',characters:'角色设计师'
+}
+export function agentNameForStage(s:string) { return agentNameMap[s] || 'Agent' }
+tructure, exportAll,
   }
 }
 

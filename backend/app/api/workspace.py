@@ -84,11 +84,23 @@ async def get_episode(project: OwnedProject, ep_number: int):
         ep = await cursor.fetchone()
         if not ep:
             raise HTTPException(404, "剧集不存在")
-        return dict(ep)
+        ep_dict = dict(ep)
+        # Attach scenes so the client can render without a second round-trip
+        scenes_cur = await db.execute(
+            "SELECT id, scene_number, location, time, content, characters_involved, "
+            "props_used, status FROM scenes WHERE episode_id = ? ORDER BY scene_number",
+            (ep_dict["id"],),
+        )
+        ep_dict["scenes"] = [dict(r) for r in await scenes_cur.fetchall()]
+        return ep_dict
 
 
 @router.put("/{project_id}/episodes/{ep_number}")
 async def update_episode(project: OwnedProject, ep_number: int, data: dict):
+    """Update episode metadata (title / status / word_count / review_score).
+
+    Scene edits go through the dedicated /scenes endpoints — not this one.
+    """
     async with aiosqlite.connect(DB_PATH) as db:
         existing = await db.execute(
             "SELECT id FROM episodes WHERE project_id = ? AND episode_number = ?",
@@ -97,11 +109,10 @@ async def update_episode(project: OwnedProject, ep_number: int, data: dict):
         row = await existing.fetchone()
         if row:
             await db.execute(
-                "UPDATE episodes SET title=?, scenes=?, word_count=?, status=?, "
+                "UPDATE episodes SET title=?, word_count=?, status=?, "
                 "review_score=? WHERE id=?",
                 (
                     data.get("title", ""),
-                    json.dumps(data.get("scenes", []), ensure_ascii=False),
                     data.get("word_count", 0),
                     data.get("status", "pending"),
                     data.get("review_score", 0),
@@ -110,17 +121,108 @@ async def update_episode(project: OwnedProject, ep_number: int, data: dict):
             )
         else:
             await db.execute(
-                "INSERT INTO episodes (project_id, episode_number, title, scenes, "
-                "word_count, status, review_score) VALUES (?,?,?,?,?,?,?)",
+                "INSERT INTO episodes (project_id, episode_number, title, "
+                "word_count, status, review_score) VALUES (?,?,?,?,?,?)",
                 (
                     project["id"], ep_number, data.get("title", ""),
-                    json.dumps(data.get("scenes", []), ensure_ascii=False),
                     data.get("word_count", 0), data.get("status", "pending"),
                     data.get("review_score", 0),
                 ),
             )
         await db.commit()
     return {"project_id": project["id"], "episode_number": ep_number, "status": "updated"}
+
+
+# ── Scene CRUD ────────────────────────────────────────────────
+# Scenes are project-scoped via episode; we look them up via episode_number
+# (project-relative) to keep URLs pretty.
+
+async def _load_episode_id(project_id: int, ep_number: int) -> int:
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            "SELECT id FROM episodes WHERE project_id = ? AND episode_number = ?",
+            (project_id, ep_number),
+        )
+        row = await cur.fetchone()
+        if not row:
+            raise HTTPException(404, "剧集不存在")
+        return row[0]
+
+
+@router.get("/{project_id}/episodes/{ep_number}/scenes")
+async def list_scenes(project: OwnedProject, ep_number: int):
+    ep_id = await _load_episode_id(project["id"], ep_number)
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            "SELECT * FROM scenes WHERE episode_id = ? ORDER BY scene_number", (ep_id,)
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
+
+@router.post("/{project_id}/episodes/{ep_number}/scenes")
+async def add_scene(project: OwnedProject, ep_number: int, data: dict):
+    ep_id = await _load_episode_id(project["id"], ep_number)
+    async with aiosqlite.connect(DB_PATH) as db:
+        # Determine next scene_number
+        cur = await db.execute(
+            "SELECT COALESCE(MAX(scene_number), 0) FROM scenes WHERE episode_id = ?", (ep_id,)
+        )
+        next_n = (await cur.fetchone())[0] + 1
+        sn = data.get("scene_number") or next_n
+        ins = await db.execute(
+            "INSERT INTO scenes (episode_id, scene_number, location, time, content, status) "
+            "VALUES (?,?,?,?,?,?)",
+            (ep_id, sn, data.get("location", ""), data.get("time", ""),
+             data.get("content", ""), data.get("status", "draft")),
+        )
+        await db.commit()
+        return {"id": ins.lastrowid, "scene_number": sn}
+
+
+@router.put("/{project_id}/episodes/{ep_number}/scenes/{scene_number}")
+async def update_scene(project: OwnedProject, ep_number: int, scene_number: int, data: dict):
+    ep_id = await _load_episode_id(project["id"], ep_number)
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            "SELECT id FROM scenes WHERE episode_id = ? AND scene_number = ?", (ep_id, scene_number)
+        )
+        row = await cur.fetchone()
+        if not row:
+            raise HTTPException(404, "场景不存在")
+        # Only touch supplied fields
+        updates: list[str] = []
+        vals: list = []
+        for k in ("location", "time", "content", "status", "characters_involved", "props_used"):
+            if k in data:
+                updates.append(f"{k} = ?")
+                v = data[k]
+                if isinstance(v, list | dict):
+                    v = json.dumps(v, ensure_ascii=False)
+                vals.append(v)
+        if not updates:
+            return {"status": "no-op"}
+        vals.append(row[0])
+        await db.execute(
+            f"UPDATE scenes SET {', '.join(updates)}, updated_at = datetime('now') "
+            f"WHERE id = ?",
+            vals,
+        )
+        await db.commit()
+    return {"status": "updated"}
+
+
+@router.delete("/{project_id}/episodes/{ep_number}/scenes/{scene_number}")
+async def delete_scene(project: OwnedProject, ep_number: int, scene_number: int):
+    ep_id = await _load_episode_id(project["id"], ep_number)
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            "DELETE FROM scenes WHERE episode_id = ? AND scene_number = ?", (ep_id, scene_number)
+        )
+        await db.commit()
+        if cur.rowcount == 0:
+            raise HTTPException(404, "场景不存在")
+    return {"deleted": scene_number}
 
 
 # ── Chat History ──────────────────────────────────────────────

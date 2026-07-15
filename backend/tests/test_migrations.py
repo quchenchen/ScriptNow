@@ -43,6 +43,7 @@ EXPECTED_TABLES = {
     "projects",
     "script_versions",
     "episodes",
+    "scenes",
     "reviews",
     "characters",
     "foreshadows",

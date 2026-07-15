@@ -14,8 +14,6 @@ guess from text.
 """
 from __future__ import annotations
 
-import json
-
 import aiosqlite
 
 from app.db import DB_PATH
@@ -88,8 +86,10 @@ async def build_context(project_id: int, stage: str, episode_num: int = 0) -> st
             parts.append("\n".join(lines))
 
         # ── Previous episodes ──
+        # Read scenes table joined to episodes (post-issue #06 shape). Fall back
+        # gracefully if an episode has no scene rows yet.
         cur = await db.execute(
-            "SELECT episode_number, title, scenes FROM episodes "
+            "SELECT id, episode_number, title FROM episodes "
             "WHERE project_id = ? AND status = 'done' "
             "ORDER BY episode_number DESC LIMIT 2",
             (project_id,),
@@ -98,12 +98,15 @@ async def build_context(project_id: int, stage: str, episode_num: int = 0) -> st
         if eps:
             lines = ["\n## 前情提要"]
             for e in reversed(eps):
-                try:
-                    scenes = json.loads(e.get("scenes", "[]"))
-                except json.JSONDecodeError:
-                    scenes = []
-                content_preview = scenes[0].get("content", "")[:200] if scenes else ""
-                lines.append(f"**EP{e['episode_number']}** {e.get('title', '')}\n{content_preview}")
+                # Grab the first scene's content as a preview
+                sc = await db.execute(
+                    "SELECT content FROM scenes WHERE episode_id = ? "
+                    "ORDER BY scene_number LIMIT 1",
+                    (e["id"],),
+                )
+                row = await sc.fetchone()
+                preview = (row["content"] if row and row["content"] else "")[:200]
+                lines.append(f"**EP{e['episode_number']}** {e.get('title', '')}\n{preview}")
             parts.append("\n".join(lines))
 
     return "\n\n".join(parts)

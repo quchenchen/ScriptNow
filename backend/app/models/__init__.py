@@ -17,6 +17,7 @@ from .episode import Episode
 from .foreshadow import Foreshadow
 from .project import Project
 from .review import Review
+from .scene import Scene
 from .scene_asset import SceneAsset
 from .script_version import ScriptVersion
 from .user import User
@@ -30,6 +31,7 @@ __all__ = [
     "Foreshadow",
     "Project",
     "Review",
+    "Scene",
     "SceneAsset",
     "ScriptVersion",
     "User",
