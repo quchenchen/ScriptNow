@@ -15,7 +15,7 @@ import json
 import aiosqlite
 
 from app.db import DB_PATH
-from app.services import ai_tell_detector
+from app.services import ai_tell_detector, format_checker
 from app.services.evolution_engine import Decision, ralph_decide
 from app.services.review_agent import review_episode
 
@@ -74,20 +74,28 @@ async def run_iteration(project_id: int, episode_id: int, model_id: str) -> dict
             "episode_id": episode_id,
         }
 
-    # 1. Review (LLM) + AI-tell detector (pure heuristics)
+    # 1. Review (LLM) + AI-tell detector + format checker (all pure below)
     review = await review_episode(episode_text, model_id=model_id)
     tell_report = ai_tell_detector.detect(episode_text)
     tell_issues = ai_tell_detector.issues_for_ralph(episode_text)
+    fmt_report = format_checker.check(episode_text)
+    fmt_issues = format_checker.issues_for_ralph(episode_text)
 
-    # Merge detector findings into the review's issues list so downstream
-    # consumers (UI, Ralph decider) see them alongside review-agent issues.
-    review["issues"] = list(review.get("issues") or []) + tell_issues
+    # Merge everything into the review's issues list — downstream (UI +
+    # Ralph decider) sees them together, so a rendering layer doesn't need
+    # to branch on source.
+    review["issues"] = (
+        list(review.get("issues") or []) + tell_issues + fmt_issues
+    )
 
-    # If AI-tell is heavy, dock the overall score. This lets a stylish-but-
-    # AI-sounding episode drop into the "revise" band even if the review
-    # agent scored it high on plot/characters.
+    # Score deductions: AI-tell heavy → -0.5 per point below 60;
+    # format problems → -0.3 per point below 70. Both docked so stylish-
+    # but-machiney and formatting-sloppy episodes drop into revise range.
     if tell_report["score"] < 60:
         penalty = (60 - tell_report["score"]) * 0.5
+        review["overall_score"] = max(0.0, review["overall_score"] - penalty)
+    if fmt_report["score"] < 70:
+        penalty = (70 - fmt_report["score"]) * 0.3
         review["overall_score"] = max(0.0, review["overall_score"] - penalty)
 
     # 2. Count prior iterations for the retry gate

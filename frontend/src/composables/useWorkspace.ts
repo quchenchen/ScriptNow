@@ -155,10 +155,28 @@ export function useWorkspace(projectId: number, initialStage: string) {
     structureConfirmed.value = true
   }
 
-  function exportAll() {
-    const es = episodes.value.map((e:any)=>{const s=parseScenes(e.scenes||'');return`第${e.episode_number}集 ${e.title||''}\n${s}\n`}).join('\n---\n\n')
-    const b = new Blob([`《黑冰·弱女频》\n\n${es}`],{type:'text/plain;charset=utf-8'})
-    const a = document.createElement('a');a.href=URL.createObjectURL(b);a.download='export.txt';a.click();URL.revokeObjectURL(a.href)
+  async function exportAll() {
+    // Uses the backend .docx export — Word opens it in script-sheet layout.
+    try {
+      const resp = await axios.post(
+        `/api/projects/${projectId}/export`,
+        {},
+        { params: { format: 'docx' }, responseType: 'blob' },
+      )
+      const blob = new Blob([resp.data], {
+        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      })
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      // Prefer the server's Content-Disposition filename when present
+      const cd = (resp.headers as any)['content-disposition'] || ''
+      const m = /filename="([^"]+)"/.exec(cd)
+      a.download = m ? m[1] : 'script.docx'
+      a.click()
+      URL.revokeObjectURL(a.href)
+    } catch (err: any) {
+      alert('导出失败：' + (err?.message || String(err)))
+    }
   }
 
   return {
