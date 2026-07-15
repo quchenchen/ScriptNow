@@ -47,6 +47,10 @@ EXPECTED_TABLES = {
     "reviews",
     "characters",
     "foreshadows",
+    "props",
+    "growth_nodes",
+    "growth_edges",
+    "ralph_iterations",
     "scene_assets",
     "chat_messages",
     "alembic_version",  # Alembic's own tracking table

@@ -75,7 +75,15 @@ async def health():
 
 
 # Register routers
-from app.api import auth, llm_config, memory_api, projects, tree, workspace  # noqa: E402
+from app.api import (  # noqa: E402
+    auth,
+    llm_config,
+    memory_api,
+    projects,
+    ralph,
+    tree,
+    workspace,
+)
 
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(projects.router, prefix="/api/projects", tags=["projects"])
@@ -83,3 +91,4 @@ app.include_router(workspace.router, prefix="/api/workspace", tags=["workspace"]
 app.include_router(llm_config.router, prefix="/api/llm", tags=["llm"])
 app.include_router(memory_api.router, prefix="/api/memory", tags=["memory"])
 app.include_router(tree.router, prefix="/api/projects", tags=["tree"])
+app.include_router(ralph.router, prefix="/api/projects", tags=["ralph"])
