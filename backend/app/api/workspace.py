@@ -194,7 +194,7 @@ async def agent_chat(project: OwnedProject, data: dict):
             ep_num = (last[0] or 0) + 1
 
     async def event_stream():
-        from app.core.agent_orchestra import AgentTeam
+        from app.agents.team import AgentTeam
         team = AgentTeam(project_id, model_id)
 
         full_text = ""

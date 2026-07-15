@@ -49,8 +49,15 @@ def test_tampered_token_is_rejected():
     from app.security import InvalidTokenError, create_access_token, decode_access_token
 
     token = create_access_token(user_id=1, role="free", expires_in_seconds=60)
-    # Tamper: change the last char
-    tampered = token[:-1] + ("A" if token[-1] != "A" else "B")
+    # Tamper the signature: JWT is header.payload.signature. Corrupt a
+    # character in the middle of the signature so base64url decode still
+    # succeeds but HMAC verify fails.
+    parts = token.split(".")
+    assert len(parts) == 3, "unexpected JWT structure"
+    sig = parts[2]
+    mid = len(sig) // 2
+    tampered_sig = sig[:mid] + ("A" if sig[mid] != "A" else "B") + sig[mid + 1:]
+    tampered = ".".join([parts[0], parts[1], tampered_sig])
 
     with pytest.raises(InvalidTokenError):
         decode_access_token(tampered)

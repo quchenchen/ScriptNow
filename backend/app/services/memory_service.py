@@ -79,14 +79,18 @@ class MemoryService:
     # ── Scenes ──
     async def list_scenes(self, project_id: int) -> list[dict]:
         r = await self.db.execute(select(Episode).where(Episode.project_id == project_id))
-        locs = {}
+        locs: dict[str, int] = {}
         for ep in r.scalars():
             try:
                 scs = json.loads(ep.scenes or "[]")
                 for sc in scs:
-                    m = re.match(r'【场景\d+】(.+?)(?:·|\s*-|\n)', sc.get("content",""))
-                    if m: locs[m.group(1).strip()] = locs.get(m.group(1).strip(), 0) + 1
-            except: pass
+                    m = re.match(r'【场景\d+】(.+?)(?:·|\s*-|\n)', sc.get("content", ""))
+                    if m:
+                        key = m.group(1).strip()
+                        locs[key] = locs.get(key, 0) + 1
+            except (json.JSONDecodeError, KeyError, TypeError):
+                # Malformed scene JSON — skip, don't crash the whole listing
+                pass
         return [{"name": k, "count": v} for k, v in locs.items()]
 
 

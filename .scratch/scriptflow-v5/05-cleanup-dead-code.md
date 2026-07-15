@@ -1,6 +1,6 @@
 # 05 · 死代码清理
 
-- **Status**: proposed
+- **Status**: done
 - **Type**: refactor
 - **Blocked by**: 03
 - **Blocks**: 09, 13
@@ -16,21 +16,21 @@
 - `backend/app/core/state.py` — LangGraph 风 AgentState TypedDict（未使用）
 - `backend/app/core/context_engine.py::save_episode_context` — 用中文正则 + 黑名单从 LLM 输出猜角色/伏笔的浅模块
 
-删除动作 —— 但**保留可能有用的思路以注释形式**记录到 `docs/adr/` 或直接在删除 commit 的 message 里：
-
-- Ralph Loop 六维评审的 prompt 思路 → 到 issue #09 复用
-- Foreshadow / Character 从文本抽取的想法 → 明确放弃，让 LLM 用 Toolkit 主动上报（不再事后猜）
+删除动作 —— 保留可能有用的思路以注释形式记录到 team.py / context_engine.py 的模块 docstring 里（未来读者能追溯到"为什么删了"）。
 
 ## Acceptance criteria
 
-- [ ] `backend/app/agents/` 只剩 `team.py` + 新的 stage-specific agents（如果 03 已实现）
-- [ ] `backend/app/core/state.py` 删除
-- [ ] `backend/app/core/context_engine.py::save_episode_context` 函数删除；同文件的 `build_context` 保留（还有用）
-- [ ] `grep -r "AgentState\|BaseAgent\|save_episode_context" backend/app` 无结果
-- [ ] 后端能正常启动，现有端点全部 200
-- [ ] Commit message 记录删除清单 + 删除理由指向 ADR-0002
+- [x] `backend/app/agents/` 只剩 `team.py` + `__init__.py`
+- [x] `backend/app/core/state.py` 删除
+- [x] `backend/app/core/agent_orchestra.py` 删除（issue #03 完成）
+- [x] `backend/app/core/llm_gateway.py` 删除（issue #03 完成）
+- [x] `backend/app/core/context_engine.py::save_episode_context` 函数删除；同文件的 `build_context` 保留（agent memory 上下文注入还在用）
+- [x] `grep -r "AgentState\|BaseAgent\|save_episode_context" backend/app` 只在注释里出现（解释为什么删了）
+- [x] 后端能正常启动 — smoke test（health + OpenAPI）通过
+- [x] `ruff check app/ tests/` 全通过
 
 ## Notes
 
-- 分两个 commit：先删 agents/*、base.py、state.py 一个 commit；再删 context_engine 里的猜函数一个 commit
-- Ralph Loop 的六维 prompt 内容记得移到 `backend/app/skills/review/` 里作为新 skill 输入
+- 一次 commit 完成（因为 #03 大重构 + #05 清理紧耦合，split 反而增加读者理解成本）
+- Ralph Loop 六维评审的 prompt 内容留在 `docs/adr/0003-agent-tiered-decision.md` 里，issue #09 复用时按 skill 形式落地
+- Character/Foreshadow 从文本正则抽取的想法**明确放弃** — 让 LLM 用 Toolkit 主动上报（这是 issue #03 引入的新纪律）

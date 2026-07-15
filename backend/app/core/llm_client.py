@@ -1,39 +1,39 @@
-"""
-LLM Gateway — Multi-provider abstraction with unified interface.
+"""LLM provider registry.
 
-Pattern: Each provider is a named entry with model list.
-Users configure API keys per provider, then assign models to agents.
+This file used to hold a hand-rolled ``LLMClient`` wrapping ``AsyncOpenAI`` in
+parallel with an unrelated ``LLMGateway`` (also removed). Both were unwired
+dead code. The one thing that *is* wired is this provider/model registry —
+consumed by ``/api/llm/list_available_models`` so the frontend model picker
+knows what to show and which are ready-to-use (API key configured).
+
+All real LLM calls now go through AgentScope 2.0 (see :mod:`app.agents.team`).
 """
-import json
+from __future__ import annotations
+
 import os
-from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
-
-from openai import AsyncOpenAI
 
 
 @dataclass
 class ModelInfo:
-    id: str          # "deepseek-v4-pro"
-    name: str        # "DeepSeek V4 Pro"
-    provider: str    # "deepseek"
-    type: str        # "text" | "vision" | "reasoning"
+    id: str
+    name: str
+    provider: str
+    type: str  # "text" | "vision" | "reasoning"
     context_window: int = 128000
     max_output: int = 8192
 
 
 @dataclass
 class ProviderInfo:
-    id: str          # "deepseek"
-    name: str        # "DeepSeek"
-    icon: str        # provider logo key
+    id: str
+    name: str
+    icon: str
     models: list[ModelInfo] = field(default_factory=list)
     requires_api_key: bool = True
     base_url: str = ""
     api_key_env: str = ""  # e.g. "DEEPSEEK_API_KEY"
 
-
-# ── Provider Registry ──────────────────────────────────────────
 
 PROVIDERS: dict[str, ProviderInfo] = {
     "deepseek": ProviderInfo(
@@ -43,7 +43,7 @@ PROVIDERS: dict[str, ProviderInfo] = {
         models=[
             ModelInfo("deepseek-v4-pro", "DeepSeek V4 Pro", "deepseek", "reasoning", 128000, 8192),
             ModelInfo("deepseek-chat", "DeepSeek Chat", "deepseek", "text", 64000, 4096),
-        ]
+        ],
     ),
     "dashscope": ProviderInfo(
         id="dashscope", name="阿里云百炼", icon="dashscope",
@@ -53,7 +53,7 @@ PROVIDERS: dict[str, ProviderInfo] = {
             ModelInfo("deepseek-v4-pro", "DeepSeek V4 Pro (百炼)", "dashscope", "reasoning", 128000, 8192),
             ModelInfo("qwen3.7-max", "Qwen 3.7 Max", "dashscope", "text", 128000, 8192),
             ModelInfo("qwen3.7-plus", "Qwen 3.7 Plus", "dashscope", "text", 128000, 4096),
-        ]
+        ],
     ),
     "openai": ProviderInfo(
         id="openai", name="OpenAI", icon="openai",
@@ -62,7 +62,7 @@ PROVIDERS: dict[str, ProviderInfo] = {
         models=[
             ModelInfo("gpt-4o", "GPT-4o", "openai", "text", 128000, 4096),
             ModelInfo("gpt-4o-mini", "GPT-4o Mini", "openai", "text", 128000, 16384),
-        ]
+        ],
     ),
     "anthropic": ProviderInfo(
         id="anthropic", name="Anthropic", icon="anthropic",
@@ -71,13 +71,7 @@ PROVIDERS: dict[str, ProviderInfo] = {
         models=[
             ModelInfo("claude-sonnet-4-20250514", "Claude Sonnet 4", "anthropic", "text", 200000, 8192),
             ModelInfo("claude-opus-4-20250514", "Claude Opus 4", "anthropic", "text", 200000, 8192),
-        ]
-    ),
-    "custom": ProviderInfo(
-        id="custom", name="自定义", icon="custom",
-        base_url="",
-        api_key_env="CUSTOM_API_KEY",
-        models=[]
+        ],
     ),
 }
 
@@ -87,77 +81,27 @@ def get_provider(provider_id: str) -> ProviderInfo | None:
 
 
 def list_available_models() -> list[dict]:
-    """Return all models grouped by provider, marking which have API keys configured."""
-    result = []
+    """Return all models grouped by provider, marking which are configured."""
+    result: list[dict] = []
     for pid, p in PROVIDERS.items():
         has_key = bool(os.getenv(p.api_key_env, ""))
-        models = []
-        for m in p.models:
-            models.append({
+        models = [
+            {
                 "id": f"{pid}:{m.id}",
                 "name": m.name,
                 "type": m.type,
                 "context": m.context_window,
                 "available": has_key,
-            })
-        result.append({
-            "provider_id": pid,
-            "provider_name": p.name,
-            "icon": p.icon,
-            "configured": has_key,
-            "models": models,
-        })
+            }
+            for m in p.models
+        ]
+        result.append(
+            {
+                "provider_id": pid,
+                "provider_name": p.name,
+                "icon": p.icon,
+                "configured": has_key,
+                "models": models,
+            }
+        )
     return result
-
-
-# ── Unified LLM Client ─────────────────────────────────────────
-
-class LLMClient:
-    """Unified client that routes to the correct provider based on model ID."""
-
-    def __init__(self, model_id: str = "dashscope:deepseek-v4-pro"):
-        self.model_id = model_id
-        self._client: AsyncOpenAI | None = None
-        self._provider: ProviderInfo | None = None
-        self._init()
-
-    def _init(self):
-        parts = self.model_id.split(":", 1)
-        pid = parts[0] if len(parts) == 2 else "dashscope"
-        model = parts[1] if len(parts) == 2 else parts[0]
-        self._provider = PROVIDERS.get(pid)
-        if not self._provider:
-            raise ValueError(f"Unknown provider: {pid}")
-        api_key = os.getenv(self._provider.api_key_env, "")
-        self._client = AsyncOpenAI(api_key=api_key, base_url=self._provider.base_url)
-        self._model = model
-
-    async def chat(self, messages: list[dict], temperature: float = 0.7, max_tokens: int = 4096) -> str:
-        resp = await self._client.chat.completions.create(
-            model=self._model, messages=messages,
-            temperature=temperature, max_tokens=max_tokens, stream=False)
-        return resp.choices[0].message.content or ""
-
-    async def stream_chat(self, messages: list[dict], temperature: float = 0.7, max_tokens: int = 4096) -> AsyncGenerator[str, None]:
-        stream = await self._client.chat.completions.create(
-            model=self._model, messages=messages,
-            temperature=temperature, max_tokens=max_tokens, stream=True)
-        async for chunk in stream:
-            if chunk.choices[0].delta.content:
-                yield chunk.choices[0].delta.content
-
-    async def json_chat(self, messages: list[dict], temperature: float = 0.3) -> dict:
-        msgs = [{"role": "system", "content": "Always respond with valid JSON."}, *messages]
-        resp = await self._client.chat.completions.create(
-            model=self._model, messages=msgs,
-            temperature=temperature, max_tokens=4096,
-            response_format={"type": "json_object"}, stream=False)
-        return json.loads(resp.choices[0].message.content or "{}")
-
-    @property
-    def provider_name(self) -> str:
-        return self._provider.name if self._provider else "unknown"
-
-    @property
-    def model_name(self) -> str:
-        return self._model
