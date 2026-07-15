@@ -204,4 +204,3 @@ export const agentNameMap:Record<string,string> = {
   ideation:'创意总监',structure:'编剧架构师',writing:'WritingAgent',story_design:'故事策划师',characters:'角色设计师'
 }
 export function agentNameForStage(s:string) { return agentNameMap[s] || 'Agent' }
- agentNameMap[s] || 'Agent' }
