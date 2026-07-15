@@ -7,19 +7,21 @@ Patterns absorbed from ViMax:
   - ToolSpec: typed tool definitions with JSON schemas
   - SessionIndex: persistent agent state across turns
 """
-import json, os, re, aiosqlite, asyncio, hashlib
-from typing import AsyncGenerator, Any
-from dataclasses import dataclass, field
-from datetime import datetime
+import asyncio
+import json
+import os
+import re
+from collections.abc import AsyncGenerator
+from dataclasses import dataclass
 
+import aiosqlite
 from agentscope.agent import Agent, ReActConfig
-from agentscope.model import DashScopeChatModel
 from agentscope.credential import DashScopeCredential
 from agentscope.message import Msg
+from agentscope.model import DashScopeChatModel
 
-from app.db import DB_PATH
 from app.core.context_engine import build_context
-
+from app.db import DB_PATH
 
 # ═══════════════════════════════════════════
 # Prompt Parts (ViMax PromptBuilder pattern)
@@ -303,7 +305,6 @@ class AgentTeam:
                     await asyncio.sleep(0)
 
             # Try to extract JSON tool calls from response
-            import re
             tool_pattern = re.compile(r'(?:调用|使用|执行)\s*(save_episode|query_characters|plant_foreshadow|resolve_foreshadow)\s*[：:]\s*(\{.*?\})', re.DOTALL)
             tool_calls_found = tool_pattern.findall(turn_text)
 

@@ -1,9 +1,9 @@
 """
 Review Agent — 多维度质量审核 + Ralph Loop 控制
 """
-from .base import BaseAgent
-from ..core.state import AgentState
 from ..core.config import MAX_RALPH_LOOP_RETRIES, REVIEW_PASS_THRESHOLD, REVIEW_REVISE_THRESHOLD
+from ..core.state import AgentState
+from .base import BaseAgent
 
 
 class ReviewAgent(BaseAgent):

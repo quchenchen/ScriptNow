@@ -1,8 +1,8 @@
 """
 Agent State — LangGraph state definition for the creation pipeline.
 """
-from typing import TypedDict, Optional, Annotated
 from datetime import datetime
+from typing import TypedDict
 
 
 class AgentState(TypedDict, total=False):
@@ -24,7 +24,7 @@ class AgentState(TypedDict, total=False):
     stage_history: list[dict]         # [{stage, timestamp, agent, status}]
 
     # Structure Agent outputs
-    story_structure: Optional[dict]   # JSON: title, synopsis, characters, outlines
+    story_structure: dict | None   # JSON: title, synopsis, characters, outlines
     structure_version: int
 
     # Writing Agent outputs
@@ -34,7 +34,7 @@ class AgentState(TypedDict, total=False):
 
     # Review Agent outputs
     review_results: list[dict]        # 每集审核结果
-    overall_review: Optional[dict]    # 整体审核结果
+    overall_review: dict | None    # 整体审核结果
     retry_count: int                  # Ralph Loop 重试次数
     revision_history: list[dict]      # 修改历史记录
 
@@ -49,7 +49,7 @@ class AgentState(TypedDict, total=False):
 
     # Metadata
     started_at: str
-    completed_at: Optional[str]
+    completed_at: str | None
     errors: list[str]
     agent_logs: list[dict]            # [{agent, action, timestamp, detail}]
 

@@ -2,9 +2,8 @@
 Asset + Prompt Agent — 资产提取与 Seedance 提示词生成
 参考 Toonflow 项目的资产分析 + Seedance Director Formula 模式
 """
-import json
-from .base import BaseAgent
 from ..core.state import AgentState
+from .base import BaseAgent
 
 
 class AssetPromptAgent(BaseAgent):

@@ -4,10 +4,12 @@ LLM Gateway — Multi-provider abstraction with unified interface.
 Pattern: Each provider is a named entry with model list.
 Users configure API keys per provider, then assign models to agents.
 """
+import json
+import os
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
-from typing import Optional, AsyncGenerator
+
 from openai import AsyncOpenAI
-import json, os
 
 
 @dataclass
@@ -80,7 +82,7 @@ PROVIDERS: dict[str, ProviderInfo] = {
 }
 
 
-def get_provider(provider_id: str) -> Optional[ProviderInfo]:
+def get_provider(provider_id: str) -> ProviderInfo | None:
     return PROVIDERS.get(provider_id)
 
 
@@ -115,8 +117,8 @@ class LLMClient:
 
     def __init__(self, model_id: str = "dashscope:deepseek-v4-pro"):
         self.model_id = model_id
-        self._client: Optional[AsyncOpenAI] = None
-        self._provider: Optional[ProviderInfo] = None
+        self._client: AsyncOpenAI | None = None
+        self._provider: ProviderInfo | None = None
         self._init()
 
     def _init(self):

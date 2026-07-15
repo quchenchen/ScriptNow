@@ -1,11 +1,11 @@
 """
 Agent Base — Abstract base class for all Agents.
 """
-import json
 import logging
 from abc import ABC, abstractmethod
 from datetime import datetime
-from ..core.llm_gateway import get_llm, LLMRequest
+
+from ..core.llm_gateway import LLMRequest, get_llm
 from ..core.skill_loader import get_skill_loader
 from ..core.state import AgentState
 

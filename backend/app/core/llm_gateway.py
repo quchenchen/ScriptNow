@@ -1,11 +1,12 @@
 """
 LLM Gateway — Multi-provider routing with intelligent model selection.
 """
-import os
 import json
-from typing import AsyncGenerator, Optional
-from dataclasses import dataclass, field
+from collections.abc import AsyncGenerator
+from dataclasses import dataclass
+
 from openai import AsyncOpenAI
+
 from .config import LLM_CONFIG
 
 
@@ -95,7 +96,7 @@ class LLMGateway:
 
 
 # Singleton
-_llm_gateway: Optional[LLMGateway] = None
+_llm_gateway: LLMGateway | None = None
 
 
 def get_llm() -> LLMGateway:

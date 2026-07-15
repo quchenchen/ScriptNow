@@ -1,8 +1,8 @@
 """Prompt Template Service — configurable system prompts stored in DB."""
-from sqlalchemy import Column, Integer, String, Text, DateTime
+from sqlalchemy import Column, DateTime, Integer, String, Text, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import func
-from sqlalchemy import select
+
 from app.models import Base
 
 DEFAULT_PROMPTS = {

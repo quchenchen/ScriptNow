@@ -2,9 +2,8 @@
 Writing Agent — 逐集剧本撰写
 负责：将大纲转化为标准短剧格式正文
 """
-import json
-from .base import BaseAgent
 from ..core.state import AgentState
+from .base import BaseAgent
 
 
 class WritingAgent(BaseAgent):

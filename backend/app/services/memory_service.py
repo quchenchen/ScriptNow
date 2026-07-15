@@ -1,8 +1,11 @@
 """Memory Service — Character + Foreshadow + Scene management with SQLAlchemy."""
-from sqlalchemy.ext.asyncio import AsyncSession
+import json
+import re
+
 from sqlalchemy import select, update
-from app.models import Character, Foreshadow, Episode
-import json, re
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models import Character, Episode, Foreshadow
 
 
 class MemoryService:

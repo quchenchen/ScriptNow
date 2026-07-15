@@ -2,6 +2,7 @@
 Skill Loader — Load Markdown skill files as Agent system prompts.
 """
 from pathlib import Path
+
 from .config import SKILLS_DIR
 
 

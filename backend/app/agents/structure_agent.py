@@ -2,9 +2,8 @@
 Structure Agent — 故事架构设计
 负责：题材选择、人物设计、分集大纲、爽点分布
 """
-import json
-from .base import BaseAgent
 from ..core.state import AgentState
+from .base import BaseAgent
 
 
 class StructureAgent(BaseAgent):
@@ -40,14 +39,14 @@ class StructureAgent(BaseAgent):
         culture = state.get("cultural_background", "国内")
 
         parts = [
-            f"## 创作任务\n根据以下信息，设计一部短剧的完整故事架构。",
+            "## 创作任务\n根据以下信息，设计一部短剧的完整故事架构。",
             f"\n## 用户创意\n{idea}",
-            f"\n## 创作约束",
+            "\n## 创作约束",
             f"- 目标受众: {audience}",
             f"- 文化背景: {culture}",
         ]
         if genres:
             parts.append(f"- 偏好题材: {', '.join(genres)}")
 
-        parts.append(f"\n## 输出要求\n请严格按照 System Prompt 中的 JSON Schema 输出完整的故事架构。确保每个角色有独立动线，爽点分布均匀，集末悬念有力。")
+        parts.append("\n## 输出要求\n请严格按照 System Prompt 中的 JSON Schema 输出完整的故事架构。确保每个角色有独立动线，爽点分布均匀，集末悬念有力。")
         return "\n".join(parts)

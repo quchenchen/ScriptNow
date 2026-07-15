@@ -1,6 +1,7 @@
 """LLM Config API — list providers, switch models"""
 from fastapi import APIRouter
-from app.core.llm_client import list_available_models, PROVIDERS
+
+from app.core.llm_client import PROVIDERS, list_available_models
 
 router = APIRouter()
 

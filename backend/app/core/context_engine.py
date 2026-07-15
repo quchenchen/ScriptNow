@@ -1,6 +1,9 @@
 """Context Engine — Long-term memory with upgraded foreshadow & character models."""
-import json, re
+import json
+import re
+
 import aiosqlite
+
 from app.db import DB_PATH
 
 
@@ -80,7 +83,7 @@ async def save_episode_context(project_id: int, episode_num: int, content: str):
     # ── Extract new characters ──
     char_pattern = re.compile(r'(?:^|\n)\s*(?:△.*?\n)?\s*([\u4e00-\u9fff]{2,3})[：:]')
     found_names = set()
-    blacklist = {'然而','但是','因为','所以','如果','可以','已经','可是','不过','还是','这个','那个','什么','怎么','非常','一定','可能','必须','应该','需要','能够','没有','不要','不会','知道','觉得','认为','发现','突然','立刻','马上','刚才','现在','然后','终于','难道','原来','原来','居然','其实','反正','虽然','但是','而且','或者','并且'}
+    blacklist = {'然而','但是','因为','所以','如果','可以','已经','可是','不过','还是','这个','那个','什么','怎么','非常','一定','可能','必须','应该','需要','能够','没有','不要','不会','知道','觉得','认为','发现','突然','立刻','马上','刚才','现在','然后','终于','难道','原来','居然','其实','反正','虽然','而且','或者','并且'}
     for m in char_pattern.finditer(content):
         name = m.group(1)
         if name not in blacklist:
