@@ -17,6 +17,7 @@ from .episode import Episode
 from .foreshadow import Foreshadow
 from .growth_tree import GrowthEdge, GrowthNode
 from .project import Project
+from .project_source import ProjectSource, SourceChunk
 from .prop import Prop
 from .ralph_iteration import RalphIteration
 from .review import Review
@@ -35,11 +36,13 @@ __all__ = [
     "GrowthEdge",
     "GrowthNode",
     "Project",
+    "ProjectSource",
     "Prop",
     "RalphIteration",
     "Review",
     "Scene",
     "SceneAsset",
     "ScriptVersion",
+    "SourceChunk",
     "User",
 ]

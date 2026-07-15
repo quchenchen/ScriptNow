@@ -82,6 +82,7 @@ from app.api import (  # noqa: E402
     memory_api,
     projects,
     ralph,
+    sources,
     tree,
     workspace,
 )
@@ -94,3 +95,4 @@ app.include_router(memory_api.router, prefix="/api/memory", tags=["memory"])
 app.include_router(tree.router, prefix="/api/projects", tags=["tree"])
 app.include_router(ralph.router, prefix="/api/projects", tags=["ralph"])
 app.include_router(export.router, prefix="/api/projects", tags=["export"])
+app.include_router(sources.router, prefix="/api/projects", tags=["sources"])

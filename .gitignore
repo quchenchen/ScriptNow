@@ -17,6 +17,7 @@ dist/
 *.db
 *.db-*
 backend/data/*.db
+backend/data/uploads/
 backend/app/data/*.db
 
 # Editor / OS

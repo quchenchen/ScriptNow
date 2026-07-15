@@ -26,6 +26,9 @@ class ProjectCreate(BaseModel):
     target_audience: str = ""
     cultural_background: str = "国内"
     style_preference: str = ""
+    source_mode: str = "original_pitch"
+    seed_content: str = ""
+    original_work: str = ""
     source_file: str | None = None
 
 
@@ -37,6 +40,9 @@ class ProjectOut(BaseModel):
     genre: str
     target_audience: str
     style_preference: str = ""
+    source_mode: str = "original_pitch"
+    seed_content: str = ""
+    original_work: str = ""
     status: str
     current_stage: str
     total_episodes: int
@@ -82,11 +88,13 @@ async def create_project(req: ProjectCreate, user: CurrentUser):
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
             "INSERT INTO projects (user_id, title, type, genre, target_audience, "
-            "cultural_background, style_preference, status, current_stage) "
-            "VALUES (?,?,?,?,?,?,?,?,?)",
+            "cultural_background, style_preference, source_mode, seed_content, "
+            "original_work, status, current_stage) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 user["id"], req.title, req.type, genre_raw, req.target_audience,
                 req.cultural_background, req.style_preference,
+                req.source_mode, req.seed_content, req.original_work,
                 "in_progress", first,
             ),
         )
