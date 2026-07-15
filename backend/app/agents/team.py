@@ -73,6 +73,7 @@ def make_tools(project_id: int) -> dict[str, Callable[..., Awaitable[ToolRespons
             title: 剧集标题，例如 "第3集 · 相遇"。
             content: 剧本正文（场景 + 动作 + 对白，完整一集，用 【场景N】location·time 分场）。
         """
+        from app.services import growth_tree_service as tree_svc
         from app.services.scene_splitter import split_scenes
 
         async with aiosqlite.connect(DB_PATH) as db:
@@ -91,15 +92,38 @@ def make_tools(project_id: int) -> dict[str, Callable[..., Awaitable[ToolRespons
             )
             episode_id = ins.lastrowid
 
-            # Split into scenes and write scene rows
             scenes = split_scenes(content)
+            scene_ids: list[tuple[int, dict]] = []
             for s in scenes:
-                await db.execute(
+                sc_ins = await db.execute(
                     "INSERT INTO scenes (episode_id, scene_number, location, time, content) "
                     "VALUES (?,?,?,?,?)",
                     (episode_id, s["scene_number"], s["location"], s["time"], s["content"]),
                 )
+                scene_ids.append((sc_ins.lastrowid, s))
             await db.commit()
+
+        # Record in the growth tree. Best-effort — a tree hiccup should not
+        # prevent the episode from being saved.
+        try:
+            idea_node = await tree_svc.record_artefact(
+                project_id, "idea", project_id, label="项目起点"
+            )
+            ep_node = await tree_svc.record_artefact(
+                project_id, "episode", episode_id,
+                label=f"EP{ep_num} {title or ''}",
+            )
+            await tree_svc.record_derived_from(project_id, idea_node, ep_node)
+            for sc_id, s in scene_ids:
+                sc_node = await tree_svc.record_artefact(
+                    project_id, "scene", sc_id,
+                    label=f"S{s['scene_number']} {s['location'] or ''}",
+                )
+                await tree_svc.record_derived_from(project_id, ep_node, sc_node)
+        except Exception as e:  # pragma: no cover — best-effort tree write
+            import logging
+            logging.getLogger(__name__).warning("growth tree record failed: %s", e)
+
         return _text_response({
             "ok": True,
             "episode_number": ep_num,

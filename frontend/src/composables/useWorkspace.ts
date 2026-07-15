@@ -186,20 +186,3 @@ export const agentNameMap:Record<string,string> = {
   ideation:'创意总监',structure:'编剧架构师',writing:'WritingAgent',story_design:'故事策划师',characters:'角色设计师'
 }
 export function agentNameForStage(s:string) { return agentNameMap[s] || 'Agent' }
-tructure, exportAll,
-  }
-}
-
-// Helpers
-function now() { return new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}) }
-export const stageLabelMap:Record<string,string> = {
-  ideation:'灵感孵化',structure:'故事架构',writing:'剧本撰写',review:'质量审核',polish:'润色',assets:'资产提取',prompts:'提示词',
-  story_design:'故事设计',characters:'角色',outline:'大纲',proofread:'校对'
-}
-export const stageBadgeMap:Record<string,string> = {
-  ideation:'badge-p',structure:'badge-blue',writing:'badge-g',story_design:'badge-p',characters:'badge-blue',outline:'badge-blue'
-}
-export const agentNameMap:Record<string,string> = {
-  ideation:'创意总监',structure:'编剧架构师',writing:'WritingAgent',story_design:'故事策划师',characters:'角色设计师'
-}
-export function agentNameForStage(s:string) { return agentNameMap[s] || 'Agent' }

@@ -15,6 +15,7 @@ from .character import Character
 from .chat_message import ChatMessage
 from .episode import Episode
 from .foreshadow import Foreshadow
+from .growth_tree import GrowthEdge, GrowthNode
 from .project import Project
 from .review import Review
 from .scene import Scene
@@ -29,6 +30,8 @@ __all__ = [
     "ChatMessage",
     "Episode",
     "Foreshadow",
+    "GrowthEdge",
+    "GrowthNode",
     "Project",
     "Review",
     "Scene",
