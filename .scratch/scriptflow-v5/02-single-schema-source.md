@@ -1,6 +1,6 @@
 # 02 · Schema 单一 source of truth + 首次 Alembic
 
-- **Status**: proposed
+- **Status**: done
 - **Type**: refactor
 - **Blocked by**: 01
 - **Blocks**: 04, 06, 09, 10

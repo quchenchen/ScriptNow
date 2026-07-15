@@ -1,22 +1,28 @@
-"""Database session management — dual-mode: aiosqlite (existing) + SQLAlchemy async (new)."""
-import aiosqlite
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from pathlib import Path
-from app.models import DATABASE_URL as _SA_URL
+"""Backward-compat shim for legacy code that imports ``app.database``.
 
-DB_PATH = Path(__file__).parent / "data" / "scriptflow.db"
-ASYNC_URL = f"sqlite+aiosqlite:///{DB_PATH}"
+New code should import from ``app.db`` directly. This shim will be removed
+when all API handlers migrate off aiosqlite (independent refactor).
+"""
+from __future__ import annotations
 
-# SQLAlchemy async engine (for new code)
-engine = create_async_engine(ASYNC_URL, echo=False)
-async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+from app.db import (
+    ASYNC_URL,
+    DATABASE_URL,
+    DB_PATH,
+    async_session,
+    engine,
+    ensure_db_dir,
+    get_aiosqlite_connection,
+    get_sa_session,
+)
 
-# aiosqlite helper (for existing code, backward compat)
-async def get_db() -> aiosqlite.Connection:
-    db = await aiosqlite.connect(str(DB_PATH))
-    db.row_factory = aiosqlite.Row
-    return db
-
-async def get_sa_session() -> AsyncSession:
-    async with async_session() as session:
-        yield session
+__all__ = [
+    "ASYNC_URL",
+    "DATABASE_URL",
+    "DB_PATH",
+    "ensure_db_dir",
+    "async_session",
+    "engine",
+    "get_aiosqlite_connection",
+    "get_sa_session",
+]

@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from datetime import datetime, timedelta
 import hashlib, secrets, aiosqlite, jwt, os
-from app.main import DB_PATH
+from app.db import DB_PATH
 
 router = APIRouter()
 JWT_SECRET = os.getenv("JWT_SECRET", secrets.token_hex(32))

@@ -4,7 +4,7 @@ from fastapi.responses import StreamingResponse
 from typing import Optional
 import json, asyncio, re, os
 import aiosqlite
-from app.main import DB_PATH
+from app.db import DB_PATH
 from app.core.context_engine import build_context, save_episode_context
 
 

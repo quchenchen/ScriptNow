@@ -17,10 +17,8 @@ from agentscope.model import DashScopeChatModel
 from agentscope.credential import DashScopeCredential
 from agentscope.message import Msg
 
-from app.main import DB_PATH
+from app.db import DB_PATH
 from app.core.context_engine import build_context
-
-DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'scriptflow.db')
 
 
 # ═══════════════════════════════════════════

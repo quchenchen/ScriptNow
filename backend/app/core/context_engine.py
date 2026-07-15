@@ -1,7 +1,7 @@
 """Context Engine — Long-term memory with upgraded foreshadow & character models."""
 import json, re
 import aiosqlite
-from app.main import DB_PATH
+from app.db import DB_PATH
 
 
 async def build_context(project_id: int, stage: str, episode_num: int = 0) -> str:

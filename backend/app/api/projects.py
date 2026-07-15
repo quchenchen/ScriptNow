@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from datetime import datetime
 from typing import Optional
 import aiosqlite, json
-from app.main import DB_PATH
+from app.db import DB_PATH
 from app.core.pipelines import get_pipeline, PIPELINES
 
 router = APIRouter()
