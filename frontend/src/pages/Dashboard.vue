@@ -3,9 +3,7 @@
     <header>
       <h1>ScriptFlow</h1>
       <div class="user-info">
-        <span class="badge">{{ user.membership_tier === 'expert' ? '专家' : '免费' }}</span>
-        <span>{{ user.nickname }}</span>
-        <span class="points">🪙 {{ user.points }}</span>
+        <span>{{ user.nickname }} · {{ user.membership_tier === 'expert' ? '⭐专家' : '免费' }} · 🪙{{ user.points }}</span>
         <button class="btn-ghost" @click="$emit('logout')">退出</button>
       </div>
     </header>
@@ -83,7 +81,7 @@ const showCreate = ref(false)
 const form = ref({ type: 'script', title: '', target_audience: '男频', cultural_background: '国内' })
 
 onMounted(async () => {
-  try { const { data } = await listProjects(1); projects.value = data } catch {}
+  try { const { data } = await listProjects(); projects.value = data } catch {}
 })
 
 async function handleCreate() {

@@ -167,25 +167,118 @@ def make_tools(project_id: int) -> dict[str, Callable[..., Awaitable[ToolRespons
         return _text_response({"ok": True, "id": fid})
 
     async def resolve_foreshadow(foreshadow_id: int, resolution: str = "") -> ToolResponse:
-        """回收一个之前埋下的伏笔。将其状态标记为 resolved 并记录回收方式。
+        """完全回收一个之前埋下的伏笔，标记为 resolved 并记录回收方式。
 
         Args:
-            foreshadow_id: 要回收的伏笔 ID（由 plant_foreshadow 返回，或从上下文里的伏笔列表拿）。
+            foreshadow_id: 要回收的伏笔 ID。
             resolution: 回收方式的简短描述。
         """
+        return _text_response(await _do_transition(
+            project_id, foreshadow_id, target="resolved", resolution_text=resolution
+        ))
+
+    async def partial_resolve_foreshadow(foreshadow_id: int, resolution: str = "") -> ToolResponse:
+        """部分回收一个复合伏笔（还有后续揭晓）。
+
+        Args:
+            foreshadow_id: 伏笔 ID。
+            resolution: 本次揭晓了哪一部分。
+        """
+        return _text_response(await _do_transition(
+            project_id, foreshadow_id, target="partially_resolved", resolution_text=resolution,
+        ))
+
+    async def abandon_foreshadow(foreshadow_id: int, reason: str = "") -> ToolResponse:
+        """明确放弃一个伏笔（写作者决定不再回收）。
+
+        Args:
+            foreshadow_id: 伏笔 ID。
+            reason: 放弃原因，会记录到 resolution_text 里。
+        """
+        return _text_response(await _do_transition(
+            project_id, foreshadow_id, target="abandoned", resolution_text=reason,
+        ))
+
+    async def update_character_state(
+        character_id: int,
+        current_state: str,
+        state_episode: int = 0,
+    ) -> ToolResponse:
+        """更新一个角色的当前状态（比如 "被通缉/追杀/新身份揭晓"）。
+
+        写完一集后可以更新角色的 current_state，让下一集的上下文能拿到最新状态。
+
+        Args:
+            character_id: 角色 ID（从 query_characters 拿）。
+            current_state: 简短的当前状态描述。
+            state_episode: 状态记录发生在哪一集（缺省为当前最新集）。
+        """
         async with aiosqlite.connect(DB_PATH) as db:
-            # Check existence first — refuse cleanly if id is fake
-            check = await db.execute(
-                "SELECT id FROM foreshadows WHERE id = ? AND project_id = ?",
-                (foreshadow_id, project_id),
+            cur = await db.execute(
+                "SELECT id FROM characters WHERE id = ? AND project_id = ?",
+                (character_id, project_id),
             )
-            if not await check.fetchone():
-                return _text_response({"ok": False, "error": f"foreshadow {foreshadow_id} not found"})
+            if not await cur.fetchone():
+                return _text_response({"ok": False, "error": f"character {character_id} not found"})
+
+            if not state_episode:
+                cur = await db.execute(
+                    "SELECT COALESCE(MAX(episode_number), 0) FROM episodes WHERE project_id = ?",
+                    (project_id,),
+                )
+                state_episode = (await cur.fetchone())[0]
+
             await db.execute(
-                "UPDATE foreshadows SET status = 'resolved', resolution_text = ?, "
-                "actual_episode = (SELECT COALESCE(MAX(episode_number), 0) FROM episodes "
-                "WHERE project_id = ?) WHERE id = ?",
-                (resolution, project_id, foreshadow_id),
+                "UPDATE characters SET current_state = ?, state_episode = ? WHERE id = ?",
+                (current_state, state_episode, character_id),
+            )
+            await db.commit()
+        return _text_response({"ok": True})
+
+    async def add_prop(
+        name: str,
+        description: str = "",
+        significance: str = "background",
+        first_appearance: int = 0,
+    ) -> ToolResponse:
+        """新增一个道具到项目资产库。
+
+        Args:
+            name: 道具名。
+            description: 道具描述（为什么值得追踪）。
+            significance: background / plot_device / macguffin。
+            first_appearance: 首次出场的集号（0 表示未定）。
+        """
+        async with aiosqlite.connect(DB_PATH) as db:
+            cur = await db.execute(
+                "INSERT INTO props (project_id, name, description, significance, "
+                "first_appearance, last_appearance, usage_count) VALUES (?,?,?,?,?,?,?)",
+                (project_id, name, description, significance,
+                 first_appearance, first_appearance, 1 if first_appearance else 0),
+            )
+            await db.commit()
+        return _text_response({"ok": True, "id": cur.lastrowid})
+
+    async def mark_prop_used(prop_id: int, episode_number: int) -> ToolResponse:
+        """标记一个道具在某一集又出现了一次（累加 usage_count + 更新 last_appearance）。
+
+        Args:
+            prop_id: 道具 ID。
+            episode_number: 出现的集号。
+        """
+        async with aiosqlite.connect(DB_PATH) as db:
+            cur = await db.execute(
+                "SELECT first_appearance FROM props WHERE id = ? AND project_id = ?",
+                (prop_id, project_id),
+            )
+            row = await cur.fetchone()
+            if not row:
+                return _text_response({"ok": False, "error": f"prop {prop_id} not found"})
+            first = row[0] or episode_number
+            await db.execute(
+                "UPDATE props SET last_appearance = ?, first_appearance = ?, "
+                "usage_count = usage_count + 1 WHERE id = ?",
+                (episode_number, first if first else episode_number, prop_id),
             )
             await db.commit()
         return _text_response({"ok": True})
@@ -195,7 +288,45 @@ def make_tools(project_id: int) -> dict[str, Callable[..., Awaitable[ToolRespons
         "query_characters": query_characters,
         "plant_foreshadow": plant_foreshadow,
         "resolve_foreshadow": resolve_foreshadow,
+        "partial_resolve_foreshadow": partial_resolve_foreshadow,
+        "abandon_foreshadow": abandon_foreshadow,
+        "update_character_state": update_character_state,
+        "add_prop": add_prop,
+        "mark_prop_used": mark_prop_used,
     }
+
+
+async def _do_transition(
+    project_id: int, foreshadow_id: int, target: str, resolution_text: str = "",
+) -> dict:
+    """Shared helper for the 3 foreshadow-transition tools.
+
+    Returns the JSON payload to feed into ``_text_response``.
+    """
+    from app.services.foreshadow_state import InvalidStateTransition, transition
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            "SELECT status FROM foreshadows WHERE id = ? AND project_id = ?",
+            (foreshadow_id, project_id),
+        )
+        row = await cur.fetchone()
+        if not row:
+            return {"ok": False, "error": f"foreshadow {foreshadow_id} not found"}
+        try:
+            new_state = transition(row["status"], target)
+        except InvalidStateTransition as e:
+            return {"ok": False, "error": str(e)}
+
+        await db.execute(
+            "UPDATE foreshadows SET status = ?, resolution_text = ?, "
+            "actual_episode = (SELECT COALESCE(MAX(episode_number), 0) FROM episodes "
+            "WHERE project_id = ?) WHERE id = ?",
+            (new_state.value, resolution_text, project_id, foreshadow_id),
+        )
+        await db.commit()
+    return {"ok": True, "new_state": new_state.value}
 
 
 def build_toolkit(project_id: int) -> Toolkit:

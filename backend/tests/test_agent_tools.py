@@ -176,8 +176,149 @@ async def test_resolve_foreshadow_updates_status(prepared_project):
     assert "第10集" in row[1]
 
 
-async def test_build_toolkit_registers_all_four_tools(prepared_project):
-    """The Toolkit returned from build_toolkit exposes all four expected tools."""
+async def test_update_character_state_persists(prepared_project):
+    from app.agents.team import make_tools
+
+    project_id = prepared_project
+    # Seed a character
+    import sqlite3
+
+    from app.db import DB_PATH
+    conn = sqlite3.connect(str(DB_PATH))
+    try:
+        cur = conn.execute(
+            "INSERT INTO characters (project_id, name, role) VALUES (?, '阿明', 'protagonist')",
+            (project_id,),
+        )
+        char_id = cur.lastrowid
+        # And an episode so state_episode fallback works
+        conn.execute(
+            "INSERT INTO episodes (project_id, episode_number, status) VALUES (?, 3, 'done')",
+            (project_id,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    tools = make_tools(project_id)
+    result = await _call_tool_text(
+        tools["update_character_state"],
+        character_id=char_id,
+        current_state="被通缉",
+    )
+    assert result["ok"] is True
+
+    conn = sqlite3.connect(str(DB_PATH))
+    try:
+        row = conn.execute(
+            "SELECT current_state, state_episode FROM characters WHERE id = ?",
+            (char_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row[0] == "被通缉"
+    assert row[1] == 3  # picked up from max(episode_number)
+
+
+async def test_add_prop_and_mark_used(prepared_project):
+    from app.agents.team import make_tools
+
+    project_id = prepared_project
+    tools = make_tools(project_id)
+
+    result = await _call_tool_text(
+        tools["add_prop"],
+        name="怀表",
+        description="父亲遗物",
+        significance="macguffin",
+        first_appearance=1,
+    )
+    assert result["ok"] is True
+    prop_id = result["id"]
+
+    result = await _call_tool_text(
+        tools["mark_prop_used"], prop_id=prop_id, episode_number=5,
+    )
+    assert result["ok"] is True
+
+    import sqlite3
+
+    from app.db import DB_PATH
+    conn = sqlite3.connect(str(DB_PATH))
+    try:
+        row = conn.execute(
+            "SELECT usage_count, last_appearance FROM props WHERE id = ?", (prop_id,)
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row[0] == 2  # add_prop set to 1, mark_prop_used +1
+    assert row[1] == 5
+
+
+async def test_abandon_foreshadow_via_tool(prepared_project):
+    from app.agents.team import make_tools
+
+    project_id = prepared_project
+    # Seed a planted foreshadow
+    import sqlite3
+
+    from app.db import DB_PATH
+    conn = sqlite3.connect(str(DB_PATH))
+    try:
+        cur = conn.execute(
+            "INSERT INTO foreshadows (project_id, title, description, status) "
+            "VALUES (?, 'X', 'x', 'planted')",
+            (project_id,),
+        )
+        fid = cur.lastrowid
+        conn.commit()
+    finally:
+        conn.close()
+
+    tools = make_tools(project_id)
+    result = await _call_tool_text(
+        tools["abandon_foreshadow"], foreshadow_id=fid, reason="剧情走向变了",
+    )
+    assert result["ok"] is True
+    assert result["new_state"] == "abandoned"
+
+
+async def test_partial_resolve_then_full_resolve(prepared_project):
+    from app.agents.team import make_tools
+
+    project_id = prepared_project
+    import sqlite3
+
+    from app.db import DB_PATH
+    conn = sqlite3.connect(str(DB_PATH))
+    try:
+        cur = conn.execute(
+            "INSERT INTO foreshadows (project_id, title, description, status) "
+            "VALUES (?, 'X', 'x', 'planted')",
+            (project_id,),
+        )
+        fid = cur.lastrowid
+        conn.commit()
+    finally:
+        conn.close()
+
+    tools = make_tools(project_id)
+    r1 = await _call_tool_text(
+        tools["partial_resolve_foreshadow"], foreshadow_id=fid, resolution="揭晓一半",
+    )
+    assert r1["new_state"] == "partially_resolved"
+
+    r2 = await _call_tool_text(
+        tools["resolve_foreshadow"], foreshadow_id=fid, resolution="完整揭晓",
+    )
+    assert r2["new_state"] == "resolved"
+
+
+async def test_build_toolkit_registers_all_tools(prepared_project):
+    """The Toolkit returned from build_toolkit exposes every declared tool.
+
+    Kept as a single assertion set so adding/removing tools shows a clean diff.
+    """
     from app.agents.team import build_toolkit
 
     project_id = prepared_project
@@ -185,4 +326,11 @@ async def test_build_toolkit_registers_all_four_tools(prepared_project):
 
     schemas = await toolkit.get_tool_schemas()
     tool_names = {s["function"]["name"] for s in schemas}
-    assert tool_names == {"save_episode", "query_characters", "plant_foreshadow", "resolve_foreshadow"}
+    expected = {
+        "save_episode", "query_characters",
+        "plant_foreshadow", "resolve_foreshadow",
+        "partial_resolve_foreshadow", "abandon_foreshadow",
+        "update_character_state",
+        "add_prop", "mark_prop_used",
+    }
+    assert tool_names == expected

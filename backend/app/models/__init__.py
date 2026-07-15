@@ -17,6 +17,7 @@ from .episode import Episode
 from .foreshadow import Foreshadow
 from .growth_tree import GrowthEdge, GrowthNode
 from .project import Project
+from .prop import Prop
 from .review import Review
 from .scene import Scene
 from .scene_asset import SceneAsset
@@ -33,6 +34,7 @@ __all__ = [
     "GrowthEdge",
     "GrowthNode",
     "Project",
+    "Prop",
     "Review",
     "Scene",
     "SceneAsset",

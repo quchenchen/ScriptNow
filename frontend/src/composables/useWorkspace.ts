@@ -164,7 +164,7 @@ export function useWorkspace(projectId: number, initialStage: string) {
   return {
     pipelineStages, stage, llmModel, chatMessages, chatInput, streaming, episodes, viewingEp, plans,
     structureConfirmed, projectGenre, projectStyle, genreOptions, styleOptions,
-    chars, allForeshadows, sceneList,
+    chars, allForeshadows, sceneList, propList,
     unitLabel, isWriting,
     switchStage, loadEpisodes, sendChat, selectPlan, generateNext, viewEp, parseScenes,
     toggleGenre, resetFilters, resetIdeation,
@@ -186,3 +186,4 @@ export const agentNameMap:Record<string,string> = {
   ideation:'创意总监',structure:'编剧架构师',writing:'WritingAgent',story_design:'故事策划师',characters:'角色设计师'
 }
 export function agentNameForStage(s:string) { return agentNameMap[s] || 'Agent' }
+ agentNameMap[s] || 'Agent' }

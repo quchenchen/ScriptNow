@@ -27,7 +27,6 @@ function attachAuthInterceptors(instance: typeof axios | typeof api) {
     const token = readToken()
     if (token) {
       config.headers = config.headers ?? {}
-      // @ts-expect-error axios type union in v1
       config.headers['Authorization'] = `Bearer ${token}`
     }
     return config

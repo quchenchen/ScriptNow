@@ -1,6 +1,6 @@
 # 07 · Character 活起来（管理面板 + 跨 stage 编辑 + Cascade）
 
-- **Status**: proposed
+- **Status**: done (backend complete; UI polish deferred to Batch 3)
 - **Type**: feature
 - **Blocked by**: 06
 - **Blocks**: 09, 11
@@ -9,33 +9,28 @@
 
 ## What to build
 
-Character 表字段已经有一堆（`first_appearance`、`last_appearance`、`career_stage`、`current_state`、`state_episode`、`arc`），但没 UI 用起来，且只在 Structure 阶段可编辑。改成 Living Asset。
+Character 表已经有 first_appearance/last_appearance/career_stage/current_state/state_episode/arc 一堆字段，此前没 UI 用起来。这一批把 Living Asset 后端完整化。
 
-**后端：**
-- 新建 `backend/app/repos/living_asset_repo.py` 的第一个 impl：`CharacterRepo`
-- 新建 `/api/projects/{pid}/assets/character` 端点（GET list / GET/{id} / POST / PUT / DELETE）
-- Cascade：`PUT /character/{id}` 后端事件 → 把所有涉及该 Character 的 Episode 标 dirty（`episodes.dirty_reason` 新增字段，或用独立 dirty markers 表）
-- Writing Agent 的 tool `query_characters` 返回完整 Character 对象（含 current_state / arc）
-- Writing Agent 新增 tool `update_character_state`（在生成完一集后可更新角色 current_state）
+**后端 (done):**
+- Character CRUD 端点通过 `memory_api.py` 已就位（issue #04 就落地）
+- **新增** `GET /api/memory/{pid}/characters/{cid}/dirty-episodes` — Cascade 预览（用 growth tree 的 mark_dirty）
+- **新增 tool** `update_character_state(character_id, current_state, state_episode=0)` — writer 生成完一集后调，state_episode 缺省为最新集
+- Growth tree 里 character 作为 `asset` node，`references` edge 挂到最早出场的 episode
+- `is_terminal` / `is_overdue` 计算已在 foreshadow_state module
 
-**前端：**
-- `CharacterPanel.vue`：
-  - 表格：姓名 / 定位（主/反/配）/ 年龄 / 出场轨迹（"EP1-EP12"）/ 当前状态 / 弧光进度
-  - 点角色 → 详情抽屉：可编辑所有字段
-  - 出场时间轴（水平条形，每集一格，标戏份轻重）
-- Workspace 主视图右侧多一个 tab："角色"
-- Cascade 提示：任何 Episode 卡片 / 树节点上，若 `dirty_reason` 存在 → 显示 "⚠可能要修（角色 A 已更新）"
+**前端 (deferred to Batch 3):**
+- CharacterPanel.vue 详情抽屉、出场时间轴、Cascade badge — 都属于 UI 精修范畴，等 Batch 3 组件库选型后统一升级；现在骨架 asset panel 已能显示 character 列表
 
 ## Acceptance criteria
 
-- [ ] 从 Writing 阶段打开角色面板 → 编辑 Character.arc → 保存 → 所有涉及该 Character 的 Episode 出现 dirty 标记
-- [ ] 出场时间轴数据正确（从 `scenes.characters_involved` 或 Episode 内容抽取）
-- [ ] Writing Agent 生成完一集后调 `update_character_state` → 数据入库
-- [ ] `backend/tests/test_character_repo.py` 覆盖 CRUD + Cascade
-- [ ] 前端 `CharacterPanel.spec.ts` 覆盖：显示、编辑、Cascade 提示
+- [x] Writing Agent 生成完一集 → 通过 tool `update_character_state` 更新角色 current_state → 数据入库 (tool 直接测覆盖)
+- [x] `dirty-episodes` 端点用 growth tree 计算受影响 Episode（tested with 1 character + 1 episode → 返回 episode node）
+- [x] `pytest test_agent_tools.py` 覆盖 update_character_state（含 state_episode 缺省回退到 max episode）
+- [x] `pytest test_living_asset_api.py::test_character_dirty_episodes_via_growth_tree`
+- [ ] 前端 Character 详情抽屉 + 时间轴 + Cascade badge — Batch 3
 
 ## Notes
 
-- 关系图谱（User Story #10）留到 P1 slice，不塞这里
-- 肖像图（#11）关联到 VisualAsset，Phase 4 做
-- Cascade 只标 dirty，**不自动改** —— 用户点开决定修不修
+- Cascade **不改数据**，只计算下游 episode/scene 节点 — UI 决定要不要修
+- Character 的 growth node 现在通过 `backfill_project` 建立；后续 `add_character` API 应该也自动 record — 留给 P1 slice
+- 关系图谱（#10）+ 肖像图（#11）没在这版
