@@ -337,6 +337,40 @@ def make_tools(project_id: int) -> dict[str, Callable[..., Awaitable[ToolRespons
             return _text_response({"ok": False, "error": "chunk not in this project"})
         return _text_response({"ok": True, **result})
 
+    async def activate_skill(name: str) -> ToolResponse:
+        """加载指定专业技能的完整指令 + 附属资源清单到上下文。
+
+        使用场景：Agent 从 system prompt 的 <available_skills> 目录里挑选一个跟当前
+        任务匹配的技能，调用本工具拿到完整指令。返回体含 ``body``（技能正文）和
+        ``resources``（该技能可读的资源文件相对路径）。需要读某个资源时再调
+        read_skill_file。
+
+        Args:
+            name: 技能 frontmatter 里的 name 字段，例如 "灵感孵化 Agent" 或 "男频爽文短剧"。
+        """
+        from app.services import skill_service
+        try:
+            payload = skill_service.activate_skill(name)
+        except skill_service.SkillNotFound as e:
+            return _text_response({"ok": False, "error": str(e)})
+        return _text_response({"ok": True, **payload})
+
+    async def read_skill_file(file_path: str) -> ToolResponse:
+        """读取已激活技能目录下的资源文件。
+
+        Args:
+            file_path: activate_skill 返回的 ``resources`` 里的相对路径，例如
+              ``story_skills/male_lead_shuang/director_skills/director_planning_narrative.md``。
+        """
+        from app.services import skill_service
+        try:
+            content = skill_service.read_skill_file(file_path)
+        except (skill_service.SkillPathViolation, ValueError) as e:
+            return _text_response({"ok": False, "error": str(e)})
+        except FileNotFoundError as e:
+            return _text_response({"ok": False, "error": str(e)})
+        return _text_response({"ok": True, "path": file_path, "content": content})
+
     return {
         "save_episode": save_episode,
         "query_characters": query_characters,
@@ -350,6 +384,8 @@ def make_tools(project_id: int) -> dict[str, Callable[..., Awaitable[ToolRespons
         "list_source_documents": list_source_documents,
         "search_source_documents": search_source_documents,
         "expand_source_chunk": expand_source_chunk,
+        "activate_skill": activate_skill,
+        "read_skill_file": read_skill_file,
     }
 
 
@@ -478,6 +514,14 @@ def build_system_prompt(
             f"当前阶段：{stage_label}",
         ),
     ]
+
+    # Skills 目录 — 让 Agent 知道有哪些主技能可以 activate_skill 加载。
+    # 我们只塞 name+description（懒加载），完整正文由 activate_skill 按需拉。
+    from app.services import skill_service
+    skill_menu = skill_service.build_skill_menu_prompt()
+    if skill_menu:
+        parts.append(PromptPart("skills.menu", "可用专业技能", skill_menu))
+
     if memory_context:
         parts.append(PromptPart("memory.context", "记忆上下文", memory_context))
 

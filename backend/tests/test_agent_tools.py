@@ -333,5 +333,6 @@ async def test_build_toolkit_registers_all_tools(prepared_project):
         "update_character_state",
         "add_prop", "mark_prop_used",
         "list_source_documents", "search_source_documents", "expand_source_chunk",
+        "activate_skill", "read_skill_file",
     }
     assert tool_names == expected
