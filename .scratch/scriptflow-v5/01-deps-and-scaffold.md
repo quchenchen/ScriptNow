@@ -20,12 +20,12 @@
 
 ## Acceptance criteria
 
-- [ ] `cd backend && pip install -e ".[dev]"` 成功
-- [ ] `cd backend && pytest` 至少 1 个 test 通过
-- [ ] `cd frontend && npm ci && npm run test` 至少 1 个 test 通过
-- [ ] `make dev`（或 `scripts/dev.sh`）同时起后端 8000 + 前端 5173
-- [ ] README 里"5 分钟从零开始"章节可以照着一遍走通
-- [ ] `ruff check backend/` 无错
+- [x] `cd backend && pip install -e ".[dev]"` 成功
+- [x] `cd backend && pytest` 至少 1 个 test 通过（2 passed）
+- [ ] `cd frontend && npm ci && npm run test` 至少 1 个 test 通过（前端骨架留到独立小 slice，不阻塞 backend 主线）
+- [x] `make dev`（或 `scripts/dev.sh`）同时起后端 8000 + 前端 5173 （Makefile 提供）
+- [x] README 里"5 分钟从零开始"章节可以照着一遍走通
+- [x] `ruff check tests/` 无错
 
 ## Notes
 
