@@ -11,9 +11,6 @@
       <div class="toolbar">
         <h2>我的项目</h2>
         <div class="tb-right">
-          <span class="user-tag">{{ user.membership_tier==='expert'?'⭐ 专家':'免费' }}</span>
-          <span class="user-tag">{{ user.nickname||'用户' }}</span>
-          <span class="user-tag">{{ user.points||0 }}点</span>
           <button class="btn-p" @click="showCreate = true">+ 新建项目</button>
         </div>
       </div>
@@ -141,7 +138,6 @@ main { flex: 1; max-width: 900px; margin: 0 auto; padding: 32px 24px; width: 100
 .toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px }
 .toolbar h2 { font-size: 20px; font-weight: 590; color: var(--t1) }
 .tb-right { display: flex; align-items: center; gap: 8px }
-.user-tag { font-size: 11px; color: var(--t3); background: var(--bg-hover); padding: 2px 8px; border-radius: 4px }
 
 .pj-bar { height: 3px; background: var(--bg-hover); border-radius: 1px; overflow: hidden; margin-top: 8px }
 .pj-fill { height: 100%; background: var(--accent); border-radius: 1px; transition: width .3s }
