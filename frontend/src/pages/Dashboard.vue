@@ -60,6 +60,19 @@
         <div class="form-row"><label>文化背景</label>
           <select v-model="form.cultural_background"><option value="国内">国内</option><option value="海外">海外</option></select>
         </div>
+        <div class="form-row"><label>题材类型 <span class="hint">（可多选，Agent 生成方案时依据）</span></label>
+          <div class="chips">
+            <span v-for="g in genreOptions" :key="g"
+              :class="['chip', {on: form.genre.includes(g)}]" @click="toggleGenre(g)">{{ g }}</span>
+          </div>
+        </div>
+        <div class="form-row"><label>叙事风格 <span class="hint">（单选，可留空）</span></label>
+          <div class="chips">
+            <span v-for="s in styleOptions" :key="s"
+              :class="['chip', {on: form.style_preference===s}]"
+              @click="form.style_preference = form.style_preference===s ? '' : s">{{ s }}</span>
+          </div>
+        </div>
         <div class="dialog-actions">
           <button class="btn" @click="showCreate = false">取消</button>
           <button class="btn-p" @click="handleCreate" :disabled="!form.title">创建</button>

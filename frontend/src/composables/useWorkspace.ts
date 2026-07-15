@@ -1,6 +1,7 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { listEpisodes, getEpisode, updateStage, agentChat, updateProjectSettings } from '../api'
 import axios from 'axios'
+import { genreOptions, styleOptions } from '../constants/creative'
 
 export function useWorkspace(projectId: number, initialStage: string) {
   const pipelineStages = ref<any[]>([])
@@ -17,8 +18,6 @@ export function useWorkspace(projectId: number, initialStage: string) {
   // Filter state
   const projectGenre = ref<string[]>([])
   const projectStyle = ref('')
-  const genreOptions = ['悬疑','科幻','情感','霸总','古装','玄幻','都市','恐怖','喜剧']
-  const styleOptions = ['快节奏','慢热文艺','爽文','现实主义','烧脑','轻松治愈','黑色幽默']
 
   // Asset state
   const chars = ref<any[]>([])
@@ -29,12 +28,22 @@ export function useWorkspace(projectId: number, initialStage: string) {
   onMounted(async () => {
     try { const { data } = await listEpisodes(projectId); episodes.value = data } catch {}
     try {
-      const [pr, cr] = await Promise.all([
+      const [pr, cr, pj] = await Promise.all([
         axios.get('/api/projects/pipelines'),
-        axios.get(`/api/workspace/${projectId}/chat`)
+        axios.get(`/api/workspace/${projectId}/chat`),
+        axios.get(`/api/projects/${projectId}`),
       ])
       if (pr.data?.script) pipelineStages.value = pr.data.script.stages
       if (cr.data?.length) chatMessages.value = cr.data.map((m:any)=>({role:m.role,text:m.content,agent:m.agent_name||undefined}))
+      // Hydrate creative preferences from the project so the workspace panel
+      // reflects what was chosen at creation time (or edited last).
+      if (pj.data) {
+        try {
+          const g = typeof pj.data.genre === 'string' ? JSON.parse(pj.data.genre || '[]') : (pj.data.genre || [])
+          if (Array.isArray(g)) projectGenre.value = g
+        } catch { projectGenre.value = [] }
+        projectStyle.value = pj.data.style_preference || ''
+      }
     } catch {}
     if (!pipelineStages.value.length) pipelineStages.value = [
       {key:'ideation',label:'灵感孵化'},{key:'structure',label:'故事架构'},{key:'writing',label:'剧本撰写'},

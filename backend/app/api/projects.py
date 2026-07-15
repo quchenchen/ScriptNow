@@ -25,6 +25,7 @@ class ProjectCreate(BaseModel):
     genre: str | None = "[]"
     target_audience: str = ""
     cultural_background: str = "国内"
+    style_preference: str = ""
     source_file: str | None = None
 
 
@@ -35,6 +36,7 @@ class ProjectOut(BaseModel):
     type: str
     genre: str
     target_audience: str
+    style_preference: str = ""
     status: str
     current_stage: str
     total_episodes: int
@@ -71,14 +73,21 @@ async def list_projects(user: CurrentUser):
 @router.post("/create", response_model=ProjectOut)
 async def create_project(req: ProjectCreate, user: CurrentUser):
     first = _first_stage(req.type)
+    # Normalize genre — accept either a JSON string or a bare list from the
+    # client, always store as JSON text.
+    genre_raw = req.genre or "[]"
+    if isinstance(genre_raw, list):
+        genre_raw = json.dumps(genre_raw, ensure_ascii=False)
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
             "INSERT INTO projects (user_id, title, type, genre, target_audience, "
-            "cultural_background, status, current_stage) VALUES (?,?,?,?,?,?,?,?)",
+            "cultural_background, style_preference, status, current_stage) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
             (
-                user["id"], req.title, req.type, req.genre, req.target_audience,
-                req.cultural_background, "in_progress", first,
+                user["id"], req.title, req.type, genre_raw, req.target_audience,
+                req.cultural_background, req.style_preference,
+                "in_progress", first,
             ),
         )
         await db.commit()
