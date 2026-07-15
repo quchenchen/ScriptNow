@@ -24,6 +24,7 @@ export function useWorkspace(projectId: number, initialStage: string) {
   const chars = ref<any[]>([])
   const allForeshadows = ref<any[]>([])
   const sceneList = ref<{name:string,count:number}[]>([])
+  const propList = ref<any[]>([])
 
   onMounted(async () => {
     try { const { data } = await listEpisodes(projectId); episodes.value = data } catch {}
@@ -138,6 +139,7 @@ export function useWorkspace(projectId: number, initialStage: string) {
       chars.value = data.characters || []
       allForeshadows.value = data.foreshadows || []
       sceneList.value = data.scenes || []
+      propList.value = data.props || []
     } catch {}
   }
   async function addCharacter(name:string, role:string) { await axios.post(`/api/memory/${projectId}/characters`,{name,role}); await loadAssets() }
