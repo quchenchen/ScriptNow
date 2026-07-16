@@ -36,6 +36,7 @@
             @switch-stage="onNodeSwitchStage"
             @open-pitch="onNodeSwitchStage('ideation')"
             @open-source="onNodeSwitchStage('ideation')"
+            @toggle-view="view = view==='workflow' ? 'storyboard' : 'workflow'"
           />
         </Pane>
         <Pane v-if="chatOpen" :size="25" min-size="15" max-size="50">
