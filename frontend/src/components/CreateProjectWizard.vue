@@ -139,11 +139,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import FileUploader from './FileUploader.vue'
 import { createProject, uploadSource } from '../api'
 import { genreOptions, styleOptions } from '../constants/creative'
 
+const props = defineProps<{ prefill?: any }>()
 const emit = defineEmits<{ (e: 'done', p: any): void; (e: 'cancel'): void }>()
 
 const step = ref(1)
@@ -164,6 +165,18 @@ const form = reactive({
 
 const selectedGenres = ref<string[]>([])
 const uploadFiles = ref<File[]>([])
+
+// Apply prefill from template cards
+onMounted(() => {
+  if (props.prefill) {
+    if (props.prefill.genre?.length) selectedGenres.value = props.prefill.genre
+    if (props.prefill.style) form.style_preference = props.prefill.style
+    if (props.prefill.seed_content) form.seed_content = props.prefill.seed_content
+    if (props.prefill.title_hint) form.title = props.prefill.title_hint
+    // Skip to step 2 if we have useful prefill
+    if (props.prefill.seed_content) step.value = 2
+  }
+})
 
 const modes = [
   { key: 'original_pitch',    icon: '💡', title: '原创 · 一句话灵感',
