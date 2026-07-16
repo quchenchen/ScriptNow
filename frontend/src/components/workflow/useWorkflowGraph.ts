@@ -105,31 +105,33 @@ export function buildNodes(input: GraphInput): Node[] {
 }
 
 /** Straight edges: pitch → source → ideation → structure → writing → review → ... */
-export function buildEdges(nodes: Node[]): Edge[] {
+export function buildEdges(nodes: Node[], currentStage?: string): Edge[] {
   const edges: Edge[] = []
   const ids = nodes.map(n => n.id)
 
-  if (ids.includes('source')) edges.push(mkEdge('pitch', 'source'))
+  if (ids.includes('source')) edges.push(mkEdge('pitch', 'source', currentStage === 'ideation'))
   const preIdeation = ids.includes('source') ? 'source' : 'pitch'
-  if (ids.includes('stage-ideation')) edges.push(mkEdge(preIdeation, 'stage-ideation'))
+  if (ids.includes('stage-ideation')) edges.push(mkEdge(preIdeation, 'stage-ideation', currentStage === 'ideation'))
 
   const chain = ['stage-ideation', 'stage-structure', 'stage-writing',
                  'stage-review', 'stage-polish', 'stage-assets', 'stage-prompts']
+  const currentNodeId = currentStage ? `stage-${currentStage}` : ''
   for (let i = 0; i < chain.length - 1; i++) {
     if (ids.includes(chain[i]) && ids.includes(chain[i + 1])) {
-      edges.push(mkEdge(chain[i], chain[i + 1]))
+      const isActiveEdge = chain[i] === currentNodeId
+      edges.push(mkEdge(chain[i], chain[i + 1], isActiveEdge))
     }
   }
   return edges
 }
 
-function mkEdge(from: string, to: string): Edge {
+function mkEdge(from: string, to: string, animated = false): Edge {
   return {
     id: `${from}->${to}`,
     source: from,
     target: to,
-    animated: false,
-    style: { stroke: '#4b5563', strokeWidth: 1.5 },
+    animated,
+    style: { stroke: animated ? '#58a6ff' : '#4b5563', strokeWidth: animated ? 2 : 1.5 },
   }
 }
 
@@ -160,6 +162,6 @@ export function useWorkflowGraph(input: Ref<GraphInput> | ComputedRef<GraphInput
     const edges = buildEdges(raw)
     return layoutNodes(raw, edges)
   })
-  const edges = computed(() => buildEdges(buildNodes(input.value)))
+  const edges = computed(() => buildEdges(buildNodes(input.value), input.value.currentStage))
   return { nodes, edges }
 }

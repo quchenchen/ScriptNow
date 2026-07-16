@@ -49,7 +49,7 @@
                 @quick-reply="handleQuickReply"
               />
             </div>
-            <div class="rp-foot"><textarea v-model="chatInput" placeholder="输入指令…" @keydown.enter.exact.prevent="sendChat" :disabled="streaming" rows="2"></textarea><button class="btn-p btn-sm" @click="sendChat" :disabled="streaming">{{ streaming?'…':'发' }}</button></div>
+            <ChatInput v-model="chatInput" :disabled="streaming" placeholder="输入指令…" @send="sendChat" />
           </aside>
         </Pane>
       </Splitpanes>
@@ -146,7 +146,7 @@
                 @quick-reply="handleQuickReply"
               />
             </div>
-            <div class="rp-foot"><textarea v-model="chatInput" placeholder="输入指令…" @keydown.enter.exact.prevent="sendChat" :disabled="streaming" rows="2"></textarea><button class="btn-p btn-sm" @click="sendChat" :disabled="streaming">{{ streaming?'…':'发' }}</button></div>
+            <ChatInput v-model="chatInput" :disabled="streaming" placeholder="输入指令…" @send="sendChat" />
           </aside>
         </Pane>
       </Splitpanes>
@@ -163,6 +163,7 @@ import ModelSelect from '../components/ModelSelect.vue'
 import SourcePanel from '../components/SourcePanel.vue'
 import WorkflowCanvas from '../components/WorkflowCanvas.vue'
 import ChatMessage from '../components/ChatMessage.vue'
+import ChatInput from '../components/ChatInput.vue'
 import { useWorkspace, stageLabelMap, stageBadgeMap } from '../composables/useWorkspace'
 import { listSources } from '../api'
 
@@ -204,7 +205,7 @@ function onNodeSwitchStage(target: string) {
 function onPaneResized(_: any) { /* placeholder for persisting sizes later */ }
 
 const stageDesc = computed(()=>{const s=pipelineStages.value.find((x:any)=>x.key===stage.value);return s?.desc||''})
-const stageClass = (s:string)=>{const idx=pipelineStages.value.findIndex((x:any)=>x.key===s),cur=pipelineStages.value.findIndex((x:any)=>x.key===stage.value);if(idx<cur)return'ss done';if(idx===cur)return'ss active';return'ss'}
+const stageClass = (s:string)=>{const idx=pipelineStages.value.findIndex((x:any)=>x.key===s),cur=pipelineStages.value.findIndex((x:any)=>x.key===stage.value);if(idx<cur)return'ss done';if(idx===cur)return'ss active';if(idx>cur+1)return'ss locked';return'ss'}
 const stageActions = computed(()=>{
   const idx=pipelineStages.value.findIndex((x:any)=>x.key===stage.value),n=pipelineStages.value[idx+1],p=pipelineStages.value[idx-1]
   const a:any[]=[]
@@ -247,6 +248,7 @@ function handleAddFores(){if(newForesTitle.value.trim()){addForeshadow(newForesT
 /* ── Storyboard view ── */
 .stage-bar{display:flex;gap:0;padding:4px 12px;background:var(--bg-panel);border-bottom:1px solid var(--border-subtle);flex-shrink:0;overflow-x:auto}.stage-bar::-webkit-scrollbar{display:none}
 .ss{display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:6px;cursor:pointer;white-space:nowrap;color:var(--t4);border:1px solid transparent;transition:all .15s;font-size:12px;user-select:none}.ss:hover{background:var(--bg-hover);color:var(--t3)}.ss.active{color:var(--t1);background:var(--bg-active);border-color:var(--border)}.ss.done{color:var(--t2)}.ss .dot{width:5px;height:5px;border-radius:50%}.ss.done .dot{background:var(--green)}.ss.active .dot{background:var(--accent);box-shadow:0 0 6px var(--accent)}
+.ss.locked{opacity:.35;cursor:not-allowed}.ss.locked .dot{background:var(--t5)}.ss.locked::after{content:'🔒';font-size:8px;margin-left:2px}
 .main-row{flex:1;overflow:hidden}
 /* ── Panels ── */
 .fill{width:100%;height:100%}
