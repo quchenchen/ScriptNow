@@ -42,6 +42,7 @@ from agentscope.tool import FunctionTool, Toolkit, ToolResponse
 
 from app.core.context_engine import build_context
 from app.db import DB_PATH
+from app.agents.prompts import build_structured_prompt
 
 # ═══════════════════════════════════════════
 # Tool implementations

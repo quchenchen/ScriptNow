@@ -43,10 +43,11 @@
           <aside class="right-panel fill">
             <div class="rp-head"><span><span class="live-dot"></span>Agent</span><div style="display:flex;gap:2px"><button class="tb-btn sm" @click="chatMessages=[]">🗑</button><button class="tb-btn sm" @click="chatOpen=false">✕</button></div></div>
             <div class="rp-body" style="padding:8px">
-              <div v-for="(msg,i) in chatMessages" :key="i" :class="msg.role==='user'?'msg-u':'msg-a'">
-                <div v-if="msg.role==='user'" class="bubble-u">{{ msg.text }}</div>
-                <div v-else><div class="msg-a-head">{{ msg.agent||'Agent' }}<span class="msg-a-time">{{ msg.time }}</span></div><div class="msg-a-body" v-html="msg.text"></div></div>
-              </div>
+              <ChatMessage
+                v-for="(msg,i) in chatMessages" :key="i"
+                :msg="msg"
+                @quick-reply="handleQuickReply"
+              />
             </div>
             <div class="rp-foot"><textarea v-model="chatInput" placeholder="输入指令…" @keydown.enter.exact.prevent="sendChat" :disabled="streaming" rows="2"></textarea><button class="btn-p btn-sm" @click="sendChat" :disabled="streaming">{{ streaming?'…':'发' }}</button></div>
           </aside>
@@ -139,10 +140,11 @@
           <aside class="right-panel fill">
             <div class="rp-head"><span><span class="live-dot"></span>Agent</span><div style="display:flex;gap:2px"><button class="tb-btn sm" @click="chatMessages=[]">🗑</button><button class="tb-btn sm" @click="chatOpen=false">✕</button></div></div>
             <div class="rp-body" style="padding:8px">
-              <div v-for="(msg,i) in chatMessages" :key="i" :class="msg.role==='user'?'msg-u':'msg-a'">
-                <div v-if="msg.role==='user'" class="bubble-u">{{ msg.text }}</div>
-                <div v-else><div class="msg-a-head">{{ msg.agent||'Agent' }}<span class="msg-a-time">{{ msg.time }}</span></div><div class="msg-a-body" v-html="msg.text"></div></div>
-              </div>
+              <ChatMessage
+                v-for="(msg,i) in chatMessages" :key="i"
+                :msg="msg"
+                @quick-reply="handleQuickReply"
+              />
             </div>
             <div class="rp-foot"><textarea v-model="chatInput" placeholder="输入指令…" @keydown.enter.exact.prevent="sendChat" :disabled="streaming" rows="2"></textarea><button class="btn-p btn-sm" @click="sendChat" :disabled="streaming">{{ streaming?'…':'发' }}</button></div>
           </aside>
@@ -160,6 +162,7 @@ import 'splitpanes/dist/splitpanes.css'
 import ModelSelect from '../components/ModelSelect.vue'
 import SourcePanel from '../components/SourcePanel.vue'
 import WorkflowCanvas from '../components/WorkflowCanvas.vue'
+import ChatMessage from '../components/ChatMessage.vue'
 import { useWorkspace, stageLabelMap, stageBadgeMap } from '../composables/useWorkspace'
 import { listSources } from '../api'
 
@@ -215,6 +218,7 @@ const structureCards = computed(()=>{
   for(const m of ms.slice(-3)){const t=m.text.replace(/<br>/g,'\n');const s=t.match(/#{1,3}\s*(核心梗概|梗概).*?\n+([\s\S]{20,500}?)(?=\n#{1,3}|\n---|$)/);if(s)c.push({icon:'📖',title:'核心梗概',content:s[2].trim().replace(/\n/g,'<br>')});const ch=t.match(/#{1,3}\s*(角色[设定]*|主要角色).*?\n+([\s\S]{20,2000}?)(?=\n#{1,3}|\n---|$)/);if(ch)c.push({icon:'👤',title:'角色设定',content:ch[2].trim().replace(/\n/g,'<br>')});if(c.length)break};return c
 })
 const sortedChars = computed(()=>{const o:Record<string,number>={protagonist:0,antagonist:1,supporting:2};return [...chars.value].sort((a,b)=>(o[a.role]??9)-(o[b.role]??9)||(a.first_appearance||0)-(b.first_appearance||0))})
+function handleQuickReply(value: string) { chatInput.value = value; sendChat() }
 function sendDirect(p:string){chatInput.value=p;sendChat()}
 function handleAddChar(){if(newCharName.value.trim()){addCharacter(newCharName.value.trim(),newCharRole.value);newCharName.value=''}}
 function handleAddFores(){if(newForesTitle.value.trim()){addForeshadow(newForesTitle.value.trim(),newForesCat.value);newForesTitle.value=''}}
