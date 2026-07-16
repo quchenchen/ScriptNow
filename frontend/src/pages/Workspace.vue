@@ -10,12 +10,46 @@
         <button class="tb-back" @click="$emit('back')">←</button>
         <span class="tb-title">{{ typeEmoji }}{{ project.title }}</span>
         <span class="tb-meta">v1 · {{ user.membership_tier==='expert'?'专家':'免费' }}</span>
+        <div class="view-tabs">
+          <button class="vt" :class="{on: view==='workflow'}" @click="view='workflow'">🔀 工作流</button>
+          <button class="vt" :class="{on: view==='storyboard'}" @click="view='storyboard'">🎬 故事板</button>
+        </div>
         <span class="tb-spacer"></span>
         <ModelSelect v-model="llmModel" />
         <span :class="'tb-badge '+(stageBadgeMap[stage]||'writing')">{{ stageLabelMap[stage]||stage }}</span>
         <button class="tb-btn" :class="{on:chatOpen}" @click="chatOpen=!chatOpen">💬</button>
         <button class="tb-btn" :class="{on:assetOpen}" @click="assetOpen=!assetOpen">📦</button>
       </header>
+
+      <!-- View: Workflow (vue-flow canvas) -->
+      <div v-if="view==='workflow'" class="flow-view">
+        <WorkflowCanvas
+          :project="project"
+          :sources="sources"
+          :plans="plans"
+          :structure-cards="structureCards"
+          :structure-confirmed="structureConfirmed"
+          :episodes="episodes"
+          :current-stage="stage"
+          :pipeline-stages="pipelineStages"
+          @switch-stage="onNodeSwitchStage"
+          @open-pitch="onNodeSwitchStage('ideation')"
+          @open-source="onNodeSwitchStage('ideation')"
+        />
+        <aside class="right-panel flow-chat" v-show="chatOpen">
+          <div class="rp-head"><span><span class="live-dot"></span>Agent</span><div style="display:flex;gap:2px"><button class="tb-btn sm" @click="chatMessages=[]">🗑</button><button class="tb-btn sm" @click="chatOpen=false">✕</button></div></div>
+          <div class="rp-body" ref="chatBodyRef" style="padding:8px">
+            <div v-for="(msg,i) in chatMessages" :key="i" :class="msg.role==='user'?'msg-u':'msg-a'">
+              <div v-if="msg.role==='user'" class="bubble-u">{{ msg.text }}</div>
+              <div v-else><div class="msg-a-head">{{ msg.agent||'Agent' }}<span class="msg-a-time">{{ msg.time }}</span></div><div class="msg-a-body" v-html="msg.text"></div></div>
+            </div>
+          </div>
+          <div class="rp-foot"><textarea v-model="chatInput" placeholder="输入指令…" @keydown.enter.exact.prevent="sendChat" :disabled="streaming" rows="2"></textarea><button class="btn-p btn-sm" @click="sendChat" :disabled="streaming">{{ streaming?'…':'发' }}</button></div>
+        </aside>
+      </div>
+
+      <!-- View: Storyboard (existing stage-driven UI) -->
+      <template v-else>
       <div class="stage-bar">
         <span v-for="s in pipelineStages" :key="s.key" :class="stageClass(s.key)" @click="switchStage(s.key)"><span class="dot"></span>{{ s.label }}</span>
       </div>
@@ -101,15 +135,18 @@
           <div class="rp-foot"><textarea v-model="chatInput" placeholder="输入指令…" @keydown.enter.exact.prevent="sendChat" :disabled="streaming" rows="2"></textarea><button class="btn-p btn-sm" @click="sendChat" :disabled="streaming">{{ streaming?'…':'发' }}</button></div>
         </aside>
       </div>
+      </template>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import ModelSelect from '../components/ModelSelect.vue'
 import SourcePanel from '../components/SourcePanel.vue'
+import WorkflowCanvas from '../components/WorkflowCanvas.vue'
 import { useWorkspace, stageLabelMap, stageBadgeMap } from '../composables/useWorkspace'
+import { listSources } from '../api'
 
 const props = defineProps<{ user:any; project:any }>()
 const emit = defineEmits(['back','logout'])
@@ -127,6 +164,20 @@ const { pipelineStages, stage, llmModel, chatMessages, chatInput, streaming, epi
 const chatOpen = ref(true), assetOpen = ref(false), assetTab = ref('chars')
 const newCharName = ref(''), newCharRole = ref('supporting'), editingChar = ref<any>(null)
 const newForesTitle = ref(''), newForesCat = ref('mystery')
+
+// View toggle: 'workflow' (vue-flow canvas) vs 'storyboard' (existing stage UI)
+const view = ref<'workflow' | 'storyboard'>('storyboard')
+const sources = ref<any[]>([])
+
+async function refreshSources() {
+  try { const { data } = await listSources(props.project.id); sources.value = data } catch { /* ignore */ }
+}
+onMounted(refreshSources)
+
+function onNodeSwitchStage(target: string) {
+  view.value = 'storyboard'
+  switchStage(target)
+}
 
 const stageDesc = computed(()=>{const s=pipelineStages.value.find((x:any)=>x.key===stage.value);return s?.desc||''})
 const stageClass = (s:string)=>{const idx=pipelineStages.value.findIndex((x:any)=>x.key===s),cur=pipelineStages.value.findIndex((x:any)=>x.key===stage.value);if(idx<cur)return'ss done';if(idx===cur)return'ss active';return'ss'}
@@ -161,6 +212,14 @@ function handleAddFores(){if(newForesTitle.value.trim()){addForeshadow(newForesT
 .tb-title{font-weight:590;color:var(--t1)}.tb-meta{font-size:10px;color:var(--t4)}.tb-spacer{flex:1}
 .tb-btn{background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:6px;padding:3px 8px;color:var(--t3);font-size:12px;cursor:pointer;transition:all .12s}.tb-btn:hover{background:rgba(255,255,255,.04);color:var(--t1)}.tb-btn.on{border-color:var(--accent);color:var(--accent)}.tb-btn.sm{padding:2px 5px;font-size:10px}
 .tb-badge{font-size:10px;font-weight:510;padding:2px 8px;border-radius:3px}.tb-badge.badge-p{background:rgba(113,112,255,.12);color:var(--accent)}.tb-badge.badge-blue{background:rgba(59,130,246,.12);color:#3b82f6}.tb-badge.writing,.tb-badge.badge-g{background:rgba(39,166,68,.12);color:var(--green)}
+/* ── View tabs (workflow / storyboard) ── */
+.view-tabs{display:flex;gap:2px;background:var(--bg-active);border-radius:6px;padding:2px;margin-left:8px}
+.vt{background:transparent;border:none;color:var(--t3);font-size:11px;padding:3px 10px;border-radius:4px;cursor:pointer;transition:all .12s;font-family:inherit;font-weight:510}
+.vt:hover{color:var(--t1)}
+.vt.on{background:var(--bg-surface);color:var(--t1);box-shadow:0 1px 2px rgba(0,0,0,.2)}
+/* ── Workflow view (vue-flow) ── */
+.flow-view{flex:1;position:relative;overflow:hidden;display:flex}
+.flow-view .flow-chat{position:absolute;right:0;top:0;bottom:0;height:100%;z-index:2}
 .stage-bar{display:flex;gap:0;padding:4px 12px;background:var(--bg-panel);border-bottom:1px solid var(--border-subtle);flex-shrink:0;overflow-x:auto}.stage-bar::-webkit-scrollbar{display:none}
 .ss{display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:6px;cursor:pointer;white-space:nowrap;color:var(--t4);border:1px solid transparent;transition:all .15s;font-size:12px;user-select:none}.ss:hover{background:var(--bg-hover);color:var(--t3)}.ss.active{color:var(--t1);background:var(--bg-active);border-color:var(--border)}.ss.done{color:var(--t2)}.ss .dot{width:5px;height:5px;border-radius:50%}.ss.done .dot{background:var(--green)}.ss.active .dot{background:var(--accent);box-shadow:0 0 6px var(--accent)}
 .main-row{flex:1;display:flex;overflow:hidden}
