@@ -1,17 +1,18 @@
 # ScriptFlow
 
-**让好剧本"长出来"的 AI Agent 团队协作平台。**
+**AI Agent 团队驱动的剧本与小说创作平台。**
 
-用户输入创意种子，Agent 团队接力灌溉，用户是总指挥兼审美裁判。产出的是一棵有血缘、有骨架、能进化的**剧本树**，不是一坨拼凑的文档。
+V7 作为全新产品开发：复用经过契约验证的旧技术资产，不继承旧产品领域模型。Script 与 Novel 使用独立的创作领域能力，共享平台基础设施。
 
 ## 状态
 
-🚧 **V5 重构中**。V1-V4 的历史文档在 [`docs/archive/`](./docs/archive/)。当前主线：
+🚧 **V7 P0 启动中**。当前唯一规格基线：
 
-- [`CONTEXT.md`](./CONTEXT.md) — 领域语言（**读代码前先读**）
-- [`docs/PRD-V5.md`](./docs/PRD-V5.md) — 产品需求
-- [`docs/adr/`](./docs/adr/) — 架构决策
-- [`.scratch/scriptflow-v5/`](./.scratch/scriptflow-v5/) — 当前 issue tracker
+- [`docs/v7-spec-v1.1/00-README.md`](./docs/v7-spec-v1.1/00-README.md) — 基线与已批准决策
+- [`docs/v7-spec-v1.1/01-PRD-V7.md`](./docs/v7-spec-v1.1/01-PRD-V7.md) — 产品与技术规格
+- [`docs/v7-spec-v1.1/02-LEGACY-DECONTAMINATION.md`](./docs/v7-spec-v1.1/02-LEGACY-DECONTAMINATION.md) — 复用、归档与删除规则
+- [`docs/v7-spec-v1.1/03-DEVELOPMENT-PLAN.md`](./docs/v7-spec-v1.1/03-DEVELOPMENT-PLAN.md) — 直到完整测试 Release Candidate 的开发计划
+- [`.scratch/scriptflow-v7/`](./.scratch/scriptflow-v7/) — V7 issue tracker
 
 ## 5 分钟启动（开发环境）
 
@@ -42,14 +43,14 @@ make dev    # 一条命令起前后端（前提：backend 已 pip install）
 ### 一定要读
 
 - [`AGENTS.md`](./AGENTS.md) — Agent 协作约定 + 代码约定
-- [`CONTEXT.md`](./CONTEXT.md) — 领域词汇表 + 核心隐喻
+- [`docs/v7-spec-v1.1/`](./docs/v7-spec-v1.1/) — V7 唯一开发基线
 
 ### 按需读
 
 - [`backend/README.md`](./backend/README.md) — 后端启动 & 目录
-- [`docs/PRD-V5.md`](./docs/PRD-V5.md) — 完整产品需求（55 条 user story）
-- [`docs/adr/`](./docs/adr/) — 架构决策
-- [`docs/archive/`](./docs/archive/) — V1-V4 历史文档（参考用，不再是主线）
+- [`scriptflow-v6/docs/v7-spec-v1.0/`](./scriptflow-v6/docs/v7-spec-v1.0/) — 冻结原型与上一规格版本
+- [`CONTEXT.md`](./CONTEXT.md)、[`docs/PRD-V5.md`](./docs/PRD-V5.md)、[`docs/adr/`](./docs/adr/) — V5 历史材料，不是 V7 依据
+- [`docs/archive/`](./docs/archive/) — 更早历史文档
 
 ## 技术栈
 

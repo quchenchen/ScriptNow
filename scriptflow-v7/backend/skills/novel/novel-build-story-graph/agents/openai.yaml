@@ -1,0 +1,4 @@
+interface:
+  display_name: "小说叙事图谱"
+  short_description: "从长篇素材抽取可追溯的人物、事件、关系、伏笔与因果网络"
+  default_prompt: "Use $novel-build-story-graph to build an evidence-grounded narrative graph from this manuscript."

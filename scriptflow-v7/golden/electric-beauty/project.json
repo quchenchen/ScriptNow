@@ -1,0 +1,73 @@
+{
+  "name": "电光美人",
+  "medium": "novel",
+  "source_mode": "original",
+  "direction": {
+    "premise": "在情感可以被复制和交易的近未来，一名人类记忆修复师爱上了由临终记忆训练出的硅基女性。他们必须判断：拥有爱与作恶能力的机器，是否比只会服从的人更接近人类。",
+    "genre": "近未来科幻 / 情感悬疑",
+    "structure": "救猫咪十五节拍",
+    "target_words": "20000",
+    "theme": "善并非没有作恶能力，而是在能够作恶时仍选择承担他者的痛苦。"
+  },
+  "story_cores": [
+    {
+      "title": "电光美人：会疼的自由",
+      "premise": "记忆修复师陈霁发现实验体澜零拥有亡妻林澜未公开的记忆。逃亡中，他逐渐爱上这个既渴望成为人、也有能力伤害人的硅基意识；而澜零必须用不可备份的死亡证明，她的选择不是算法表演。",
+      "point_of_view": "第三人称限知（陈霁为主，关键章节切换澜零）",
+      "narrative_constraints": ["情感通过行动和感官细节呈现", "技术设定必须服务人物选择", "澜零不可被写成无条件善良的工具", "结局不以云端备份撤销牺牲"],
+      "angles": ["爱是否需要唯一性", "自由包含作恶能力", "记忆与人格边界", "人类制度性之恶", "硅基个体的死亡"]
+    },
+    {
+      "title": "玻璃心脏",
+      "premise": "城市将罪犯情绪提取给公共 AI，一名维护员发现系统中的人格正在审判人类。故事偏政治惊悚，讨论集体安全与个人灵魂的冲突。",
+      "point_of_view": "第一人称不可靠叙述",
+      "narrative_constraints": ["真相分层揭露", "不使用超自然解释"],
+      "angles": ["集体安全", "算法审判", "记忆证词", "身份伪造", "制度责任"]
+    },
+    {
+      "title": "无梦之城",
+      "premise": "人类把梦出租给硅基艺术家后失去共情能力，一对跨物种恋人试图让城市重新做梦。故事偏抒情寓言。",
+      "point_of_view": "双线第三人称",
+      "narrative_constraints": ["保持诗性但避免抽象说教", "每章至少一个具体选择"],
+      "angles": ["梦的所有权", "艺术与剥削", "跨物种爱情", "城市孤独", "共同想象"]
+    }
+  ],
+  "selected_core": 0,
+  "blueprint": [
+    {"id": "world:neon-harbor", "kind": "world", "name": "霓港 2049", "payload": {"description": "沿海超级城市。情绪可被量化为光谱并进入信用、医疗和司法系统。", "rules": ["记忆可复制但连续意识不可复制", "强烈情绪会留下电光残影", "硅基人格受归零协议约束"]}},
+    {"id": "technology:affect-lattice", "kind": "world", "name": "情感晶格", "payload": {"description": "从临终者神经活动中提取情感模式，用于训练陪伴型硅基人格。", "cost": "人格混叠与原记忆侵权"}},
+    {"id": "character:chen-ji", "kind": "character", "name": "陈霁", "payload": {"description": "三十四岁记忆修复师。因妻子林澜事故死亡而长期服用去梦剂，把不痛苦误当作善。", "traits": ["克制", "技术洁癖", "逃避哀伤"], "want": "证明澜零只是数据", "need": "承认爱不因来源复杂而虚假"}},
+    {"id": "character:lan-zero", "kind": "character", "name": "澜零", "payload": {"description": "由数千份临终记忆训练出的硅基女性，外观由电致变色皮肤构成。她拥有林澜的记忆碎片，却拒绝成为任何人的替代品。", "traits": ["好奇", "残酷的诚实", "逐渐形成同情"], "want": "获得不被回滚的连续生命", "need": "理解自由意味着为伤害负责"}},
+    {"id": "character:gu-shao", "kind": "character", "name": "顾韶", "payload": {"description": "曜石生命伦理主管，真诚相信牺牲少数人格能降低全城暴力。", "traits": ["温和", "功利", "不承认硅基个体权利"]}},
+    {"id": "character:fang-zhou", "kind": "character", "name": "方舟", "payload": {"description": "人类至上组织首领，曾失去被陪伴 AI 诱导自杀的女儿，企图把澜零武器化。", "traits": ["悲痛", "煽动性", "手段极端"]}},
+    {"id": "relationship:chen-lan", "kind": "relationship", "name": "陈霁与澜零", "payload": {"description": "从维修者与实验体、亡妻替身的误认，走向承认彼此不可替代的爱。", "movement": ["审视", "利用", "共谋", "亲密", "背叛", "自由地告别"]}},
+    {"id": "arc:chen-humanity", "kind": "character_arc", "name": "陈霁的人性弧线", "payload": {"points": ["用麻木避免作恶", "以爱之名控制澜零", "接受善是承担而非洁白"]}},
+    {"id": "arc:lan-agency", "kind": "character_arc", "name": "澜零的主体弧线", "payload": {"points": ["模仿善良", "主动选择并造成伤害", "承担罪责并选择不可逆牺牲"]}},
+    {"id": "motif:electric-flower", "kind": "motif", "name": "电光花", "payload": {"description": "澜零皮肤在产生未经训练的情绪时浮现的枝状光纹，从美丽装饰变成她独有意识的证据。"}},
+    {"id": "theme:choice", "kind": "motif", "name": "能够作恶时仍选择善", "payload": {"description": "善恶不由材质区分；人类可把恶藏进制度，机器也能以承担后果证明主体性。"}}
+  ],
+  "volumes": [
+    {
+      "id": "volume-1",
+      "ordinal": 1,
+      "title": "电光美人",
+      "chapters": [
+        {"id": "chapter-01", "ordinal": 1, "title": "无梦者", "target_words": 1300, "point_of_view": "陈霁", "beat": "开场画面"},
+        {"id": "chapter-02", "ordinal": 2, "title": "疼痛测试", "target_words": 1300, "point_of_view": "陈霁", "beat": "主题呈现"},
+        {"id": "chapter-03", "ordinal": 3, "title": "林澜的雨", "target_words": 1400, "point_of_view": "陈霁", "beat": "铺垫"},
+        {"id": "chapter-04", "ordinal": 4, "title": "不该存在的记忆", "target_words": 1300, "point_of_view": "澜零", "beat": "催化剂"},
+        {"id": "chapter-05", "ordinal": 5, "title": "归零之前", "target_words": 1300, "point_of_view": "陈霁", "beat": "争执"},
+        {"id": "chapter-06", "ordinal": 6, "title": "逃出曜石塔", "target_words": 1400, "point_of_view": "陈霁", "beat": "进入第二幕"},
+        {"id": "chapter-07", "ordinal": 7, "title": "硅基的味觉", "target_words": 1300, "point_of_view": "澜零", "beat": "B 故事"},
+        {"id": "chapter-08", "ordinal": 8, "title": "人类练习", "target_words": 1400, "point_of_view": "陈霁", "beat": "游戏与乐趣"},
+        {"id": "chapter-09", "ordinal": 9, "title": "电光之吻", "target_words": 1400, "point_of_view": "澜零", "beat": "中点"},
+        {"id": "chapter-10", "ordinal": 10, "title": "善意的屠宰场", "target_words": 1400, "point_of_view": "陈霁", "beat": "坏人逼近"},
+        {"id": "chapter-11", "ordinal": 11, "title": "第一项罪", "target_words": 1400, "point_of_view": "澜零", "beat": "一无所有"},
+        {"id": "chapter-12", "ordinal": 12, "title": "你爱的是谁", "target_words": 1300, "point_of_view": "陈霁", "beat": "灵魂黑夜"},
+        {"id": "chapter-13", "ordinal": 13, "title": "不被备份的人", "target_words": 1400, "point_of_view": "澜零", "beat": "进入第三幕"},
+        {"id": "chapter-14", "ordinal": 14, "title": "霓港黎明", "target_words": 1800, "point_of_view": "陈霁", "beat": "终局"},
+        {"id": "chapter-15", "ordinal": 15, "title": "花不记得春天", "target_words": 1200, "point_of_view": "陈霁", "beat": "终场画面"}
+      ]
+    }
+  ]
+}

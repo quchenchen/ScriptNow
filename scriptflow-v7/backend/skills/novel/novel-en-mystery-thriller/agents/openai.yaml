@@ -1,0 +1,4 @@
+interface:
+  display_name: "novel-en-mystery-thriller"
+  short_description: "Platform and genre strategy for serial fiction"
+  default_prompt: "Use $novel-en-mystery-thriller to shape this novel for its target readers."

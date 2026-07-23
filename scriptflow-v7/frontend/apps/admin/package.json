@@ -1,0 +1,21 @@
+{
+  "name": "@scriptflow/admin",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc -p tsconfig.json && vite build"
+  },
+  "dependencies": {
+    "@phosphor-icons/vue": "^2.2.1",
+    "@scriptflow/shared": "*",
+    "vue": "^3.5.39"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.7",
+    "typescript": "~6.0.2",
+    "vite": "^8.1.1",
+    "vue-tsc": "^3.3.5"
+  }
+}

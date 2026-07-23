@@ -1,0 +1,4 @@
+interface:
+  display_name: "novel-cn-fantasy-progression"
+  short_description: "Platform and genre strategy for serial fiction"
+  default_prompt: "Use $novel-cn-fantasy-progression to shape this novel for its target readers."

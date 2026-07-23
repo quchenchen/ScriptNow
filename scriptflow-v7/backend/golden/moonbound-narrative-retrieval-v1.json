@@ -1,0 +1,32 @@
+[
+  {
+    "id": "opening-rejection",
+    "query": "Moon Ball rejected bond departure",
+    "expected_chapters": ["Chapter 1 — The Moon Ball"]
+  },
+  {
+    "id": "coins-and-debt",
+    "query": "forty-three coins debt payment",
+    "expected_chapters": ["Chapter 2 — Forty-Three Coins"]
+  },
+  {
+    "id": "binding-book",
+    "query": "book binding words Silver Vael records",
+    "expected_chapters": ["Chapter 8 — The Book", "Chapter 13 — Speak the Binding"]
+  },
+  {
+    "id": "cassius-pressure",
+    "query": "Cassius visits threat political pressure",
+    "expected_chapters": ["Chapter 11 — Cassius Visits"]
+  },
+  {
+    "id": "trap",
+    "query": "trap betrayal danger evidence",
+    "expected_chapters": ["Chapter 12 — The Trap"]
+  },
+  {
+    "id": "aftermath",
+    "query": "aftermath judgment consequences Cassius",
+    "expected_chapters": ["Chapter 15 — After"]
+  }
+]

@@ -1,0 +1,4 @@
+interface:
+  display_name: "novel-en-commercial-romance"
+  short_description: "Platform and genre strategy for serial fiction"
+  default_prompt: "Use $novel-en-commercial-romance to shape this novel for its target readers."

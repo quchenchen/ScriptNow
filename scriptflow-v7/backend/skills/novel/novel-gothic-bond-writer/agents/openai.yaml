@@ -1,0 +1,4 @@
+interface:
+  display_name: "哥特契约关系写作"
+  short_description: "以身体代价、权力冲突和克制亲密关系创作暗黑奇幻小说"
+  default_prompt: "Use $novel-gothic-bond-writer to draft a gothic fantasy chapter with distinct voice, earned intimacy, and costly choices."

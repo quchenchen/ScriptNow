@@ -1,0 +1,305 @@
+{
+  "run_at": "2026-07-21T02:46:03.429235+00:00",
+  "project_id": "57e68eae-2e34-46fd-8ffe-9311c2635a51",
+  "project_url": "http://127.0.0.1:5174/projects/57e68eae-2e34-46fd-8ffe-9311c2635a51",
+  "phase": "writing",
+  "story_core_candidates": 3,
+  "blueprint_anchors": 11,
+  "volumes": 1,
+  "chapters": 15,
+  "adopted_documents": 15,
+  "source_characters": 17907,
+  "chapter_results": [
+    {
+      "chapter_id": "chapter-01",
+      "title": "无梦者",
+      "target_words": 1300,
+      "measured_characters": 1164,
+      "revision_id": "c1221fb9-533a-41bf-9c7a-c9166b459a3f"
+    },
+    {
+      "chapter_id": "chapter-02",
+      "title": "疼痛测试",
+      "target_words": 1300,
+      "measured_characters": 1052,
+      "revision_id": "604ba9b5-0568-4ef0-8c38-04d2f0eff0dd"
+    },
+    {
+      "chapter_id": "chapter-03",
+      "title": "林澜的雨",
+      "target_words": 1400,
+      "measured_characters": 1281,
+      "revision_id": "ac0ec984-8a8a-45f8-b4c2-14fccfa3205c"
+    },
+    {
+      "chapter_id": "chapter-04",
+      "title": "不该存在的记忆",
+      "target_words": 1300,
+      "measured_characters": 1241,
+      "revision_id": "a653333b-e705-4666-8d88-ebfe59322327"
+    },
+    {
+      "chapter_id": "chapter-05",
+      "title": "归零之前",
+      "target_words": 1300,
+      "measured_characters": 1267,
+      "revision_id": "89568275-cbf6-4bf3-8fa2-f041050990af"
+    },
+    {
+      "chapter_id": "chapter-06",
+      "title": "逃出曜石塔",
+      "target_words": 1400,
+      "measured_characters": 1276,
+      "revision_id": "41590d72-a190-47d7-8986-b7db8020c051"
+    },
+    {
+      "chapter_id": "chapter-07",
+      "title": "硅基的味觉",
+      "target_words": 1300,
+      "measured_characters": 981,
+      "revision_id": "7897aaf1-da88-44f1-bc7c-67d244043926"
+    },
+    {
+      "chapter_id": "chapter-08",
+      "title": "人类练习",
+      "target_words": 1400,
+      "measured_characters": 1176,
+      "revision_id": "71e41101-6854-4faf-a484-4fe42ce2da6a"
+    },
+    {
+      "chapter_id": "chapter-09",
+      "title": "电光之吻",
+      "target_words": 1400,
+      "measured_characters": 1081,
+      "revision_id": "ef9ed0a6-7dab-4195-adf9-fd87e8f3ce1b"
+    },
+    {
+      "chapter_id": "chapter-10",
+      "title": "善意的屠宰场",
+      "target_words": 1400,
+      "measured_characters": 1283,
+      "revision_id": "3b74e100-84f1-46fe-a470-04321ccd7eba"
+    },
+    {
+      "chapter_id": "chapter-11",
+      "title": "第一项罪",
+      "target_words": 1400,
+      "measured_characters": 1227,
+      "revision_id": "0966a8e2-2a34-407d-81ee-f5b61307b84e"
+    },
+    {
+      "chapter_id": "chapter-12",
+      "title": "你爱的是谁",
+      "target_words": 1300,
+      "measured_characters": 1169,
+      "revision_id": "d0e10519-7de0-4aff-bca0-e52601d2f4ca"
+    },
+    {
+      "chapter_id": "chapter-13",
+      "title": "不被备份的人",
+      "target_words": 1400,
+      "measured_characters": 1101,
+      "revision_id": "7a3ad3f3-d407-4fca-ba93-13ebe70af0a4"
+    },
+    {
+      "chapter_id": "chapter-14",
+      "title": "霓港黎明",
+      "target_words": 1800,
+      "measured_characters": 1546,
+      "revision_id": "f442694e-5159-4d93-9b24-743e823ee5e5"
+    },
+    {
+      "chapter_id": "chapter-15",
+      "title": "花不记得春天",
+      "target_words": 1200,
+      "measured_characters": 1062,
+      "revision_id": "eaecbd98-614b-4ff4-9d50-f4f203ba1b67"
+    }
+  ],
+  "review_findings": 15,
+  "review_finding_ids": [
+    "9d38ba32-294b-4970-8573-25bbc7f6425a",
+    "e52a6377-a615-4c73-a616-ddec606ac1cd",
+    "ee2dc5d8-55c4-4ff3-9c19-f57bb9856154",
+    "71e660c0-264a-4807-a0bc-e75e2b0a19ba",
+    "32b9e0dd-7d4e-4723-ae5c-f2aceed6a277",
+    "45183883-7c49-457b-a03a-c6aba20199ac",
+    "c504a5ac-2a58-45fa-b6bc-81315dd2fc86",
+    "57de64e5-1544-45d4-8e02-90f159026cfa",
+    "f17268f6-895a-4d3c-a2cc-b897c6ffa718",
+    "feb3a9d9-4adb-4cf0-8c50-d0e9d1bbd356",
+    "5c0fe1bb-9ed7-4f8d-8113-f38f348ced42",
+    "11a785ec-0cbc-47da-85b1-ccb80877dbb2",
+    "438cdfcc-9d7a-40fe-af9b-63b8b334e640",
+    "6d73b54a-b01b-44cf-969f-805a584e13c8",
+    "e645f7d4-2e5b-4214-aa64-af914d5515d0"
+  ],
+  "selection_edit": {
+    "id": "63de2c1f-9e7c-484c-a4c3-10b7deed671a",
+    "diff": {
+      "before": "霓港的雨从不垂直落下。高楼之间的热风把雨丝吹成倾斜的银线，它们撞在曜石生命大厦的玻璃幕墙上，被广告投影染成一阵阵粉蓝。陈霁站在四十七层的修复室里，隔着双层玻璃看雨，想不起自己上一次做梦是什么时候。",
+      "after": "霓港的雨从不垂直落下。高楼之间的，余意像窗上的雨痕一样缓慢洇开。热风把雨丝吹成倾斜的银线，它们撞在曜石生命大厦的玻璃幕墙上，被广告投影染成一阵阵粉蓝。陈霁站在四十七层的修复室里，隔着双层玻璃看雨，想不起自己上一次做梦是什么时候。"
+    }
+  },
+  "restored_revision_id": "1b19bef3-3c89-4b3c-b4e6-06d09631fe38",
+  "snapshot": {
+    "id": "fe89da58-11ee-47de-b5da-17a039d8024d",
+    "version": 1,
+    "name": "十五章正文与首轮审读完成",
+    "scope": [
+      "chapter-01",
+      "chapter-02",
+      "chapter-03",
+      "chapter-04",
+      "chapter-05",
+      "chapter-06",
+      "chapter-07",
+      "chapter-08",
+      "chapter-09",
+      "chapter-10",
+      "chapter-11",
+      "chapter-12",
+      "chapter-13",
+      "chapter-14",
+      "chapter-15"
+    ],
+    "word_count": 17965,
+    "content_hash": "e6ea5164dbcb75e419f4d9e4c662e1a3a535fd3445cae31866029f41542c8dbd",
+    "base_snapshot_id": null,
+    "created_at": "2026-07-21T02:46:02.483149+00:00"
+  },
+  "export_options": {
+    "project_id": "57e68eae-2e34-46fd-8ffe-9311c2635a51",
+    "volumes": [
+      {
+        "id": "volume-1",
+        "title": "电光美人",
+        "selection": "all",
+        "chapters": [
+          {
+            "id": "chapter-01",
+            "title": "无梦者",
+            "status": "done",
+            "selectable": true
+          },
+          {
+            "id": "chapter-02",
+            "title": "疼痛测试",
+            "status": "done",
+            "selectable": true
+          },
+          {
+            "id": "chapter-03",
+            "title": "林澜的雨",
+            "status": "done",
+            "selectable": true
+          },
+          {
+            "id": "chapter-04",
+            "title": "不该存在的记忆",
+            "status": "done",
+            "selectable": true
+          },
+          {
+            "id": "chapter-05",
+            "title": "归零之前",
+            "status": "done",
+            "selectable": true
+          },
+          {
+            "id": "chapter-06",
+            "title": "逃出曜石塔",
+            "status": "done",
+            "selectable": true
+          },
+          {
+            "id": "chapter-07",
+            "title": "硅基的味觉",
+            "status": "done",
+            "selectable": true
+          },
+          {
+            "id": "chapter-08",
+            "title": "人类练习",
+            "status": "done",
+            "selectable": true
+          },
+          {
+            "id": "chapter-09",
+            "title": "电光之吻",
+            "status": "done",
+            "selectable": true
+          },
+          {
+            "id": "chapter-10",
+            "title": "善意的屠宰场",
+            "status": "done",
+            "selectable": true
+          },
+          {
+            "id": "chapter-11",
+            "title": "第一项罪",
+            "status": "done",
+            "selectable": true
+          },
+          {
+            "id": "chapter-12",
+            "title": "你爱的是谁",
+            "status": "done",
+            "selectable": true
+          },
+          {
+            "id": "chapter-13",
+            "title": "不被备份的人",
+            "status": "done",
+            "selectable": true
+          },
+          {
+            "id": "chapter-14",
+            "title": "霓港黎明",
+            "status": "done",
+            "selectable": true
+          },
+          {
+            "id": "chapter-15",
+            "title": "花不记得春天",
+            "status": "done",
+            "selectable": true
+          }
+        ]
+      }
+    ]
+  },
+  "export": {
+    "id": "cc3c8ae0-386f-4517-ad24-5aa9f1618f7b",
+    "status": "succeeded",
+    "scope": [
+      "chapter-01",
+      "chapter-02",
+      "chapter-03",
+      "chapter-04",
+      "chapter-05",
+      "chapter-06",
+      "chapter-07",
+      "chapter-08",
+      "chapter-09",
+      "chapter-10",
+      "chapter-11",
+      "chapter-12",
+      "chapter-13",
+      "chapter-14",
+      "chapter-15"
+    ],
+    "form": "clean",
+    "sha256": "546f39000314013a1710adee30a3acdd29c95a16bae251c83546db9a538b7bcb",
+    "byte_size": 64280,
+    "attempts": 1,
+    "error": null,
+    "path": "/Users/quchenchen/Documents/agent-script-platform/scriptflow-v7/golden/electric-beauty/electric-beauty.docx",
+    "download_sha256": "546f39000314013a1710adee30a3acdd29c95a16bae251c83546db9a538b7bcb"
+  },
+  "timings_seconds": {
+    "create_project": 0.022,
+    "export_docx": 0.803
+  }
+}

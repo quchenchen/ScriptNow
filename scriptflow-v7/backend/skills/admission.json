@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "baseline": "novel-skill-baseline-v1",
+  "domains": {
+    "novel": {
+      "novel-cn-fantasy-progression": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["cn-fantasy-positive", "wrong-language-negative", "cn-fantasy-regression"]},
+      "novel-cn-romance-relations": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["cn-romance-positive", "wrong-language-negative", "cn-romance-regression"]},
+      "novel-cn-suspense-survival": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["cn-suspense-positive", "wrong-language-negative", "cn-suspense-regression"]},
+      "novel-cn-urban-power": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["fanqie-urban-positive", "wrong-language-negative", "fanqie-urban-regression"]},
+      "novel-en-commercial-romance": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["en-romance-positive", "wrong-language-negative", "en-romance-regression"]},
+      "novel-en-mystery-thriller": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["en-thriller-positive", "wrong-language-negative", "en-thriller-regression"]},
+      "novel-en-paranormal-romance": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["moonbound-positive", "wrong-language-negative", "moonbound-regression"]},
+      "novel-en-speculative-serial": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["en-speculative-positive", "wrong-language-negative", "en-speculative-regression"]},
+      "novel-gothic-bond-reviewer": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["gothic-review-positive", "wrong-role-negative", "gothic-review-regression"]},
+      "novel-gothic-bond-writer": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["gothic-write-positive", "wrong-role-negative", "gothic-write-regression"]},
+      "novel-platform-fanqie": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["fanqie-positive", "global-platform-negative", "fanqie-regression"]},
+      "novel-platform-global-serial": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["global-serial-positive", "fanqie-platform-negative", "global-serial-regression"]},
+      "novel-review": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["novel-review-explicit", "wrong-domain-negative", "novel-review-regression"]},
+      "novel-serial-quality-review": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["serial-quality-positive", "wrong-stage-negative", "serial-quality-regression"]},
+      "novel-source-distiller": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["source-analysis-explicit", "implicit-mount-negative", "source-distillation-regression"]},
+      "novel-build-story-graph": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["graph-extraction-explicit", "unknown-ordinal-negative", "graph-extraction-regression"]},
+      "novel-speculative-intimacy-reviewer": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["speculative-review-positive", "wrong-role-negative", "speculative-review-regression"]},
+      "novel-speculative-intimacy-writer": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["speculative-write-positive", "wrong-role-negative", "speculative-write-regression"]},
+      "novel-structure-planning": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["novel-structure-positive", "wrong-stage-negative", "novel-structure-regression"]}
+    }
+  }
+}

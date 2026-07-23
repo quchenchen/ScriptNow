@@ -1,14 +1,26 @@
-# AGENTS.md — ScriptFlow 项目 Agent 协作约定
+# AGENTS.md — ScriptFlow V7 Agent 协作约定
 
 _任何 AI Agent（Kiro / Claude Code / Cursor / QwenPaw agent）在这个仓库里干活前，先读这份。_
 
-## 项目一句话
+## 当前唯一开发基线
+
+**ScriptFlow V7 是全新产品开发。** 开始任务前必须先读：
+
+1. [`docs/v7-spec-v1.1/00-README.md`](./docs/v7-spec-v1.1/00-README.md)
+2. [`docs/v7-spec-v1.1/01-PRD-V7.md`](./docs/v7-spec-v1.1/01-PRD-V7.md)
+3. [`docs/v7-spec-v1.1/02-LEGACY-DECONTAMINATION.md`](./docs/v7-spec-v1.1/02-LEGACY-DECONTAMINATION.md)
+
+根目录旧 `CONTEXT.md`、`docs/PRD-V5.md`、旧 ADR、V5/V6 产品文档与代码仅作历史研究或待评估资产，**不得作为 V7 需求依据，不得被 V7 新代码直接导入**。复用必须先通过契约对照和 characterization test。
+
+Script 与 Novel 是独立产品领域，只共享 platform 层；禁止共享正文、StoryMap、Writer、审读、格式和导出领域模块。
+
+## 历史项目一句话
 
 **ScriptFlow**：让好剧本"长出来"的 AI Agent 团队协作平台。
 
 - 产品定位：AI Agent 团队自主推进，用户是总指挥
 - 核心隐喻：**Growing**（生长）而非 **Assembling**（拼凑）—— 见 [ADR-0001](./docs/adr/0001-adopt-growing-metaphor.md)
-- 主线文档：[`CONTEXT.md`](./CONTEXT.md)（领域语言）+ [`docs/PRD-V5.md`](./docs/PRD-V5.md)（主线 PRD，Phase 1 产出）+ [`docs/adr/`](./docs/adr/)（决策历史）
+- 历史文档：[`CONTEXT.md`](./CONTEXT.md) + [`docs/PRD-V5.md`](./docs/PRD-V5.md) + [`docs/adr/`](./docs/adr/)，仅作 V5 研究材料
 - 历史文档：[`docs/archive/`](./docs/archive/)（PRD-V3 / SPEC-V4 / PLAN 等，作为参考保留，不再是主线）
 
 ## 技术栈
@@ -19,9 +31,7 @@ _任何 AI Agent（Kiro / Claude Code / Cursor / QwenPaw agent）在这个仓库
 
 ## 读代码前先读
 
-1. **[`CONTEXT.md`](./CONTEXT.md)** — 项目的 ubiquitous language。所有命名以这里为准。
-2. **[`docs/adr/`](./docs/adr/)** — 已定的架构决策。改代码前先看有没有相关 ADR，改动违背 ADR 时要么绕开、要么写新 ADR 覆盖旧的。
-3. **[`docs/PRD-V5.md`](./docs/PRD-V5.md)** — 当前主线 PRD。
+只读取本文件“当前唯一开发基线”列出的 V7 文档。需要评估复用时，才按 `02-LEGACY-DECONTAMINATION.md` 定向读取旧代码及其测试；不得先读旧 CONTEXT/PRD 再反推 V7 设计。
 
 ## Agent skills
 
@@ -29,7 +39,7 @@ _任何 AI Agent（Kiro / Claude Code / Cursor / QwenPaw agent）在这个仓库
 
 ### Issue tracker
 
-本地 markdown。issue 文件住在 `.scratch/scriptflow-v5/NN-slug.md`。详见 [`docs/agents/issue-tracker.md`](./docs/agents/issue-tracker.md)。
+V7 issue 进入新的 `.scratch/scriptflow-v7/`；`.scratch/scriptflow-v5/` 与 `.scratch/scriptflow-v6/` 仅作历史记录。
 
 ### Triage labels
 
@@ -37,7 +47,7 @@ _任何 AI Agent（Kiro / Claude Code / Cursor / QwenPaw agent）在这个仓库
 
 ### Domain docs
 
-Single-context：一份 [`CONTEXT.md`](./CONTEXT.md) + [`docs/adr/`](./docs/adr/) 在仓库根。详见 [`docs/agents/domain.md`](./docs/agents/domain.md)。
+V7 的领域语言必须在 V7 规格或后续 V7 ADR 中定义。旧根 `CONTEXT.md` 不再具有规范效力。
 
 ## 代码约定
 
@@ -45,14 +55,14 @@ Single-context：一份 [`CONTEXT.md`](./CONTEXT.md) + [`docs/adr/`](./docs/adr/
 
 - Python：`snake_case` 函数 / 变量，`PascalCase` 类，`SCREAMING_SNAKE` 常量
 - TypeScript：`camelCase` 函数 / 变量，`PascalCase` 类型 / 组件
-- **术语一律用 [CONTEXT.md](./CONTEXT.md) 里的词汇** —— 别写 `role` / `persona` 请写 `character`；别写 `pipeline` / `workflow` 请写 `growth_tree`
+- 术语以 V7 规格与 V7 ADR 为准；Script 与 Novel 同名概念也必须位于各自领域命名空间
 
 ### 目录
 
 ```
 agent-script-platform/
 ├── AGENTS.md              # 你现在看的这份
-├── CONTEXT.md             # 领域语言
+├── CONTEXT.md             # V5 历史领域语言，不是 V7 依据
 ├── backend/
 │   ├── app/
 │   │   ├── api/           # FastAPI routers
@@ -68,7 +78,8 @@ agent-script-platform/
 │       ├── components/    # 可复用 UI 组件
 │       └── composables/   # Vue composition API 抽象
 ├── docs/
-│   ├── PRD-V5.md          # 主线 PRD
+│   ├── v7-spec-v1.1/      # V7 唯一规格基线
+│   ├── PRD-V5.md          # 历史 PRD
 │   ├── adr/               # 架构决策记录
 │   ├── agents/            # Agent 协作配置（issue tracker 等）
 │   └── archive/           # 历史文档
