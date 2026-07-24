@@ -1,42 +1,53 @@
-.PHONY: help setup dev backend frontend test test-backend test-frontend lint lint-backend lint-frontend clean
+.PHONY: help setup dev backend creator admin test test-backend test-frontend lint lint-backend lint-frontend build clean
 
-help:  ## 显示这份帮助
+APP_DIR := scriptnow
+BACKEND_DIR := $(APP_DIR)/backend
+FRONTEND_DIR := $(APP_DIR)/frontend
+
+help:  ## 显示帮助
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-setup:  ## 首次装依赖（后端 + 前端）
-	cd backend && python3.11 -m venv .venv || true
-	cd backend && .venv/bin/pip install -e ".[dev]"
-	cd frontend && npm install
+setup:  ## 安装后端与前端依赖
+	cd $(BACKEND_DIR) && uv sync --extra dev
+	cd $(FRONTEND_DIR) && npm install
 
-dev:  ## 同时起后端 (:8000) 和前端 (:5173)
-	@echo "启动后端 & 前端。用 Ctrl+C 停止两个。"
-	@(cd backend && .venv/bin/uvicorn app.main:app --reload --port 8000) & \
-	 (cd frontend && npm run dev) & \
+dev:  ## 同时启动后端、创作端与管理端
+	@echo "后端 :8000 · 创作端 :5174 · 管理端 :5173"
+	@(cd $(BACKEND_DIR) && .venv/bin/python -m uvicorn scriptnow.app:app --reload --port 8000) & \
+	 (cd $(FRONTEND_DIR) && npm run dev:creator) & \
+	 (cd $(FRONTEND_DIR) && npm run dev:admin) & \
 	 wait
 
-backend:  ## 只起后端
-	cd backend && .venv/bin/uvicorn app.main:app --reload --port 8000
+backend:  ## 只启动后端
+	cd $(BACKEND_DIR) && .venv/bin/python -m uvicorn scriptnow.app:app --reload --port 8000
 
-frontend:  ## 只起前端
-	cd frontend && npm run dev
+creator:  ## 只启动创作端
+	cd $(FRONTEND_DIR) && npm run dev:creator
 
-test: test-backend test-frontend  ## 跑所有测试
+admin:  ## 只启动管理端
+	cd $(FRONTEND_DIR) && npm run dev:admin
 
-test-backend:  ## 后端 pytest
-	cd backend && .venv/bin/pytest
+test: test-backend test-frontend  ## 运行全部测试
 
-test-frontend:  ## 前端 vitest（issue #01 之后）
-	@echo "前端测试骨架在 issue #01 里加"
+test-backend:
+	cd $(BACKEND_DIR) && .venv/bin/python -m pytest
 
-lint: lint-backend lint-frontend  ## 跑所有 linter
+test-frontend:
+	cd $(FRONTEND_DIR) && npm test
 
-lint-backend:  ## ruff 后端
-	cd backend && .venv/bin/ruff check .
+lint: lint-backend lint-frontend  ## 运行静态检查
 
-lint-frontend:  ## 前端 lint（暂用 tsc）
-	cd frontend && npx vue-tsc --noEmit
+lint-backend:
+	cd $(BACKEND_DIR) && .venv/bin/python -m ruff check .
 
-clean:  ## 清 caches
-	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
-	find . -type d -name .pytest_cache -exec rm -rf {} + 2>/dev/null || true
-	find . -type d -name .ruff_cache -exec rm -rf {} + 2>/dev/null || true
+lint-frontend:
+	cd $(FRONTEND_DIR) && npx vue-tsc -p apps/creator/tsconfig.json
+	cd $(FRONTEND_DIR) && npx vue-tsc -p apps/admin/tsconfig.json
+
+build:  ## 构建两个前端应用
+	cd $(FRONTEND_DIR) && npm run build
+
+clean:  ## 清理可重建缓存
+	find $(APP_DIR) -type d -name __pycache__ -prune -exec rm -r {} + 2>/dev/null || true
+	find $(APP_DIR) -type d -name .pytest_cache -prune -exec rm -r {} + 2>/dev/null || true
+	find $(APP_DIR) -type d -name .ruff_cache -prune -exec rm -r {} + 2>/dev/null || true

@@ -1,20 +1,18 @@
-# ScriptFlow V7 规格包 v1.1
+# ScriptNow 规格包 v1.1
 
 | | |
 |---|---|
 | 版本 | `v7-spec-v1.1` |
 | 日期 | 2026-07-18 |
 | 状态 | 已批准，允许启动 P0 |
-| 取代 | `scriptflow-v6/docs/v7-spec-v1.0/` |
+| 取代 | 已归档的 v1.0 规格 |
 
 ## 基线声明
 
-V7 是基于既有技术资产启动的**全新产品开发**，不是 V5 产品领域模型的增量实现。根目录旧 `CONTEXT.md`、`docs/PRD-V5.md`、旧 ADR 和 V5/V6 产品文档仅作历史研究材料，不构成 V7 产品约束。
+V7 是基于既有技术资产启动的**全新产品开发**，不是旧产品领域模型的增量实现。旧代码、旧规格和冻结原型已移出开发树并保存于外部归档，不构成当前产品约束。
 
-V7 的唯一规格基线是本目录。`v7-spec-v1.0` 保持冻结，原型继续引用其冻结副本：
-
-- `scriptflow-v6/docs/v7-spec-v1.0/prototypes/creator-revision-focus.html`
-- `scriptflow-v6/docs/v7-spec-v1.0/prototypes/admin-console.html`
+V7 的唯一规格基线是本目录。需要核对历史决策时，先按
+`02-LEGACY-DECONTAMINATION.md` 明确研究目标，再从归档提取单项材料。
 
 ## 已批准决策
 
@@ -34,6 +32,7 @@ V7 的唯一规格基线是本目录。`v7-spec-v1.0` 保持冻结，原型继�
 - `05-ADAPTIVE-SKILLS-CONTRACT.md`：CreativeProfile、SkillPlan、角色调度与受控能力进化契约。
 - `06-DYNAMIC-CREATIVE-PLANNING.md`：结构 Skill 映射、短篇覆盖规划与创作中动态增补机制。
 - `07-NARRATIVE-GRAPH-TAXONOMY.md`：小说素材图谱的稳定节点、关系类型与国际化规范。
+- `08-I18N-THEME-GOVERNANCE.md`：界面语言、作品语言、素材语言边界，以及日夜主题与文案迁移规范。
 - `adr/`：V7 独立 ADR 编号空间，不覆盖根目录历史 ADR。
 - `references/AGENTSCOPE-2.0.4-VERIFICATION.md`：API 表面验证；其中未实测项必须在 P0 tracer bullet 中完成。
 

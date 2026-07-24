@@ -1,10 +1,10 @@
-# ScriptFlow V7 产品需求规格说明书（PRD / SRS）
+# ScriptNow 产品需求规格说明书（PRD / SRS）
 
 | | |
 |---|---|
 | 文档版本 | v1.1（2026-07-18） |
 | 状态 | 已批准，允许启动 P0 |
-| 依据 | ① 创作端原型 `scriptflow-v7-revision-focus.html`（6408 行，全量交互）② 管理后台初步原型 `scriptflow-v7-admin.html`（364 行，结构+语义完整、JS 占位）③ AgentScope 2.0.4 本地 API 反射验证 ④ V6 代码库现状（28 表 / 60+ 路由）⑤ ADR-0002 及既有产品文档 |
+| 依据 | ① 创作端原型 `scriptnow-revision-focus.html`（6408 行，全量交互）② 管理后台初步原型 `scriptnow-admin.html`（364 行，结构+语义完整、JS 占位）③ AgentScope 2.0.4 本地 API 反射验证 ④ V6 代码库现状（28 表 / 60+ 路由）⑤ ADR-0002 及既有产品文档 |
 | 取代关系 | 本文档取代 `v7-spec-v1.0/01-PRD-V7.md`；V5/V6 文档仅作历史研究材料 |
 | 读者 | 产品 / 前端 / 后端 / Agent 工程 / QA |
 
@@ -37,7 +37,7 @@ V6 已回答"作品如何长出来"（发散 → 采纳 → 蓝图 → 逐场写
 └─────────┬──────────┘  └─────────┬──────────┘  └──────────▲───────────┘
           │ REST + SSE            │ REST                    │ OTLP
 ┌─────────▼────────────────────────▼──────────────────────────────────┐
-│                    FastAPI 应用层（scriptflow_v7）                    │
+│                    FastAPI 应用层（scriptnow）                    │
 │  领域 API（项目/蓝图/正文/修订/事件/导出/版本） · 治理 API（租户/等级/  │
 │  模型池/工具挂载/MCP/记忆） · 认证与计量中间件                         │
 ├──────────────────────────────────────────────────────────────────────┤
@@ -244,7 +244,7 @@ creator_visible(model, tenant) = model.enabled ∧ provider(model).connected ∧
 
 ## 3. 创作端功能规格（Creator SPA）
 
-> 视觉与交互以 `scriptflow-v7-revision-focus.html` 为验收基准：oklch 暖纸色系、衬线显示字体、`--sidebar-w:240px`、侧栏拖拽收起(⌘B)、移动端响应式。原型中的《长安十二时辰》内容全部为演示数据——**实现中一律由 Agent 生成或用户输入，禁止写入代码**。
+> 视觉与交互以 `scriptnow-revision-focus.html` 为验收基准：oklch 暖纸色系、衬线显示字体、`--sidebar-w:240px`、侧栏拖拽收起(⌘B)、移动端响应式。原型中的《长安十二时辰》内容全部为演示数据——**实现中一律由 Agent 生成或用户输入，禁止写入代码**。
 
 ### 3.0 全局框架
 
@@ -366,7 +366,7 @@ status(open|accepted|dismissed|stale) · stale_reason · superseded_by · idempo
 
 ## 4. 管理后台功能规格（Admin SPA）
 
-> 依据 `scriptflow-v7-admin.html`（初步原型：结构与语义完整，JS 占位）。设计系统：Arc 风格暖色 token 契约（原样绑定），Inter 字体，侧栏 232px 毛玻璃。为独立 SPA（/admin），管理员角色 JWT 保护。列表均需真实分页/搜索；KPI 为真实聚合。
+> 依据 `scriptnow-admin.html`（初步原型：结构与语义完整，JS 占位）。设计系统：Arc 风格暖色 token 契约（原样绑定），Inter 字体，侧栏 232px 毛玻璃。为独立 SPA（/admin），管理员角色 JWT 保护。列表均需真实分页/搜索；KPI 为真实聚合。
 
 ### 4.1 租户与订阅（经营）
 

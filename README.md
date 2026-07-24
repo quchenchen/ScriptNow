@@ -1,66 +1,62 @@
-# ScriptFlow
+# ScriptNow
 
 **AI Agent 团队驱动的剧本与小说创作平台。**
 
-V7 作为全新产品开发：复用经过契约验证的旧技术资产，不继承旧产品领域模型。Script 与 Novel 使用独立的创作领域能力，共享平台基础设施。
+ScriptNow 是当前项目暂定名称。现行应用只有一套，位于 [`scriptnow/`](./scriptnow/)；旧版本执行代码已经归档，不参与构建、测试或运行。
 
-## 状态
-
-🚧 **V7 P0 启动中**。当前唯一规格基线：
+## 当前基线
 
 - [`docs/v7-spec-v1.1/00-README.md`](./docs/v7-spec-v1.1/00-README.md) — 基线与已批准决策
 - [`docs/v7-spec-v1.1/01-PRD-V7.md`](./docs/v7-spec-v1.1/01-PRD-V7.md) — 产品与技术规格
 - [`docs/v7-spec-v1.1/02-LEGACY-DECONTAMINATION.md`](./docs/v7-spec-v1.1/02-LEGACY-DECONTAMINATION.md) — 复用、归档与删除规则
-- [`docs/v7-spec-v1.1/03-DEVELOPMENT-PLAN.md`](./docs/v7-spec-v1.1/03-DEVELOPMENT-PLAN.md) — 直到完整测试 Release Candidate 的开发计划
-- [`.scratch/scriptflow-v7/`](./.scratch/scriptflow-v7/) — V7 issue tracker
+- [`docs/v7-spec-v1.1/03-DEVELOPMENT-PLAN.md`](./docs/v7-spec-v1.1/03-DEVELOPMENT-PLAN.md) — 开发与验证计划
 
-## 5 分钟启动（开发环境）
-
-```bash
-# 后端
-cd backend
-python3.11 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
-cp .env.example .env    # 编辑填 API keys
-uvicorn app.main:app --reload --port 8000
-
-# 前端（另一 terminal）
-cd frontend
-npm install
-npm run dev
-
-# 打开 http://localhost:5173
-```
-
-或者：
+## 5 分钟启动
 
 ```bash
-make dev    # 一条命令起前后端（前提：backend 已 pip install）
+make setup
+make dev
 ```
 
-## 项目文档
+开发地址：
 
-### 一定要读
+- 创作端：http://127.0.0.1:5173
+- 管理端：http://127.0.0.1:5174
+- 后端：http://127.0.0.1:8000
 
-- [`AGENTS.md`](./AGENTS.md) — Agent 协作约定 + 代码约定
-- [`docs/v7-spec-v1.1/`](./docs/v7-spec-v1.1/) — V7 唯一开发基线
+也可以分别启动：
 
-### 按需读
+```bash
+make backend
+make creator
+make admin
+```
 
-- [`backend/README.md`](./backend/README.md) — 后端启动 & 目录
-- [`scriptflow-v6/docs/v7-spec-v1.0/`](./scriptflow-v6/docs/v7-spec-v1.0/) — 冻结原型与上一规格版本
-- [`CONTEXT.md`](./CONTEXT.md)、[`docs/PRD-V5.md`](./docs/PRD-V5.md)、[`docs/adr/`](./docs/adr/) — V5 历史材料，不是 V7 依据
-- [`docs/archive/`](./docs/archive/) — 更早历史文档
+## 工程结构
 
-## 技术栈
+```text
+scriptnow/
+├── backend/                # FastAPI + AgentScope + SQLAlchemy/Alembic
+│   ├── src/scriptnow/
+│   │   ├── platform/       # 共享平台能力
+│   │   ├── script/         # 剧本独立领域
+│   │   └── novel/          # 小说独立领域
+│   └── skills/             # 运行时 Skill 资产
+└── frontend/
+    ├── apps/creator/       # 创作端
+    ├── apps/admin/         # 管理端
+    └── packages/shared/    # 无领域语义的共享基础
+```
 
-- **Backend**: FastAPI + AgentScope 2.0 + SQLite (aiosqlite) + Alembic
-- **Frontend**: Vue 3 + Vite + TypeScript
-- **LLM**: DashScope（阿里云百炼）/ DeepSeek / OpenAI / Anthropic 可切换
+Script 与 Novel 只共享 platform，不共享正文、StoryMap、Writer、审读、格式和导出领域模块。
 
-## 常用命令
+## 验证
 
-见 [`Makefile`](./Makefile) 或分别看 [`backend/README.md`](./backend/README.md) / [`frontend/`](./frontend/) 说明。
+```bash
+make test
+make lint
+make build
+```
 
 ## 授权
 

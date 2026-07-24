@@ -1,4 +1,4 @@
-# ScriptFlow V7 开发与完整测试计划
+# ScriptNow 开发与完整测试计划
 
 - Version: 1.0
 - Date: 2026-07-18

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-labelledby="title desc">
+  <title id="title">ScriptNow</title>
+  <desc id="desc">一本正在生长的书，书页汇成故事路径与新芽</desc>
+  <defs>
+    <linearGradient id="ground" x1="15" y1="10" x2="82" y2="88" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#365e4e"/>
+      <stop offset="1" stop-color="#203b32"/>
+    </linearGradient>
+    <linearGradient id="page" x1="26" y1="29" x2="70" y2="73" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fffaf0"/>
+      <stop offset="1" stop-color="#eadfc9"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#ground)" d="M12 24C17 13 30 8 43 10l27 4c11 2 18 12 17 23l-3 30c-1 12-11 20-23 20H32C19 87 9 77 10 64l2-40Z"/>
+  <path fill="#b45a33" d="M46 23c0-6 4-11 10-13 1 7-2 12-10 13Z"/>
+  <path fill="#d68a62" d="M49 25c6-5 13-5 18-1-5 6-12 7-18 1Z"/>
+  <path fill="none" stroke="#e6a078" stroke-linecap="round" stroke-width="3.5" d="M47 23v20"/>
+  <path fill="url(#page)" d="M22 35c9-3 18-1 26 6v34c-8-6-17-8-26-5V35Zm52 0c-9-3-18-1-26 6v34c8-6 17-8 26-5V35Z"/>
+  <path fill="none" stroke="#2b4a3e" stroke-linecap="round" stroke-width="3" d="M48 42v34"/>
+  <path fill="none" stroke="#a2532f" stroke-linecap="round" stroke-width="3" d="M30 47c5-1 9 0 13 3m-13 8c5-1 9 0 13 3m23-14c-5-1-9 0-13 3m13 8c-5-1-9 0-13 3"/>
+</svg>

@@ -1,4 +1,4 @@
-# ScriptFlow V7 原型回归与沉浸式创作优化策略
+# ScriptNow 原型回归与沉浸式创作优化策略
 
 _版本：v1.0 · 2026-07-20 · 状态：执行中_
 
@@ -11,8 +11,8 @@ _版本：v1.0 · 2026-07-20 · 状态：执行中_
 ## 2. 审计依据
 
 - 规格：PRD FR-3.0、FR-3.7、FR-3.8、FR-3.10。
-- 冻结原型：`scriptflow-v6/docs/v7-spec-v1.0/prototypes/creator-revision-focus.html`。
-- 当前实现：`scriptflow-v7/frontend/apps/creator` 的实际生产构建与本地浏览器预览。
+- 冻结原型：已在 2026-07-23 的外部归档中保留，仅在视觉回归需要时定向提取。
+- 当前实现：`scriptnow/frontend/apps/creator` 的实际生产构建与本地浏览器预览。
 - 原型实测：进入“逐场写作”后自动收起 240px 全局侧栏，保留展开把手；使用紧凑 topbar、当前 Agent Bar、左目录/中正文/右上下文与修订三栏，以及底部横向 Agent Dock。
 
 ## 3. 当前偏差与影响

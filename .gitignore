@@ -16,9 +16,9 @@ dist/
 # DB / data
 *.db
 *.db-*
-backend/data/*.db
-backend/data/uploads/
-backend/app/data/*.db
+scriptnow/backend/data/*.db
+scriptnow/backend/data/uploads/
+scriptnow/backend/data/workspaces/
 
 # Editor / OS
 .DS_Store
@@ -37,5 +37,8 @@ backend/app/data/*.db
 *.log
 logs/
 
-# Local scratch (uncomment to hide from git; kept in-repo by default for issue-tracking convention)
-# .scratch/
+# Local scratch
+.scratch/*
+!.scratch/scriptnow/
+!.scratch/scriptnow/.gitkeep
+*.mov
