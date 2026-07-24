@@ -493,6 +493,13 @@ export const sourceMessages: Record<string, string> = {
   '保留': 'Keep', '段落': 'Paragraph', '只读': 'Read only', '完整': 'Complete',
   '全部': 'All', '建议': 'Suggestion', '建立第': 'Build ', '分析': 'Analysis',
   '查看': 'View', '包装': 'Packaging',
+  '基于当前版本': 'Based on current', '和项目事实': 'and project facts',
+  '不会被直接覆盖': 'will not be overwritten', '原卷章结构': 'volume-chapter structure',
+  '第一卷的': 'the first volume', '太少无法承载': 'too few to carry',
+  '角色数量': 'number of characters', '或结局代价': 'or the ending cost',
+  '不匹配': 'does not match', '发送反馈': 'Send feedback',
+  '生成新版': 'Generate new version', '正在重构': 'restructuring',
+  '设定的': 'the set',
 }
 
 const orderedSourceMessages = Object.entries(sourceMessages).sort(

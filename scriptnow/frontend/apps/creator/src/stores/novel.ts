@@ -120,10 +120,10 @@ export const useNovelStore = defineStore('novel-domain', {
         api(`/novel/projects/${projectId}/blueprints/${candidateId}/adopt`, { method: 'POST' }),
       )
     },
-    generateStoryMap(projectId: string) {
+    generateStoryMap(projectId: string, feedback?: string) {
       return this.perform(projectId, '正在规划卷与章节候选…', () =>
         api<CandidateResponse>(`/novel/projects/${projectId}/story-map/generate`, {
-          method: 'POST', body: JSON.stringify({ idempotency_key: crypto.randomUUID() }),
+          method: 'POST', body: JSON.stringify({ idempotency_key: crypto.randomUUID(), feedback: feedback || null }),
         }),
       )
     },
