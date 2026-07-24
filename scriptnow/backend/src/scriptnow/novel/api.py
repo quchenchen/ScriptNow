@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 from scriptnow.novel.blueprint import NovelBlueprintError, NovelBlueprintGenerator
 from scriptnow.novel.contracts import NovelBlock
-from scriptnow.novel.creative_graph import CreativeGraphError, CreativeGraphExtractor
+from scriptnow.novel.creative_graph import CreativeGraphExtractor
 from scriptnow.novel.delivery import NovelDeliveryError, NovelExportService
 from scriptnow.novel.domain import (
     NovelBlueprintAnchorDraft,
@@ -147,6 +147,7 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
     story_map_generator = NovelStoryMapGenerator(database, settings)
     writer = NovelChapterGenerator(database, settings)
     quality = NovelQualityService(database)
+    creative_graph = CreativeGraphExtractor(database, settings)
     quality_evaluator = NovelQualityEvaluator(database, settings)
 
     async def context(access_token: str | None, csrf_token: str | None = None, *, write=False):
@@ -472,7 +473,6 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
         access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
         csrf_token: Annotated[str | None, Header(alias="X-CSRF-Token")] = None,
     ) -> AdoptResponse:
-        del chapter_id
         auth_context = await context(access_token, csrf_token, write=True)
         try:
             item = await service.adopt_document(
