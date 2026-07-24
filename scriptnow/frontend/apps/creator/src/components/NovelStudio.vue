@@ -205,10 +205,8 @@ async function reviseStoryMap() {
   if (!instruction) return
   dock.role = 'architect'
   dock.expanded = true
-  // Send feedback through dock conversation first, then regenerate
-  await dock.send(props.projectId, instruction)
-  await novel.generateStoryMap(props.projectId, instruction)
   storyMapFeedback.value = ''
+  await novel.generateStoryMap(props.projectId, instruction)
 }
 async function generateChapterCandidate() {
   if (!focusedUnitId.value || novel.busy) return
