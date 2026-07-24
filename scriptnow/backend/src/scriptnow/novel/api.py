@@ -1,4 +1,3 @@
-import asyncio
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Cookie, Header, HTTPException, Response, status
@@ -751,6 +750,8 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
                     )
                 )
             if adopted:
+                tenant_id = str((await auth.validate_access(access_token)).tenant_id)
+                # Run sequentially to avoid SQLite lock conflicts
                 for rev in adopted:
                     chapter = next(
                         (b for b in list(rev.blocks) if isinstance(b, dict) and b.get("type") == "heading"),
@@ -758,16 +759,15 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
                     )
                     chapter_title = str(chapter.get("text", "")) if chapter else rev.chapter_id
                     blocks = [dict(b) if isinstance(b, dict) else {"type": "prose", "text": str(b)} for b in list(rev.blocks)]
-                    asyncio.create_task(
-                        creative_graph.extract_chapter(
-                            tenant_id=str((await auth.validate_access(access_token)).tenant_id),
+                    with __import__("contextlib").suppress(Exception):
+                        await creative_graph.extract_chapter(
+                            tenant_id=tenant_id,
                             project_id=project_id,
                             chapter_id=rev.chapter_id,
                             chapter_title=chapter_title,
                             blocks=blocks,
                             idempotency_key=f"lazy:{rev.id}",
                         )
-                    )
                 return {
                     "status": "not_built",
                     "extraction_status": "running",
