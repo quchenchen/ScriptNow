@@ -164,8 +164,10 @@ watch(() => [dock.events.length, dock.stream.length], async () => {
   const el = feed.value
   if (!el) return
   const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120
-  showScrollAnchor.value = false
-  if (nearBottom) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+  if (nearBottom) {
+    showScrollAnchor.value = false
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+  }
 })
 watch(() => props.projectId, (projectId) => {
   void dock.load(projectId).catch(() => undefined)
@@ -203,7 +205,7 @@ onUnmounted(() => {
         <button v-for="item in filters" :key="item.key" :class="{ active: dock.filter === item.key }" @click="dock.filter = item.key">{{ item.label }}</button>
       </nav>
       <div ref="feed" class="dock-feed" aria-live="polite" @scroll="onFeedScroll">
-        <button v-if="showScrollAnchor" class="scroll-anchor" aria-label="回到底部" title="回到最新消息" @click="scrollToLatest">↓</button>
+        <button v-if="showScrollAnchor" class="scroll-anchor" aria-label="回到底部" title="回到最新消息" @click="scrollToLatest">↓ 回到最新</button>
         <article v-for="event in dock.visibleEvents" :key="event.id" class="dock-event" :class="`event-${event.type}`">
           <span class="event-kind">{{ eventKindLabels[event.type] }}</span><time>{{ new Date(event.occurred_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}</time>
           <strong>{{ eventTitle(event) }}</strong>
@@ -243,7 +245,6 @@ onUnmounted(() => {
         </article>
         <p v-if="!dock.visibleEvents.length" class="dock-empty">这里会显示需要关注的 Agent 回复与创作决定。</p>
       </div>
-      <button v-if="showScrollAnchor" class="scroll-anchor" aria-label="回到底部" title="回到最新消息" @click="scrollToLatest">↓</button>
       <section v-if="dock.waitingRun" class="confirm-card">
         <strong>需要你确认工具调用</strong><p>Agent 请求写入项目工作区。刷新页面后仍可继续处理。</p>
         <div><button :disabled="dock.busy" @click="dock.confirm(projectId, dock.waitingRun!.id, false)">拒绝</button><button class="approve" :disabled="dock.busy" @click="dock.confirm(projectId, dock.waitingRun!.id, true)">允许并继续</button></div>

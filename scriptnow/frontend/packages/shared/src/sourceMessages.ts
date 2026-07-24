@@ -499,7 +499,7 @@ export const sourceMessages: Record<string, string> = {
   '角色数量': 'number of characters', '或结局代价': 'or the ending cost',
   '不匹配': 'does not match', '发送反馈': 'Send feedback',
   '生成新版': 'Generate new version', '正在重构': 'restructuring',
-  '设定的': 'the set', '回到底部': 'Back to bottom', '回到最新消息': 'Back to latest',
+  '设定的': 'the set', '回到底部': 'Back to bottom', '回到最新消息': 'Back to latest', '回到最新': 'Back to latest',
 }
 
 const orderedSourceMessages = Object.entries(sourceMessages).sort(
