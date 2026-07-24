@@ -57,6 +57,8 @@ clean:  ## 清理可重建缓存
 docker-build:  ## 构建生产镜像
 	docker build -t scriptnow:latest $(APP_DIR)
 
+verify: test lint build  ## 全量验证（测试+静态+构建）
+
 docker-up:  ## 启动生产容器 (端口 8080)
 	docker compose -f $(APP_DIR)/docker-compose.yml up -d
 
