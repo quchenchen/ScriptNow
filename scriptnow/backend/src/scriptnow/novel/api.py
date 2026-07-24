@@ -1,3 +1,4 @@
+import asyncio
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Cookie, Header, HTTPException, Response, status
@@ -735,6 +736,45 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
     ) -> dict[str, object]:
         await context(access_token)
         data = await read_creative_graph(database, project_id=project_id)
+        # If graph is empty but chapters have been adopted, trigger extraction
+        if not data["chapters"]:
+            async with database.session() as session:
+                from sqlalchemy import select as sa_select
+
+                from scriptnow.novel.domain import NovelDocumentRevisionModel, NovelRevisionStatus
+                adopted = list(
+                    await session.scalars(
+                        sa_select(NovelDocumentRevisionModel).where(
+                            NovelDocumentRevisionModel.project_id == project_id,
+                            NovelDocumentRevisionModel.status == NovelRevisionStatus.ADOPTED,
+                        )
+                    )
+                )
+            if adopted:
+                for rev in adopted:
+                    chapter = next(
+                        (b for b in list(rev.blocks) if isinstance(b, dict) and b.get("type") == "heading"),
+                        None,
+                    )
+                    chapter_title = str(chapter.get("text", "")) if chapter else rev.chapter_id
+                    blocks = [dict(b) if isinstance(b, dict) else {"type": "prose", "text": str(b)} for b in list(rev.blocks)]
+                    asyncio.create_task(
+                        creative_graph.extract_chapter(
+                            tenant_id=str((await auth.validate_access(access_token)).tenant_id),
+                            project_id=project_id,
+                            chapter_id=rev.chapter_id,
+                            chapter_title=chapter_title,
+                            blocks=blocks,
+                            idempotency_key=f"lazy:{rev.id}",
+                        )
+                    )
+                return {
+                    "status": "not_built",
+                    "extraction_status": "running",
+                    "chapters": [],
+                    "nodes": [],
+                    "edges": [],
+                }
         return {
             "status": "ready" if data["chapters"] else "not_built",
             "extraction_status": "ready",
