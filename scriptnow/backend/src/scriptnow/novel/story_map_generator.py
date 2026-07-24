@@ -9,6 +9,7 @@ from sqlalchemy import select
 
 from scriptnow.novel.domain import (
     NovelBlueprintAnchorModel,
+    NovelBlueprintModel,
     NovelCandidateStatus,
     NovelStoryCoreCandidateModel,
 )
@@ -115,7 +116,8 @@ class NovelStoryMapGenerator:
             anchors = list(
                 await session.scalars(
                     select(NovelBlueprintAnchorModel)
-                    .where(NovelBlueprintAnchorModel.project_id == project.id)
+                    .join(NovelBlueprintModel, NovelBlueprintAnchorModel.blueprint_id == NovelBlueprintModel.id)
+                    .where(NovelBlueprintModel.project_id == project.id)
                     .order_by(NovelBlueprintAnchorModel.anchor_key)
                 )
             )
