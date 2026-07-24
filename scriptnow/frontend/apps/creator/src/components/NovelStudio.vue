@@ -212,6 +212,10 @@ async function generateChapterCandidate() {
   if (!focusedUnitId.value || novel.busy) return
   dock.role = 'writer'
   dock.expanded = true
+  const chapter = focusedChapter.value
+  const brief = chapter ? `生成第 ${focusedUnitId.value} 章「${chapter.title}」候选稿` : `生成章节候选稿`
+  // Notify dock so the generation trace is visible in conversation history
+  dock.send(props.projectId, brief).catch(() => undefined)
   try {
     await novel.generateChapter(props.projectId, focusedUnitId.value)
   } catch {
@@ -226,6 +230,7 @@ async function condenseChapterCandidate() {
   if (!target) return
   dock.role = 'writer'
   dock.expanded = true
+  dock.send(props.projectId, `精简第 ${focusedUnitId.value} 章候选稿`).catch(() => undefined)
   const current = focusedProgress.value.count
   const desiredMinimum = Math.round(target * 0.8)
   const desiredMaximum = Math.round(target * 0.95)
