@@ -149,7 +149,12 @@ function startResize(event: PointerEvent) {
 }
 
 watch(() => [dock.events.length, dock.stream.length], async () => {
-  await nextTick(); feed.value?.scrollTo({ top: feed.value.scrollHeight, behavior: 'smooth' })
+  await nextTick()
+  const el = feed.value
+  if (!el) return
+  // Only auto-scroll if user is near the bottom (within 120px)
+  const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120
+  if (nearBottom) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
 })
 watch(() => props.projectId, (projectId) => {
   void dock.load(projectId).catch(() => undefined)
