@@ -3,6 +3,9 @@ FROM node:22-alpine AS frontend-build
 
 WORKDIR /src/frontend
 
+# Use npmmirror (Tsinghua does not provide npm registry; npmmirror is the CN standard)
+RUN npm config set registry https://registry.npmmirror.com
+
 # Install deps (package-lock.json for reproducible builds)
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
