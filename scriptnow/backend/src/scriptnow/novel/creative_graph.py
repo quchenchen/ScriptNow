@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 from json_repair import loads as repair_json
@@ -89,6 +90,51 @@ class _Payload(BaseModel):
     nodes: list[_Node] = Field(default_factory=list, max_length=40)
     edges: list[_Edge] = Field(default_factory=list, max_length=80)
 
+
+
+# ── Background extraction queue (serial, SQLite-safe) ───────────────────
+
+class _ExtractionJob:
+    __slots__ = ("tenant_id", "project_id", "chapter_id", "chapter_title", "blocks", "idempotency_key")
+    def __init__(self, *, tenant_id: str, project_id: str, chapter_id: str, chapter_title: str, blocks: list[dict[str, object]], idempotency_key: str) -> None:
+        self.tenant_id = tenant_id
+        self.project_id = project_id
+        self.chapter_id = chapter_id
+        self.chapter_title = chapter_title
+        self.blocks = blocks
+        self.idempotency_key = idempotency_key
+
+
+class CreativeGraphQueue:
+    """Serial background queue that processes extraction jobs one at a time."""
+
+    def __init__(self) -> None:
+        self._jobs: list[_ExtractionJob] = []
+        self._running = False
+        self._extractor: CreativeGraphExtractor | None = None
+
+    def attach(self, extractor: CreativeGraphExtractor) -> None:
+        self._extractor = extractor
+
+    def enqueue(self, job: _ExtractionJob) -> None:
+        self._jobs.append(job)
+        if not self._running:
+            self._running = True
+            asyncio.create_task(self._drain())
+
+    async def _drain(self) -> None:
+        while self._jobs and self._extractor:
+            job = self._jobs.pop(0)
+            with __import__("contextlib").suppress(Exception):
+                await self._extractor.extract_chapter(
+                    tenant_id=job.tenant_id,
+                    project_id=job.project_id,
+                    chapter_id=job.chapter_id,
+                    chapter_title=job.chapter_title,
+                    blocks=job.blocks,
+                    idempotency_key=job.idempotency_key,
+                )
+        self._running = False
 
 # ── Extractor ────────────────────────────────────────────────────────────
 

@@ -6,7 +6,12 @@ from sqlalchemy import select
 
 from scriptnow.novel.blueprint import NovelBlueprintError, NovelBlueprintGenerator
 from scriptnow.novel.contracts import NovelBlock
-from scriptnow.novel.creative_graph import CreativeGraphExtractor, read_creative_graph
+from scriptnow.novel.creative_graph import (
+    CreativeGraphExtractor,
+    CreativeGraphQueue,
+    _ExtractionJob,
+    read_creative_graph,
+)
 from scriptnow.novel.delivery import NovelDeliveryError, NovelExportService
 from scriptnow.novel.domain import (
     NovelBlueprintAnchorDraft,
@@ -148,6 +153,8 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
     writer = NovelChapterGenerator(database, settings)
     quality = NovelQualityService(database)
     creative_graph = CreativeGraphExtractor(database, settings)
+    graph_queue = CreativeGraphQueue()
+    graph_queue.attach(creative_graph)
     quality_evaluator = NovelQualityEvaluator(database, settings)
 
     async def context(access_token: str | None, csrf_token: str | None = None, *, write=False):
@@ -735,7 +742,7 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
     ) -> dict[str, object]:
         await context(access_token)
         data = await read_creative_graph(database, project_id=project_id)
-        # If graph is empty but chapters have been adopted, trigger extraction
+        # If graph is empty but chapters have been adopted, enqueue background extraction
         if not data["chapters"]:
             async with database.session() as session:
                 from sqlalchemy import select as sa_select
@@ -751,7 +758,6 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
                 )
             if adopted:
                 tenant_id = str((await auth.validate_access(access_token)).tenant_id)
-                # Run sequentially to avoid SQLite lock conflicts
                 for rev in adopted:
                     chapter = next(
                         (b for b in list(rev.blocks) if isinstance(b, dict) and b.get("type") == "heading"),
@@ -759,15 +765,14 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
                     )
                     chapter_title = str(chapter.get("text", "")) if chapter else rev.chapter_id
                     blocks = [dict(b) if isinstance(b, dict) else {"type": "prose", "text": str(b)} for b in list(rev.blocks)]
-                    with __import__("contextlib").suppress(Exception):
-                        await creative_graph.extract_chapter(
-                            tenant_id=tenant_id,
-                            project_id=project_id,
-                            chapter_id=rev.chapter_id,
-                            chapter_title=chapter_title,
-                            blocks=blocks,
-                            idempotency_key=f"lazy:{rev.id}",
-                        )
+                    graph_queue.enqueue(_ExtractionJob(
+                        tenant_id=tenant_id,
+                        project_id=project_id,
+                        chapter_id=rev.chapter_id,
+                        chapter_title=chapter_title,
+                        blocks=blocks,
+                        idempotency_key=f"lazy:{rev.id}",
+                    ))
                 return {
                     "status": "not_built",
                     "extraction_status": "running",
