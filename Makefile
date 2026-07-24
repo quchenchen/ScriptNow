@@ -51,3 +51,21 @@ clean:  ## 清理可重建缓存
 	find $(APP_DIR) -type d -name __pycache__ -prune -exec rm -r {} + 2>/dev/null || true
 	find $(APP_DIR) -type d -name .pytest_cache -prune -exec rm -r {} + 2>/dev/null || true
 	find $(APP_DIR) -type d -name .ruff_cache -prune -exec rm -r {} + 2>/dev/null || true
+
+# ── Docker ─────────────────────────────────────────────────────
+
+docker-build:  ## 构建生产镜像
+	docker build -t scriptnow:latest $(APP_DIR)
+
+docker-up:  ## 启动生产容器 (端口 8080)
+	docker compose -f $(APP_DIR)/docker-compose.yml up -d
+
+docker-down:  ## 停止生产容器
+	docker compose -f $(APP_DIR)/docker-compose.yml down
+
+docker-dev:  ## 启动开发容器（热重载，三个服务）
+	docker compose -f $(APP_DIR)/docker-compose.yml --profile dev up
+
+docker-push:  ## 构建并推送镜像到 GitHub Container Registry
+	docker build -t ghcr.io/quchenchen/scriptnow:latest $(APP_DIR)
+	docker push ghcr.io/quchenchen/scriptnow:latest

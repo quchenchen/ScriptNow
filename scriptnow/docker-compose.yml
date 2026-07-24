@@ -1,0 +1,73 @@
+services:
+  # ── Production (default: docker compose up) ────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${PORT:-8080}:80"
+    environment:
+      - SCRIPTNOW_ENVIRONMENT=${SCRIPTNOW_ENVIRONMENT:-production}
+      - SCRIPTNOW_DATABASE_URL=sqlite+aiosqlite:///./data/scriptnow.db
+      - SCRIPTNOW_ACCESS_TOKEN_SECRET=${SCRIPTNOW_ACCESS_TOKEN_SECRET:-production-change-me-please}
+      - SCRIPTNOW_CREDENTIAL_MASTER_KEY=${SCRIPTNOW_CREDENTIAL_MASTER_KEY:-production-master-key-change-me-please}
+      - SCRIPTNOW_COOKIE_SECURE=false
+    volumes:
+      - scriptnow-data:/app/data
+    restart: unless-stopped
+
+  # ── Dev backend (hot reload) ───────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM python:3.12-slim
+        RUN apt-get update && apt-get install -y --no-install-recommends curl \
+            && rm -rf /var/lib/apt/lists/*
+        WORKDIR /app
+    command: >
+      sh -c "pip install --no-cache-dir .[dev] &&
+             python -m uvicorn scriptnow.app:app --host 0.0.0.0 --port 8000 --reload"
+    profiles: ["dev"]
+    ports:
+      - "8000:8000"
+    environment:
+      - SCRIPTNOW_ENVIRONMENT=development
+      - SCRIPTNOW_DATABASE_URL=sqlite+aiosqlite:///./data/scriptnow.db
+    volumes:
+      - ./backend:/app
+      - ./backend/data:/app/data
+    restart: unless-stopped
+
+  # ── Dev creator frontend (hot reload) ──────────────────────
+  creator:
+    image: node:22-alpine
+    command: >
+      sh -c "npm install --workspaces --include-workspace-root &&
+             npm run dev --workspace @scriptnow/creator -- --host 0.0.0.0"
+    working_dir: /app
+    profiles: ["dev"]
+    ports:
+      - "5174:5174"
+    environment:
+      - NODE_ENV=development
+    volumes:
+      - ./frontend:/app
+
+  # ── Dev admin frontend (hot reload) ────────────────────────
+  admin:
+    image: node:22-alpine
+    command: >
+      sh -c "npm install --workspaces --include-workspace-root &&
+             npm run dev --workspace @scriptnow/admin -- --host 0.0.0.0"
+    working_dir: /app
+    profiles: ["dev"]
+    ports:
+      - "5173:5173"
+    environment:
+      - NODE_ENV=development
+    volumes:
+      - ./frontend:/app
+
+volumes:
+  scriptnow-data:
