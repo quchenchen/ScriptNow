@@ -1,11 +1,12 @@
-"""Incremental creative graph extraction from adopted novel chapters.
+"""逐章创作图谱 (Creative Graph) — 区别于故事图谱 (Narrative Graph)。
 
-After every chapter adoption the latest revision is analysed by an AgentScope
-agent (using the existing novel-build-story-graph skill) and the resulting
-nodes, edges and chapter summary are persisted.  The accumulated graph feeds
-back into the Writer context so that subsequent chapters are written with
-full awareness of characters, relationships, events and world-building details
-established in earlier chapters.
+故事图谱用于导入已有作品后一次性提取，输入是上传的 NarrativeTextUnit。
+创作图谱用于原创写作中逐章增量更新，输入是采纳后的 NovelDocumentRevision。
+
+章节采纳后自动后台提取人物、关系、事件、摘要；
+积累的图谱注入 Writer 上下文，让后续章节全局感知存量资产。
+
+内部索引 key: creative:{project_id}  ← 与用户创建的 NarrativeIndex 命名空间隔离。
 """
 
 from __future__ import annotations
@@ -240,7 +241,7 @@ class CreativeGraphExtractor:
                     id=index_key,
                     tenant_id=tenant_id,
                     project_id=project_id,
-                    name="Creative Graph",
+                    name="创作图谱",
                     config={"source": "creative", "extraction_status": "ready"},
                 )
                 session.add(index)

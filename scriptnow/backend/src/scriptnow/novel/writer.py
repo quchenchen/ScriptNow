@@ -501,7 +501,7 @@ class NovelChapterGenerator:
             '{"blocks":[{"type":"heading|prose|dialogue|quote|divider","text":"..."}]}. '
             "The first block must be the actual chapter title from StoryMap, not an internal chapter ID.\n"
             f"Project direction: {json.dumps(project.direction, ensure_ascii=False)}\n"
-            "The creative_graph in the writing context is an accumulated knowledge graph of characters, "
+            "创作图谱 (Creative Graph) is an accumulated knowledge graph of characters, "
             "relationships, locations, objects, events and their descriptions extracted from earlier chapters. "
             "Use it to maintain consistency: existing characters must retain their established traits, "
             "relationships must reflect their current state as of the end of the previous chapter, "
