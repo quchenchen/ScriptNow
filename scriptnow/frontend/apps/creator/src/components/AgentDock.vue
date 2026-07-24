@@ -11,6 +11,7 @@ const dock = useDockStore()
 const runtime = useRuntimeStore()
 const input = ref('')
 const feed = ref<HTMLElement>()
+const showScrollAnchor = ref(false)
 const requiresConfirmation = ref(false)
 let refreshTimer: ReturnType<typeof window.setInterval> | undefined
 let resizeStart: { x: number; y: number; width: number; height: number } | undefined
@@ -115,6 +116,16 @@ function isSelectedCandidate(payload: Record<string, unknown>, candidateId: stri
   return String(selected ?? adopted) === candidateId
 }
 
+function scrollToLatest() {
+  feed.value?.scrollTo({ top: feed.value.scrollHeight, behavior: 'smooth' })
+}
+
+function onFeedScroll() {
+  const el = feed.value
+  if (!el) return
+  showScrollAnchor.value = el.scrollHeight - el.scrollTop - el.clientHeight > 200
+}
+
 async function send() {
   const content = input.value
   input.value = ''
@@ -152,8 +163,8 @@ watch(() => [dock.events.length, dock.stream.length], async () => {
   await nextTick()
   const el = feed.value
   if (!el) return
-  // Only auto-scroll if user is near the bottom (within 120px)
   const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120
+  showScrollAnchor.value = false
   if (nearBottom) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
 })
 watch(() => props.projectId, (projectId) => {
@@ -191,12 +202,13 @@ onUnmounted(() => {
       <nav class="dock-filters" aria-label="活动类型">
         <button v-for="item in filters" :key="item.key" :class="{ active: dock.filter === item.key }" @click="dock.filter = item.key">{{ item.label }}</button>
       </nav>
-      <div ref="feed" class="dock-feed" aria-live="polite">
+      <div ref="feed" class="dock-feed" aria-live="polite" @scroll="onFeedScroll">
+        <button v-if="showScrollAnchor" class="scroll-anchor" aria-label="回到底部" title="回到最新消息" @click="scrollToLatest">↓</button>
         <article v-for="event in dock.visibleEvents" :key="event.id" class="dock-event" :class="`event-${event.type}`">
           <span class="event-kind">{{ eventKindLabels[event.type] }}</span><time>{{ new Date(event.occurred_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}</time>
           <strong>{{ eventTitle(event) }}</strong>
           <p v-if="eventFacts(event.payload)" class="event-facts">{{ eventFacts(event.payload) }}</p>
-          <blockquote v-if="event.payload.quote">“{{ (event.payload.quote as Record<string, unknown>).excerpt }}”</blockquote>
+          <blockquote v-if="event.payload.quote">"{{ (event.payload.quote as Record<string, unknown>).excerpt }}"</blockquote>
           <AgentMessage v-if="eventBody(eventTitle(event), event.payload.content)" :text="eventBody(eventTitle(event), event.payload.content)!" />
           <section v-if="creativeCandidates(event.payload).length" class="dock-creative-directions" :class="{ adopted: Boolean(event.payload.candidate) }">
             <article v-for="candidate in creativeCandidates(event.payload)" :key="candidate.id" :class="{ selected: isSelectedCandidate(event.payload, candidate.id) }">
