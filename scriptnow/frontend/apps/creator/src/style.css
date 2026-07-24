@@ -462,3 +462,5 @@ input, textarea, select { width: 100%; border: 1px solid #d8d1c4; border-radius:
 :root[data-theme="dark"] .graph-appearances > strong {
   color: var(--sf-text);
 }
+
+.graph-mode-switch { display: flex; gap: 6px; margin: 0 0 8px; }.graph-mode-switch button { padding: 6px 14px; border: 1px solid #d9d1c3; border-radius: 20px; background: #faf7f0; color: #7a7265; font-size: .78rem; cursor: pointer; }.graph-mode-switch button.active { background: #e8efe7; border-color: #8a9b91; color: #315745; font-weight: 600; }

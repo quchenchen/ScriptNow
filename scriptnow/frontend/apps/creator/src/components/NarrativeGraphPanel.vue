@@ -32,6 +32,7 @@ const selectedType = ref<NarrativeNodeType | 'all'>('all')
 const neighborFocus = ref(true)
 const expanded = ref(false)
 const viewMode = ref<'network' | 'timeline'>('network')
+const graphMode = ref<'source' | 'creative'>('source')
 const evidence = ref<{ chapter: string; label: string; excerpt: string } | null>(null)
 let refreshTimer: number | undefined
 const ui = (zh: string, en: string) => isEnglish.value ? en : zh
@@ -164,14 +165,17 @@ function evidenceLabel(label: string) {
 async function load() {
   loading.value = true; error.value = ''; evidence.value = null
   try {
-    graph.value = await api<GraphResponse>(`/novel/projects/${props.projectId}/narrative-graph`)
+    const endpoint = graphMode.value === 'creative'
+      ? `/novel/projects/${props.projectId}/creative-graph`
+      : `/novel/projects/${props.projectId}/narrative-graph`
+    graph.value = await api<GraphResponse>(endpoint)
     selectedId.value = normalizedNodes.value[0]?.id ?? ''
     neighborFocus.value = normalizedNodes.value.length > 24
     if (['queued', 'running'].includes(graph.value.extraction_status ?? '')) {
       window.clearTimeout(refreshTimer)
       refreshTimer = window.setTimeout(load, 2500)
     }
-  } catch (cause) { error.value = cause instanceof Error ? cause.message : ui('故事图谱暂时无法读取。', 'The story graph is temporarily unavailable.') }
+  } catch (cause) { error.value = cause instanceof Error ? cause.message : ui('图谱暂时无法读取。', 'The graph is temporarily unavailable.') }
   finally {
     loading.value = false
     if (graph.value) await refitGraph()
@@ -228,6 +232,11 @@ onMounted(() => {
   void load()
 })
 watch(() => props.projectId, load)
+function switchGraphMode(mode: 'source' | 'creative') {
+  if (mode === graphMode.value) return
+  graphMode.value = mode
+  void load()
+}
 onUnmounted(() => {
   window.clearTimeout(refreshTimer)
   window.removeEventListener('keydown', handleKeydown)
@@ -237,6 +246,7 @@ onUnmounted(() => {
 <template>
   <section class="narrative-graph-workspace" :class="{ 'graph-expanded': expanded }">
     <header class="graph-heading"><div><p class="eyebrow">{{ ui('创作逻辑 · 素材图谱', 'Creative logic · Source graph') }}</p><h2>{{ ui('看清故事如何彼此牵动。', 'See how the story moves together.') }}</h2><p>{{ ui('从章节脉络进入人物、事件、关系与伏笔；每个结论都可以回到原始素材。', 'Move from chapter flow into characters, events, relationships, and promises, with every conclusion grounded in source evidence.') }}</p></div><div class="graph-heading-actions"><span v-if="graph?.index" class="graph-source">{{ graph.index.source_name }} · v{{ graph.index.version }}</span><button v-if="graph && graph.status !== 'not_built' && graph.extraction_status !== 'ready'" class="primary" :disabled="['queued', 'running'].includes(graph.extraction_status ?? '')" @click="buildSemanticGraph">{{ ['queued', 'running'].includes(graph.extraction_status ?? '') ? ui('正在构建语义图谱…', 'Building semantic graph…') : graph.extraction_status === 'failed' ? ui('重新构建', 'Build again') : ui('构建人物与事件关系', 'Build character and event graph') }}</button></div></header>
+    <nav class="graph-mode-switch"><button :class="{ active: graphMode === 'source' }" @click="switchGraphMode('source')">{{ ui('素材图谱', 'Source Graph') }}</button><button :class="{ active: graphMode === 'creative' }" @click="switchGraphMode('creative')">{{ ui('创作图谱', 'Creative Graph') }}</button></nav>
     <div v-if="loading" class="graph-empty">{{ ui('正在整理故事脉络…', 'Organizing the story logic…') }}</div>
     <div v-else-if="error" class="graph-empty error-banner">{{ error }} <button class="secondary" @click="load">{{ ui('重试', 'Retry') }}</button></div>
     <div v-else-if="graph?.status === 'not_built'" class="graph-empty"><strong>{{ ui('尚未建立素材图谱', 'No source graph yet') }}</strong><span>{{ ui('上传或解析小说素材后，这里会出现章节、人物与事件之间的联系。', 'Upload or parse a novel manuscript to reveal chapter, character, and event connections here.') }}</span></div>

@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 from scriptnow.novel.blueprint import NovelBlueprintError, NovelBlueprintGenerator
 from scriptnow.novel.contracts import NovelBlock
-from scriptnow.novel.creative_graph import CreativeGraphExtractor
+from scriptnow.novel.creative_graph import CreativeGraphExtractor, read_creative_graph
 from scriptnow.novel.delivery import NovelDeliveryError, NovelExportService
 from scriptnow.novel.domain import (
     NovelBlueprintAnchorDraft,
@@ -727,6 +727,24 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
         except NovelHistoryError as error:
             raise HTTPException(status.HTTP_404_NOT_FOUND, str(error)) from error
+
+    @router.get("/creative-graph")
+    async def creative_graph_data(
+        project_id: str,
+        access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
+    ) -> dict[str, object]:
+        await context(access_token)
+        data = await read_creative_graph(database, project_id=project_id)
+        return {
+            "status": "ready" if data["chapters"] else "not_built",
+            "extraction_status": "ready",
+            "chapters": [
+                {"id": ch["chapter_key"], "type": "chapter", "label": ch["title"]}
+                for ch in data["chapters"]
+            ],
+            "nodes": data["nodes"],
+            "edges": data["edges"],
+        }
 
     return router
 

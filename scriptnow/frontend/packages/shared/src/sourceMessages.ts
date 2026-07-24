@@ -502,6 +502,8 @@ export const sourceMessages: Record<string, string> = {
   '设定的': 'the set', '回到底部': 'Back to bottom', '回到最新消息': 'Back to latest', '回到最新': 'Back to latest',
   '基于': 'Based on', '候选 #': 'Candidate #',
   '精简第': 'Condense chapter',
+  '图谱暂时无法读取': 'Graph temporarily unavailable',
+  '素材图谱': 'Source Graph', '创作图谱': 'Creative Graph',
 }
 
 const orderedSourceMessages = Object.entries(sourceMessages).sort(
