@@ -243,6 +243,7 @@ onUnmounted(() => {
         </article>
         <p v-if="!dock.visibleEvents.length" class="dock-empty">这里会显示需要关注的 Agent 回复与创作决定。</p>
       </div>
+      <button v-if="showScrollAnchor" class="scroll-anchor" aria-label="回到底部" title="回到最新消息" @click="scrollToLatest">↓</button>
       <section v-if="dock.waitingRun" class="confirm-card">
         <strong>需要你确认工具调用</strong><p>Agent 请求写入项目工作区。刷新页面后仍可继续处理。</p>
         <div><button :disabled="dock.busy" @click="dock.confirm(projectId, dock.waitingRun!.id, false)">拒绝</button><button class="approve" :disabled="dock.busy" @click="dock.confirm(projectId, dock.waitingRun!.id, true)">允许并继续</button></div>
