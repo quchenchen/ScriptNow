@@ -19,6 +19,7 @@ from sqlalchemy import select
 
 from scriptnow.novel.continuity import latest_effective_revisions
 from scriptnow.novel.contracts import NovelBlock
+from scriptnow.novel.creative_graph import read_creative_graph
 from scriptnow.novel.domain import (
     NovelBlueprintAnchorModel,
     NovelBlueprintModel,
@@ -464,6 +465,7 @@ class NovelChapterGenerator:
                 if source_revision
                 else None
             ),
+            "creative_graph": await read_creative_graph(self.database, project_id=project.id),
         }
 
     @staticmethod
@@ -499,6 +501,13 @@ class NovelChapterGenerator:
             '{"blocks":[{"type":"heading|prose|dialogue|quote|divider","text":"..."}]}. '
             "The first block must be the actual chapter title from StoryMap, not an internal chapter ID.\n"
             f"Project direction: {json.dumps(project.direction, ensure_ascii=False)}\n"
+            "The creative_graph in the writing context is an accumulated knowledge graph of characters, "
+            "relationships, locations, objects, events and their descriptions extracted from earlier chapters. "
+            "Use it to maintain consistency: existing characters must retain their established traits, "
+            "relationships must reflect their current state as of the end of the previous chapter, "
+            "and chapter summaries show what has already happened. "
+            "Do not contradict established facts; when new information is introduced, it should extend or "
+            "complicate the existing graph rather than overwrite it.\n"
             f"Writing context: {json.dumps(context, ensure_ascii=False)}"
         )
 

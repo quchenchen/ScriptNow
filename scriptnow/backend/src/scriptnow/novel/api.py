@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from scriptnow.novel.blueprint import NovelBlueprintError, NovelBlueprintGenerator
 from scriptnow.novel.contracts import NovelBlock
+from scriptnow.novel.creative_graph import CreativeGraphError, CreativeGraphExtractor
 from scriptnow.novel.delivery import NovelDeliveryError, NovelExportService
 from scriptnow.novel.domain import (
     NovelBlueprintAnchorDraft,
@@ -478,6 +479,24 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
                 tenant_id=str(auth_context.tenant_id),
                 project_id=project_id,
                 revision_id=revision_id,
+            )
+            # Trigger creative graph extraction in background
+            import asyncio
+            chapter = next(
+                (b for b in list(item.blocks) if isinstance(b, dict) and b.get("type") == "heading"),
+                None,
+            )
+            chapter_title = str(chapter.get("text", "")) if chapter else chapter_id
+            blocks = [dict(b) if isinstance(b, dict) else {"type": "prose", "text": str(b)} for b in list(item.blocks)]
+            asyncio.create_task(
+                creative_graph.extract_chapter(
+                    tenant_id=str(auth_context.tenant_id),
+                    project_id=project_id,
+                    chapter_id=item.chapter_id,
+                    chapter_title=chapter_title,
+                    blocks=blocks,
+                    idempotency_key=f"adopt:{revision_id}",
+                )
             )
             return AdoptResponse(id=item.id, status="adopted")
         except (NovelConflict, NovelDomainError) as error:
