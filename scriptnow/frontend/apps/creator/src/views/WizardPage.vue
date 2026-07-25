@@ -25,6 +25,8 @@ const volumeTwo = ref<number | null>(null)
 const volumeThree = ref<number | null>(null)
 const novelChapterTargetWords = ref<number | null>(null)
 const submitting = ref(false)
+const translationSourceName = ref('')
+const translationTarget = ref('ja-JP')
 const projects = useProjectsStore()
 const router = useRouter()
 const genrePresets = computed(() =>
@@ -74,6 +76,24 @@ function toggleGenre(value: string) {
 }
 
 async function finish() {
+  if (medium.value === 'translation') {
+    // Call translation API directly
+    submitting.value = true
+    try {
+      const resp = await fetch('/api/translation/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          source_project_id: (projects.items.find(p => p.name === translationSourceName.value) || {} as any).id || '',
+          target_language: translationTarget.value,
+          translation_mode: 'faithful',
+        }),
+      })
+      if (!resp.ok) throw new Error('translation creation failed')
+      const data = await resp.json()
+      return router.push(`/projects/${data.id}`)
+    } finally { submitting.value = false }
+  }
   if (
     !medium.value ||
     !sourceMode.value ||
@@ -126,6 +146,24 @@ async function finish() {
             <strong>{{ item[1] }}</strong><span>{{ item[2] }}</span>
           </button>
         </div>
+      </div>
+      <div v-else-if="step === 2 && medium === 'translation'" class="form-stack">
+        <p class="eyebrow">02 · 选择源作品</p><h2>要翻译哪部小说？</h2>
+        <div class="choice-grid">
+          <button v-for="project in projects.items.filter(p => p.medium === 'novel')" :key="project.id" class="choice-card" :class="{ selected: translationSourceName === project.name }" @click="translationSourceName = project.name">
+            <strong>{{ project.name }}</strong><span>小说 · 章节已就绪</span>
+          </button>
+        </div>
+        <p v-if="projects.items.filter(p => p.medium === 'novel').length === 0" class="muted">暂无可翻译的原创小说。请先创建一部。</p>
+        <label style="margin-top:12px">目标语言
+          <select v-model="translationTarget">
+            <option value="ja-JP">日本語</option>
+            <option value="ko-KR">한국어</option>
+            <option value="en-US">English</option>
+            <option value="zh-CN">简体中文</option>
+            <option value="zh-TW">繁體中文</option>
+          </select>
+        </label>
       </div>
       <div v-else-if="step === 2 && medium !== 'translation'">
         <p class="eyebrow">02 · 故事来源</p><h2>从空白开始，还是让素材重生？</h2>
@@ -188,6 +226,15 @@ async function finish() {
           <input type="file" accept=".txt,.pdf,.docx" required @change="sourceFile = ($event.target as HTMLInputElement).files?.[0] ?? null" />
           <small class="muted">支持 TXT、PDF、DOCX；内容会经过类型识别和隔离检查。</small>
         </label>
+      </div>
+      <div v-else-if="medium === 'translation'" class="review-panel">
+        <p class="eyebrow">04 · 确认种子</p><h2>{{ translationSourceName || '选择源作品' }}</h2>
+        <dl>
+          <div><dt>形态</dt><dd>翻译（直译）</dd></div>
+          <div><dt>源作品</dt><dd>{{ translationSourceName || '未选择' }}</dd></div>
+          <div><dt>目标语言</dt><dd>{{ ({ 'ja-JP': '日本語', 'ko-KR': '한국어', 'en-US': 'English', 'zh-CN': '简体中文', 'zh-TW': '繁體中文' } as Record<string, string>)[translationTarget || 'ja-JP'] }}</dd></div>
+          <div><dt>翻译模式</dt><dd>忠实直译</dd></div>
+        </dl>
       </div>
       <div v-else class="review-panel">
         <p class="eyebrow">04 · 确认种子</p><h2>{{ name }}</h2>
