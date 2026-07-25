@@ -41,6 +41,7 @@ const genre = computed(() =>
 const canContinue = computed(
   () => {
     if (step.value === 1) return medium.value !== null
+    if (medium.value === 'translation') return true  // skip to submit
     if (step.value === 2) return sourceMode.value !== null
     if (step.value === 3) {
       return Boolean(
@@ -126,7 +127,7 @@ async function finish() {
           </button>
         </div>
       </div>
-      <div v-else-if="step === 2">
+      <div v-else-if="step === 2 && medium !== 'translation'">
         <p class="eyebrow">02 · 故事来源</p><h2>从空白开始，还是让素材重生？</h2>
         <div class="choice-grid">
           <button v-for="item in ([['original','原创','从一句设想建立完整世界'],['adaptation','改编','上传素材并保留引用定位']] as const)" :key="item[0]" class="choice-card" :class="{ selected: sourceMode === item[0] }" @click="sourceMode = item[0]">
@@ -134,7 +135,7 @@ async function finish() {
           </button>
         </div>
       </div>
-      <div v-else-if="step === 3" class="form-stack">
+      <div v-else-if="step === 3 && medium !== 'translation'" class="form-stack">
         <p class="eyebrow">03 · 创作方向</p><h2>给创作团队一枚指南针。</h2>
         <label>项目名称<input v-model="name" maxlength="200" placeholder="例如：雾港来信" /></label>
         <fieldset class="genre-picker">
