@@ -6,6 +6,7 @@ import { PhMoon, PhSun } from '@phosphor-icons/vue'
 
 import { useLayoutStore } from '../stores/layout'
 import { useProjectsStore } from '../stores/projects'
+import NovelDeliveryPanel from './NovelDeliveryPanel.vue'
 
 const props = defineProps<{ title: string; eyebrow?: string }>()
 const route = useRoute()
@@ -15,6 +16,11 @@ const layout = useLayoutStore()
 const { isEnglish, t, toggleLocale } = useLocale()
 const { resolvedTheme, toggleTheme } = useTheme()
 const dragging = ref(false)
+const showExport = ref(false)
+const showHistory = ref(false)
+
+function openExport() { showExport.value = true }
+function openHistory() { showHistory.value = true }
 const englishPageCopy: Record<string, string> = {
   '你的故事': 'Your stories', '创作团队': 'Creative team', '作品包装': 'Work packaging', '账户中心': 'Account',
   '创作现场': 'Creative studio', '种下新故事': 'Plant a new story', '创作项目': 'Creative projects',
@@ -68,7 +74,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
       <template v-if="project">
         <nav class="shell-nav" aria-label="创作导航">
           <p>{{ t('creator.creation') }}</p><button :class="{ active: layout.studioView === 'ideation' }" @click="layout.setStudioView('ideation')">◇ {{ t('creator.ideation') }}</button><button :class="{ active: layout.studioView === 'blueprint' }" @click="layout.setStudioView('blueprint')">▦ {{ t('creator.blueprint') }}</button><button v-if="project.medium === 'novel'" :class="{ active: layout.studioView === 'graph' }" @click="layout.setStudioView('graph')">◎ {{ t('creator.storyGraph') }}</button><button :class="{ active: layout.studioView === 'storymap' }" @click="layout.setStudioView('storymap')">⊞ {{ t('creator.storyMap') }}</button><button :class="{ active: layout.studioView === 'writer' }" @click="layout.setStudioView('writer')">▸ {{ project.medium === 'script' ? t('creator.sceneWriting') : t('creator.chapterWriting') }}</button>
-          <p>{{ t('creator.project') }}</p><RouterLink to="/">◈ {{ t('creator.dashboard') }}</RouterLink><RouterLink :to="`/projects/${projectId}/agents`">◎ {{ t('creator.team') }}</RouterLink><RouterLink :to="`/projects/${projectId}/packaging`">▣ {{ t('creator.packaging') }}</RouterLink><button disabled>↓ {{ t('creator.export') }}</button><button disabled>↺ {{ t('creator.history') }}</button>
+          <p>{{ t('creator.project') }}</p><RouterLink to="/">◈ {{ t('creator.dashboard') }}</RouterLink><RouterLink :to="`/projects/${projectId}/agents`">◎ {{ t('creator.team') }}</RouterLink><RouterLink :to="`/projects/${projectId}/packaging`">▣ {{ t('creator.packaging') }}</RouterLink><button @click="openExport">↓ {{ t('creator.export') }}</button><button @click="openHistory">↺ {{ t('creator.history') }}</button>
         </nav>
         <RouterLink to="/new" class="create-project-btn">✦ {{ t('creator.create') }}</RouterLink>
       </template>
@@ -88,5 +94,22 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
         <slot />
       </main>
     </section>
+    <Teleport to="body">
+      <div v-if="showExport" class="modal-overlay" @click.self="showExport = false">
+        <div class="modal-panel" style="max-width:680px">
+          <header><h2>导出作品</h2><button @click="showExport = false">✕</button></header>
+          <NovelDeliveryPanel v-if="project?.medium === 'novel'" :project-id="projectId" />
+          <p v-else class="muted" style="padding:20px">剧本导出即将推出。</p>
+        </div>
+      </div>
+      <div v-if="showHistory" class="modal-overlay" @click.self="showHistory = false">
+        <div class="modal-panel" style="max-width:680px">
+          <header><h2>历史版本</h2><button @click="showHistory = false">✕</button></header>
+          <div style="padding:20px">
+            <p class="muted">项目快照功能即将推出。当前可前往包装页面导出完整作品。</p>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
