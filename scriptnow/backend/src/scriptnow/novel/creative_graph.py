@@ -393,7 +393,7 @@ async def read_creative_graph(database: Database, *, project_id: str) -> dict[st
             {
                 "key": n.node_key,
                 "type": n.node_type,
-                "name": n.name,
+                "name": n.name if hasattr(n, "name") else n.node_key,
                 "aliases": list(n.aliases),
                 "description": n.description,
             }
@@ -403,8 +403,8 @@ async def read_creative_graph(database: Database, *, project_id: str) -> dict[st
             {
                 "key": e.edge_key,
                 "type": e.edge_type,
-                "source": e.source_node_key,
-                "target": e.target_node_key,
+                "source": e.source_node_id,
+                "target": e.target_node_id,
                 "description": e.description,
                 "confidence": e.confidence,
                 "inference": e.inference,
