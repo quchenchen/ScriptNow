@@ -716,7 +716,7 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
         except NovelDeliveryError as error:
             raise HTTPException(status.HTTP_404_NOT_FOUND, str(error)) from error
 
-    @router.post("/exports")
+    @router.post("/projects/{project_id}/exports")
     async def create_export(
         project_id: str,
         body: NovelExportRequest,
@@ -756,7 +756,7 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
                 headers={"Content-Disposition": f'attachment; filename="novel-{manifest.id}.docx"'},
             )
 
-    @router.post("/exports/packaged")
+    @router.post("/projects/{project_id}/exports/packaged")
     async def create_packaged_export(
         project_id: str,
         body: NovelExportRequest,
