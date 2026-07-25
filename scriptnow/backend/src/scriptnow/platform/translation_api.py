@@ -196,6 +196,7 @@ def create_translation_router(
                 status=NovelRevisionStatus.ADOPTED,
                 source="translation",
                 revision_number=1,
+                idempotency_key=idem_key,
             )
             session.add(rev)
             await session.flush()
