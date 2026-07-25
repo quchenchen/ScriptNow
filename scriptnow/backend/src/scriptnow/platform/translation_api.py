@@ -1,17 +1,18 @@
 """Translation project API — faithful literary translation."""
 
+from typing import Annotated
+
 from fastapi import APIRouter, Cookie, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
-from typing import Annotated
 
-from scriptnow.platform.auth_api import ACCESS_COOKIE
+from scriptnow.novel.domain import NovelDocumentRevisionModel, NovelRevisionStatus
 from scriptnow.platform.auth import AuthService
+from scriptnow.platform.auth_api import ACCESS_COOKIE
+from scriptnow.platform.config import Settings
 from scriptnow.platform.database import Database
 from scriptnow.platform.models import ProjectMedium, ProjectModel
 from scriptnow.platform.translation import FaithfulTranslationService
-from scriptnow.platform.config import Settings
-from scriptnow.novel.domain import NovelDocumentRevisionModel, NovelRevisionStatus
 
 
 class CreateTranslationRequest(BaseModel):
