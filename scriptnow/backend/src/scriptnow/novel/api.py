@@ -778,7 +778,7 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
                     ))
                 return {
                     "status": "not_built",
-                    "extraction_status": extraction,
+                    "extraction_status": "running",
                     "chapters": [],
                     "nodes": [],
                     "edges": [],
