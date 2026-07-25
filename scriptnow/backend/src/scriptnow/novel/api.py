@@ -780,7 +780,7 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
                     "nodes": [],
                     "edges": [],
                 }
-                extraction = "running" if (graph_queue._running or graph_queue._jobs) else ("ready" if data["chapters"] else "not_built")
+                extraction = "ready" if data["chapters"] else ("running" if (graph_queue._running or graph_queue._jobs) else "not_built")
         return {
             "status": "ready" if data["chapters"] else "not_built",
             "extraction_status": extraction,
