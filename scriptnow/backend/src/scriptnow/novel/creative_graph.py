@@ -12,7 +12,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 
 from json_repair import loads as repair_json
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
@@ -187,20 +186,13 @@ class CreativeGraphExtractor:
         if run.status == RunStatus.QUEUED:
             await self.runs.transition(tenant_id=tenant_id, run_id=run.id, target=RunStatus.RUNNING)
 
-        # Build the extraction source: block index → ordinal
-        source_blocks: list[dict[str, object]] = []
-        ordinal = 0
-        for _idx, block in enumerate(blocks):
-            block_type = str(block.get("type") or "prose")
-            text = str(block.get("text") or "")
-            # Only include readable narrative blocks (skip dividers without text)
-            if block_type == "divider" and not text.strip():
-                continue
-            source_blocks.append({"ordinal": ordinal, "block_type": block_type, "text": text})
-            ordinal += 1
-
-        if not source_blocks:
-            raise CreativeGraphError("chapter contains no extractable narrative blocks")
+        # Build full chapter text (not individual blocks)
+        chapter_text = "\n\n".join(
+            str(b.get("text") or "") for b in blocks
+            if str(b.get("type") or "prose") != "divider" or str(b.get("text") or "").strip()
+        )
+        if not chapter_text.strip():
+            raise CreativeGraphError("chapter contains no extractable narrative text")
 
         try:
             result = await self.runtime.generate(
@@ -210,20 +202,20 @@ class CreativeGraphExtractor:
                 stage_override="source-analysis",
                 explicit_skill_keys=("novel-build-story-graph",),
                 content=(
-                    "Extract an evidence-grounded narrative graph for this chapter. "
-                    "Return JSON only: "
-                    '{"chapter_title":"...","chapter_summary":"what changes and remains unresolved",'
-                    f'"nodes":[{{"key":"type:stable-key","type":"{"|".join(NODE_TYPE_VALUES)}",'
-                    '"name":"...","aliases":[],"description":"...","evidence_ordinals":[0]}}],'
-                    f'"edges":[{{"key":"...","type":"{"|".join(RELATION_TYPE_VALUES)}",'
-                    '"source":"node-key","target":"node-key","description":"...",'
-                    '"evidence_ordinals":[0],"confidence":90,"inference":false}]}. '
-                    "Every ordinal must be valid. Do not quote long prose.\n"
-                    + json.dumps(source_blocks, ensure_ascii=False)
+                    f"Read the following chapter titled「{chapter_title}」and extract a narrative graph. "
+                    "Return JSON only with this exact schema:\n"
+                    '{"chapter_title":"...","chapter_summary":"one-paragraph summary of what happens and what remains unresolved",'
+                    f'"nodes":[{{"key":"type:slug","type":"{"|".join(NODE_TYPE_VALUES)}",'
+                    '"name":"display name","aliases":[],"description":"one sentence","evidence_ordinals":[0]}}],'
+                    f'"edges":[{{"key":"rel-slug","type":"{"|".join(RELATION_TYPE_VALUES)}",'
+                    '"source":"node-key","target":"node-key","description":"one sentence",'
+                    '"evidence_ordinals":[0],"confidence":90,"inference":false}]}.\n'
+                    "Use evidence_ordinals=[0] for all entries (only one paragraph source).\n\n"
+                    + chapter_text
                 ),
                 context_snapshot={"project_id": project_id, "operation": "creative_graph", "chapter_id": chapter_id},
             )
-            payload = self._parse(result.text, allowed_ordinals=set(range(len(source_blocks))))
+            payload = self._parse(result.text, allowed_ordinals={0})
             await self._persist(tenant_id, project_id, chapter_id, chapter_title, payload)
             await self.runs.transition(tenant_id=tenant_id, run_id=run.id, target=RunStatus.SUCCEEDED)
         except (AgentRuntimeError, CreativeGraphError, NarrativeGraphError, ValidationError, ValueError) as error:
