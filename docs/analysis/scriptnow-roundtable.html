@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head><meta charset="UTF-8"><style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0f172a;color:#e2e8f0;font-family:system-ui;padding:40px;max-width:1100px;margin:auto}
+h1{font-size:22px;margin-bottom:8px}
+.subtitle{color:#64748b;font-size:12px;margin-bottom:32px}
+.roundtable{display:grid;gap:16px;margin-bottom:32px}
+.speaker{background:#1e293b;border-radius:10px;padding:20px;border-left:4px solid #334155}
+.speaker.api{border-left-color:#3b82f6}
+.speaker.ux{border-left-color:#ec4899}
+.speaker.agent{border-left-color:#10b981}
+.speaker.arch{border-left-color:#f59e0b}
+.speaker.verdict{border-left-color:#ef4444;background:#1e1e30}
+.speaker h3{font-size:14px;margin-bottom:8px}
+.speaker h3 .role{font-weight:400;color:#94a3b8;font-size:12px}
+.speaker p{color:#94a3b8;font-size:12px;line-height:1.7}
+.speaker .highlight{color:#e2e8f0;font-weight:600}
+.conclusion{background:linear-gradient(135deg,#1e1e30,#1e293b);border-radius:12px;padding:24px;border:1px solid #334155;margin-top:24px}
+.conclusion h2{font-size:16px;margin-bottom:16px}
+.conclusion table{width:100%;border-collapse:collapse;font-size:12px}
+.conclusion th{text-align:left;padding:8px 12px;background:#0f172a;color:#94a3b8;border-bottom:1px solid #334155}
+.conclusion td{padding:8px 12px;border-bottom:1px solid #1e293b}
+.tag{display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600;margin-right:4px}
+.tag.api{background:#3b82f620;color:#3b82f6}
+.tag.agent{background:#10b98120;color:#10b981}
+.tag.ux{background:#ec489920;color:#ec4899}
+.tag.arch{background:#f59e0b20;color:#f59e0b}
+code{background:#0f172a;padding:1px 5px;border-radius:3px;font-size:11px;color:#10b981}
+blockquote{color:#64748b;font-size:11px;font-style:italic;margin:8px 0 0;padding-left:12px;border-left:2px solid #334155}
+</style></head>
+<body>
+
+<h1>圆桌讨论：ScriptNow API 测试发现</h1>
+<p class="subtitle">参与者：API 工程师 · 交互体验设计师 · Agent 协作专家 · 系统架构师 &nbsp;|&nbsp; 2026-07-25</p>
+
+<div class="roundtable">
+
+<!-- API Engineer -->
+<div class="speaker api">
+<h3>🔧 林工 <span class="role">— API 可靠性工程师</span></h3>
+<p>我先说最直接的。<span class="highlight">API 的健壮性是所有上层体验的底座。</span>这次测试暴露了三个模式级问题：</p>
+<p><strong>1. 静默失败</strong> — StoryMap 生成时 volume 参数为空，API 返回 200 但 volumes=[]。前端永远锁死在"等 StoryMap 就绪"。这是最差的一类 bug，因为没有任何错误信号。</p>
+<p><strong>2. 幽灵完成</strong> — 6 次生成请求中 3 次客户端超时，但后台实际完成了。API 应该返回异步任务引用（run_id），而不是让客户端盲目猜测"它到底完了没"。</p>
+<p><strong>3. 字段类型不做自愈</strong> — volume_one 传 1 报 422，传 "1" 才 200。这不是 Schema 校验的问题——direction 是自由 JSON，应该在入口做 normalize。</p>
+<p>我的建议：<span class="highlight">强制所有异步操作用 run_id 模式</span>，加 direction normalize。这两个修了，80% 的 API 健壮性问题就没了。</p>
+</div>
+
+<!-- UX Designer -->
+<div class="speaker ux">
+<h3>🎨 苏然 <span class="role">— 交互体验设计师</span></h3>
+<p>林的建议很好，但我要补充一个视角：<span class="highlight">人不是通过 API 和 Agent 交互的。</span>API 修到完美，也不等于交互体验好。</p>
+<p><strong>4. Agent 生成过程中用户是完全盲的。</strong>2-3 分钟的等待时间里，前端连一个"正在构思第 2 章节奏节点…"的状态都没有。不是技术问题——<code>run_stream_events</code> 表里已经有事件数据，只是前端没消费。</p>
+<p><strong>5. 反馈闭环不存在。</strong>Writer 写完一章，Reviewer 给出质量报告——但报告永远不回到 Writer 手里。用户必须手动复制 Reviewer 的评语粘贴到 Writer 的 feedback 框。这违背了"Agent 协作"的核心理念。</p>
+<p><strong>6. 采纳操作无确认。</strong>点"采纳"后候选直接变成了已采纳，但没有任何视觉信号告知用户"采纳后发生了什么"——创作图谱开始提取了吗？出口笔记生成了吗？叙事状态更新了吗？这些对用户应该是透明的。</p>
+<p>我的建议：<span class="highlight">修复反馈闭环 + 让 Agent 内部事件对用户可见</span>。不是做复杂的仪表盘，是让用户知道"Agent 刚才做了什么决定，为什么"。</p>
+</div>
+
+<!-- Agent Interaction Specialist -->
+<div class="speaker agent">
+<h3>🤖 陈默 <span class="role">— Agent 交互机制专家</span></h3>
+<p>苏然说到关键了。我现在从 Agent 协作的角度补充<span class="highlight">人-Agent 交互的欠账。</span></p>
+<p><strong>7. Writer 不知道 Reviewer 说了什么。</strong>这不仅是 UX 问题——它是整个协作架构的断层。Reviewer 产出的 quality_report 存到了数据库，但 Writer 的 <code>_context()</code> 里没有任何字段引用它。相当于团队里有人写了代码审查意见，但没人告诉写代码的人。</p>
+<p><strong>8. 叙事状态是隔离的。</strong>我们做的 narrative_state 机制是对的——钩子追踪、特质累积——但它在 Writer 的 context 里是静态文本。Writer 不能主动查询"我上次埋的钩子哪些该收了"。它是一个被动接收者。</p>
+<p><strong>9. 用户反馈被视为一次性指令。</strong>用户在 AgentDock 里说"这一章节奏太慢了"，这句话只影响当次生成，不被持久化为 Agent 的记忆。下次生成时 Agent 完全忘了这个偏好。如果用户连续三次说"节奏太快"，Agent 应该学到这个倾向。</p>
+<p>我的建议：<span class="highlight">connect Reviewer → Writer（质量闭环），让叙事状态成为可查询的服务而非静态文本，把用户反馈存为持久化 Agent 偏好。</span></p>
+</div>
+
+<!-- System Architect -->
+<div class="speaker arch">
+<h3>🏛 王维 <span class="role">— 系统架构师</span></h3>
+<p>三位说得都对，我得拉回来看架构约束。</p>
+<p>林工提的异步模式用 run_id——技术上完全可行，<code>project_runs</code> 表和 <code>RunCoordinator</code> 已经存在，只是生成端点没接入。工作量约 40 行。</p>
+<p>苏然提的事可见性——<code>run_stream_events</code> 表已经有 <code>conversation</code>/<code>node</code>/<code>system</code>/<code>terminal</code> 事件，前端只需要一个 <code>EventSource</code> 就能消费。工作量约 20 行。</p>
+<p>陈默提的 Reviewer→Writer 闭环——<code>get_last_quality_report</code> 函数已经写好了（在 writer_tools.py），但 DeepSeek v4-pro 不支持可靠的工具调用所以没用上。<span class="highlight">我们有两条路：换一个支持函数调用的模型；或者把质量报告预计算为文本注入 context。</span>我倾向后者——改动最小，效果立竿见影。</p>
+<p>但有个硬约束：<span class="highlight">DeepSeek 并发问题和 32K 上下文限制是同一个根的。</span>我们现在的 context 已经很挤了（72K tokens），再加质量报告 + 叙事状态会压垮压缩机制。所以必须在加功能前先做<span class="highlight">上下文分层——热数据（当前章/方向/前章摘要）vs 冷数据（角色图谱/Review 报告/钩子列表）——冷数据按需注入而非全量塞进 prompt。</span></p>
+<p>我的建议：<span class="highlight">分两步走。第一步：Reviewer→Writer 闭环 + 上下文冷热分层。第二步：异步模式 + 进度可见性 + Agent 反馈学习。</span></p>
+</div>
+
+<!-- Veredict -->
+<div class="speaker verdict">
+<h3>⚖️ 圆桌结论 <span class="role">— 共识方案</span></h3>
+
+<table>
+<tr><th>优先级</th><th>问题</th><th>类别</th><th>共识方案</th></tr>
+<tr>
+  <td><strong>P0</strong></td>
+  <td>静默失败 + 幽灵完成 + 字段类型</td>
+  <td><span class="tag api">API</span></td>
+  <td>已修复 ✅ (direction normalize + StoryMap 默认值 + 蓝图 fallback)</td>
+</tr>
+<tr>
+  <td><strong>P0</strong></td>
+  <td>Reviewer → Writer 闭环断裂</td>
+  <td><span class="tag agent">Agent</span> <span class="tag ux">UX</span></td>
+  <td>在 Writer._context 中注入上一章 quality_report 的阻塞级发现作为 "注意事项" 文本</td>
+</tr>
+<tr>
+  <td><strong>P0</strong></td>
+  <td>上下文冷热分层</td>
+  <td><span class="tag arch">Arch</span></td>
+  <td>热层: direction + chapter beat + 前章摘要；冷层: 角色图谱/Review/钩子 — 控制在 5K token 内紧凑注入</td>
+</tr>
+<tr>
+  <td><strong>P1</strong></td>
+  <td>生成过程不可见</td>
+  <td><span class="tag ux">UX</span></td>
+  <td>前端消费 run_stream_events（已有），Dock 面板显示 Agent 当前动作</td>
+</tr>
+<tr>
+  <td><strong>P1</strong></td>
+  <td>异步模式 run_id</td>
+  <td><span class="tag api">API</span></td>
+  <td>生成类端点支持 ?async=true 返回 run_id，前端轮询状态</td>
+</tr>
+<tr>
+  <td><strong>P2</strong></td>
+  <td>用户反馈持久化学习</td>
+  <td><span class="tag agent">Agent</span></td>
+  <td>连续同类反馈触发偏好标记，存入 Agent 持久化偏好</td>
+</tr>
+<tr>
+  <td><strong>P2</strong></td>
+  <td>采纳后采纳信号透明化</td>
+  <td><span class="tag ux">UX</span></td>
+  <td>Adopt 后显示触发的事件: "图谱提取中 / 出口笔记已生成 / 叙事状态已更新"</td>
+</tr>
+</table>
+
+<blockquote>
+共识：API 健壮性（P0 的三个问题）是地基，已修复。下一步的核心矛盾是人-Agent 交互中的三个断层——Review 闭环断裂、上下文挤压 Agent 记忆、Agent 决策对用户不可见。修复顺序：闭环 → 分层 → 可见性 → 学习。
+</blockquote>
+</div>
+
+</div>
+
+</body></html>

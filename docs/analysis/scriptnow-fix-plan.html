@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head><meta charset="UTF-8"><style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0f172a;color:#e2e8f0;font-family:system-ui;padding:40px;max-width:1000px;margin:auto}
+h1{font-size:22px;margin-bottom:24px}
+h2{font-size:15px;color:#94a3b8;margin:32px 0 12px;border-bottom:1px solid #1e293b;padding-bottom:8px}
+h3{font-size:13px;color:#e2e8f0;margin:16px 0 4px}
+table{width:100%;border-collapse:collapse;font-size:13px;margin:12px 0 20px}
+th{text-align:left;padding:8px 12px;background:#1e293b;color:#94a3b8;font-weight:600;border-bottom:1px solid #334155}
+td{padding:8px 12px;border-bottom:1px solid #1e293b;vertical-align:top}
+code{background:#1e293b;padding:1px 6px;border-radius:3px;font-size:12px;color:#10b981}
+pre{background:#1e293b;padding:12px;border-radius:8px;font-size:12px;line-height:1.6;overflow-x:auto;margin:8px 0}
+.red{color:#ef4444}
+.yellow{color:#f59e0b}
+.green{color:#10b981}
+p{color:#94a3b8;font-size:13px;line-height:1.7;margin:6px 0}
+ul{margin:4px 0 8px 20px;color:#94a3b8;font-size:12px}
+li{line-height:1.6}
+.priority{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
+.p0{background:#ef444420;color:#ef4444}
+.p1{background:#f59e0b20;color:#f59e0b}
+.p2{background:#3b82f620;color:#3b82f6}
+</style></head>
+<body>
+
+<h1>修复方案</h1>
+
+<h2><span class="priority p0">P0</span> StoryMap 空卷生成</h2>
+
+<h3>方案</h3>
+<p>后端在 StoryMap 生成前检查 <code>creation_settings</code>，值缺失时使用默认参数，不静默生成空卷。</p>
+
+<pre># api.py — NovelStoryMapGenerator.generate() 入口处
+if not (project.direction.get("volume_one") and project.direction.get("volume_two")):
+    raise HTTPException(400, "请先设置卷数和每卷章节数")
+
+# 或更温和的方式：补默认值
+direction["volume_one"] = direction.get("volume_one") or "1"
+direction["volume_two"] = direction.get("volume_two") or "3"
+direction["chapter_target_words"] = direction.get("chapter_target_words") or "2000"</pre>
+
+<table>
+<tr><th>文件</th><th>改动量</th><th>风险</th></tr>
+<tr><td><code>api.py</code> StoryMap generate 入口</td><td>+5行</td><td>低</td></tr>
+</table>
+
+<h2><span class="priority p0">P0</span> 蓝图采纳 409</h2>
+
+<h3>方案</h3>
+<p>Blueprint 候选在生成完成到客户端采纳之间有竞态。加一个重试缓冲或检查候选的实际状态。</p>
+
+<pre># api.py — adopt endpoint
+candidate = await session.get(BlueprintCandidate, candidate_id)
+if candidate is None:
+    # 重新查询最新候选（可能 ID 已变更）
+    candidate = (await session.scalars(
+        select(BlueprintCandidate)
+        .where(BlueprintCandidate.project_id == project_id)
+        .order_by(BlueprintCandidate.created_at.desc()).limit(1)
+    )).one_or_none()
+    if candidate is None:
+        raise HTTPException(409, "...")</pre>
+
+<table>
+<tr><th>文件</th><th>改动量</th><th>风险</th></tr>
+<tr><td><code>api.py</code> adopt_blueprint 端点</td><td>+8行</td><td>中（可能引入不一致行为）</td></tr>
+</table>
+
+<h2><span class="priority p0">P0</span> Cookie 过期</h2>
+
+<h3>方案</h3>
+<p>延长 access_token 有效期到 60 分钟，或添加 refresh_token 机制。</p>
+
+<pre># config.yaml 或 Settings
+auth:
+  access_token_expire_minutes: 60  # 原 15 分钟</pre>
+
+<table>
+<tr><th>文件</th><th>改动量</th><th>风险</th></tr>
+<tr><td><code>config.yaml</code> / Settings</td><td>1行</td><td>低（安全影响需确认）</td></tr>
+</table>
+
+<h2><span class="priority p1">P1</span> API 超时但后台成功</h2>
+
+<h3>方案</h3>
+<p>所有生成类端点改为异步模式：POST 立即返回 <code>run_id</code>，客户端通过 <code>GET /runs/{run_id}</code> 轮询状态。不改变已有 API 签名，加新端点。</p>
+
+<pre># 新端点
+GET /projects/{id}/runs/{run_id} → {"status":"running|succeeded|failed", "result":...}
+
+# 现有端点保持兼容（阻塞模式），加 query param 支持异步
+POST /.../generate?async=true → {"run_id":"xxx", "status":"accepted"}</pre>
+
+<table>
+<tr><th>文件</th><th>改动量</th><th>风险</th></tr>
+<tr><td><code>api.py</code> + <code>agent_runtime.py</code></td><td>~40行</td><td>中</td></tr>
+</table>
+
+<h2><span class="priority p1">P1</span> 字段类型强制 string</h2>
+
+<h3>方案</h3>
+<p><code>project.direction</code> 中的数值字段接受 int 并自动转为 string。在 <code>create_project</code> 入口处做标准化。</p>
+
+<pre># api.py — create_project
+direction = body.direction or {}
+for key in ("volume_one", "volume_two", "chapter_target_words", "target_length"):
+    if key in direction and not isinstance(direction[key], str):
+        direction[key] = str(direction[key])</pre>
+
+<table>
+<tr><th>文件</th><th>改动量</th><th>风险</th></tr>
+<tr><td><code>api.py</code> create_project</td><td>+4行</td><td>极低</td></tr>
+</table>
+
+<h2><span class="priority p1">P1</span> 生成过程零可见性</h2>
+
+<h3>方案</h3>
+<p>利用已有的 <code>run_stream_events</code> 表，在前端 Dock 面板中显示实时进度。后端无需改（已有事件流），前端加 <code>EventSource</code> 连接。</p>
+
+<table>
+<tr><th>文件</th><th>改动量</th><th>风险</th></tr>
+<tr><td><code>AgentDock.vue</code> + <code>api.py</code> events 端点</td><td>~30行</td><td>低</td></tr>
+</table>
+
+<h2><span class="priority p1">P1</span> DeepSeek 并发争抢</h2>
+
+<h3>方案</h3>
+<p>在 <code>billing.py</code> 或 AgentRuntime 中添加单 Provider 并发限制（如 max_concurrent=2），超出时排队。不阻塞不同 Provider 的请求。</p>
+
+<pre># agent_runtime.py
+import asyncio
+_provider_semaphores: dict[str, asyncio.Semaphore] = {}
+
+async def _acquire_provider_slot(provider: str):
+    sem = _provider_semaphores.setdefault(provider, asyncio.Semaphore(2))
+    await sem.acquire()
+    return sem</pre>
+
+<table>
+<tr><th>文件</th><th>改动量</th><th>风险</th></tr>
+<tr><td><code>billing.py</code> 或 <code>agent_runtime.py</code></td><td>~15行</td><td>中</td></tr>
+</table>
+
+<h2><span class="priority p2">P2</span> 项目创建幂等 / 中文文件名编码 / 导出进度</h2>
+
+<p>三个问题小，可在一个 PR 中解决：</p>
+<ul>
+  <li><strong>幂等</strong>: create_project 加 <code>idempotency_key</code> 参数（复用已有模式）</li>
+  <li><strong>URL 编码文件名</strong>: Content-Disposition 用 <code>filename*=UTF-8''...</code> 格式</li>
+  <li><strong>导出异步</strong>: 15+ 章文本生成时可返回 <code>202 Accepted</code> + <code>Location</code> 头</li>
+</ul>
+
+<h2 style="margin-top:32px">实施建议</h2>
+
+<table>
+<tr><th>优先级</th><th>问题数</th><th>预估总改动</th><th>建议</th></tr>
+<tr><td><span class="priority p0">P0</span></td><td>3</td><td>~15行</td><td class="green">立即修复</td></tr>
+<tr><td><span class="priority p1">P1</span></td><td>4</td><td>~90行</td><td class="yellow">本周内</td></tr>
+<tr><td><span class="priority p2">P2</span></td><td>3</td><td>~20行</td><td>下个 sprint</td></tr>
+</table>
+
+</body></html>

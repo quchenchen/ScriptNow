@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head><meta charset="UTF-8"><style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0f172a;color:#e2e8f0;font-family:system-ui;padding:40px;max-width:1000px;margin:auto}
+h1{font-size:22px;margin-bottom:24px}
+h2{font-size:15px;color:#94a3b8;margin:32px 0 12px;border-bottom:1px solid #1e293b;padding-bottom:8px}
+table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:20px}
+th{text-align:left;padding:10px 12px;background:#1e293b;color:#94a3b8;font-weight:600;border-bottom:1px solid #334155}
+td{padding:10px 12px;border-bottom:1px solid #1e293b;vertical-align:top}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
+.red{background:#ef444420;color:#ef4444}
+.yellow{background:#f59e0b20;color:#f59e0b}
+.blue{background:#3b82f620;color:#3b82f6}
+.section{margin:16px 0;padding:16px;border-radius:10px}
+.section.red{border:1px solid #ef444440;background:#ef444408}
+.section.yellow{border:1px solid #f59e0b40;background:#f59e0b08}
+.section.blue{border:1px solid #3b82f640;background:#3b82f608}
+h3{font-size:13px;margin-bottom:8px}
+p{color:#94a3b8;font-size:12px;line-height:1.7;margin:4px 0}
+code{background:#1e293b;padding:1px 6px;border-radius:3px;font-size:11px;color:#10b981}
+strong{color:#e2e8f0}
+</style></head>
+<body>
+
+<h1>ScriptNow API 测试缺陷与性能报告</h1>
+<p style="color:#64748b;margin-bottom:28px;font-size:13px">
+测试项目：<code>零日</code>（fc6f726c），1卷3章，中文，流程：项目创建→方向→蓝图→StoryMap→写作→采纳
+</p>
+
+<h2>🔴 P0 — 阻塞性缺陷</h2>
+
+<div class="section red">
+<h3>1. StoryMap 空卷生成：<code>volume_count</code> 未设置时静默失败</h3>
+<p>当 <code>project.direction</code> 中 <code>volume_one</code>/<code>volume_two</code> 为 <code>null</code> 时，StoryMap 生成成功但 <code>volumes: []</code> 为空，前端"逐章写作"永久锁定，且无任何错误提示。后端应拒绝生成，或回退到默认参数（1卷3章）。</p>
+<p><strong>复现</strong>: 创建项目时不传 volume_one/volume_two → 生成 StoryMap → 0卷0章</p>
+</div>
+
+<div class="section red">
+<h3>2. 蓝图采纳 API 409 错误</h3>
+<p>Blueprint 候选在 <code>state</code> 中可见（2-4个候选），但 <code>POST /blueprints/{id}/adopt</code> 多次返回 409 "candidate is unavailable"。需多次重试或通过前端操作才能采纳。可能原因：候选状态在 generate 和 adopt 之间存在竞态。</p>
+<p><strong>复现</strong>: generate → 立即 adopt → 409（延迟30秒后有时成功）</p>
+</div>
+
+<div class="section red">
+<h3>3. Cookie 会话频繁过期</h3>
+<p>access_token 有效期约 10-15 分钟。6个API调用中需要重新登录 4 次。导致批量操作中频繁中断。</p>
+<p><strong>影响</strong>: 自动化测试/Agent 托管流程不可持续。</p>
+</div>
+
+<h2>🟠 P1 — 性能与可用性</h2>
+
+<div class="section yellow">
+<h3>4. API 超时但后台成功（幽灵完成）</h3>
+<p>蓝图生成和章节生成多次在 curl 180s 超时，但后台实际已完成（候选出现）。客户端被迫轮询 <code>state</code> 端点查找"幽灵"完成的结果。应提供异步任务状态端点（如 <code>GET /tasks/{run_id}</code>）。</p>
+<p><strong>数据</strong>: 6次生成请求中，3次超时但2次后台完成，成功率 33%（客户端视角）</p>
+</div>
+
+<div class="section yellow">
+<h3>5. 方向字段类型强制 string</h3>
+<p><code>volume_one</code>/<code>volume_two</code>/<code>chapter_target_words</code> 在 <code>direction</code> 中必须为字符串。传数字返回 422。这些值本质上是整数，应接受数值型并自动转换。</p>
+<p><strong>复现</strong>: <code>{"volume_one":1}</code> → 422； <code>{"volume_one":"1"}</code> → 200</p>
+</div>
+
+<div class="section yellow">
+<h3>6. 生成过程零可见性</h3>
+<p>章节生成耗时 2-3 分钟，期间无任何进度信号。客户端不知道是正在处理、排队中、还是已挂死。应考虑 SSE 推送或最小化状态轮询。</p>
+</div>
+
+<div class="section yellow">
+<h3>7. DeepSeek API 并发争抢</h3>
+<p>当 Architect（蓝图/StoryMap）和 Writer（章节生成）同时运行时，双方向 DeepSeek API 发送请求。单 Provider 多模型并发数未做限制，可能导致 rate limit 或 queue backlog。</p>
+</div>
+
+<h2>🔵 P2 — 工程与边界情况</h2>
+
+<div class="section blue">
+<h3>8. 项目创建缺少幂等性</h3>
+<p>多次创建同名项目不做去重。测试期间创建了 "The Last Firewall" 两次（第一次参数错误未删）。</p>
+</div>
+
+<div class="section blue">
+<h3>9. 中文内容打包导出曾编码失败</h3>
+<p>Content-Disposition 头包含中文文件名 → latin-1 编码错误（已修复为 ASCII 文件名 <code>novel-packaged.docx</code>，但仍不支持中文文件名）。</p>
+</div>
+
+<div class="section blue">
+<h3>10. 导出功能无进度反馈</h3>
+<p>15章全文打包约 2s 生成，但无状态返回。对更长文档应考虑异步化。</p>
+</div>
+
+<h2>📊 性能数据</h2>
+
+<table>
+<tr><th>操作</th><th>客户端耗时</th><th>实际耗时</th><th>成功率</th></tr>
+<tr><td>项目创建</td><td>&lt;1s</td><td>&lt;1s</td><td>100%（字段类型正确时）</td></tr>
+<tr><td>方向生成</td><td>~15s</td><td>~15s</td><td>100%</td></tr>
+<tr><td>蓝图生成</td><td>超时(180s) ×3</td><td>30-60s（后台）</td><td>100%（后台）</td></tr>
+<tr><td>StoryMap 生成</td><td>~60s</td><td>~60s</td><td>100%</td></tr>
+<tr><td>章节生成（2000字）</td><td>超时(180s) ×3 / ~120s ×2</td><td>~90-120s</td><td>80%</td></tr>
+<tr><td>采纳操作</td><td>&lt;1s</td><td>&lt;1s</td><td>100%（章节） / 50%（蓝图）</td></tr>
+<tr><td>打包导出</td><td>~2s</td><td>~2s</td><td>100%</td></tr>
+</table>
+
+<p style="margin-top:20px;color:#64748b;font-size:11px">
+报告生成时间: 2026-07-25 · 测试项目 PID: fc6f726c · 3 章 12,217 字 · 总测试时长: ~45 分钟
+</p>
+
+</body></html>
