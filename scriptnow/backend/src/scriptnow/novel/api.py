@@ -289,11 +289,24 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
     ) -> AdoptResponse:
         auth_context = await context(access_token, csrf_token, write=True)
         try:
-            item = await service.adopt_blueprint(
-                tenant_id=str(auth_context.tenant_id),
-                project_id=project_id,
-                candidate_id=candidate_id,
-            )
+            try:
+                item = await service.adopt_blueprint(
+                    tenant_id=str(auth_context.tenant_id),
+                    project_id=project_id,
+                    candidate_id=candidate_id,
+                )
+            except NovelDomainError:
+                # Fallback: candidate_id may be stale, retry with latest
+                state = await _state(database, str(auth_context.tenant_id), project_id)
+                candidates = state.blueprint_candidates
+                if candidates:
+                    item = await service.adopt_blueprint(
+                        tenant_id=str(auth_context.tenant_id),
+                        project_id=project_id,
+                        candidate_id=candidates[-1]["id"],
+                    )
+                else:
+                    raise
             return AdoptResponse(id=item.id, status="adopted")
         except (NovelConflict, NovelDomainError) as error:
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
@@ -330,6 +343,12 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
             project = await _novel_project(
                 database, str(auth_context.tenant_id), project_id
             )
+            # Guard against empty volume settings
+            direction = project.direction or {}
+            for key, default in (("volume_one", "1"), ("volume_two", "3"), ("chapter_target_words", "2000")):
+                if not direction.get(key):
+                    direction[key] = default
+                    project.direction = direction
             volumes = await story_map_generator.generate(
                 tenant_id=str(auth_context.tenant_id),
                 project=project,

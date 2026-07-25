@@ -345,13 +345,17 @@ def create_core_router(
         csrf_token: Annotated[str | None, Header(alias="X-CSRF-Token")] = None,
     ) -> ProjectResponse:
         context = await action_context(access_token, csrf_token)
+        direction = body.direction or {}
+        for key in ("volume_one", "volume_two", "chapter_target_words", "target_length"):
+            if key in direction and not isinstance(direction[key], str):
+                direction[key] = str(direction[key])
         async with database.session() as session:
             project = ProjectModel(
                 tenant_id=str(context.tenant_id),
                 name=body.name.strip(),
                 medium=body.medium,
                 source_mode=body.source_mode,
-                direction=body.direction,
+                direction=direction,
             )
             session.add(project)
             await session.flush()

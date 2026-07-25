@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     access_token_issuer: str = "scriptnow"
     creator_audience: str = "scriptnow-creator"
     admin_audience: str = "scriptnow-admin"
-    access_token_minutes: int = Field(default=15, ge=1, le=60)
+    access_token_minutes: int = Field(default=60, ge=1, le=1440)
     refresh_token_days: int = Field(default=30, ge=1, le=90)
     cookie_secure: bool = False
     credential_master_key: str = Field(
