@@ -6,6 +6,45 @@ DeepSeek v4-pro does not reliably support).
 """
 
 
+async def build_review_highlights(database, project_id: str, current_chapter_id: str) -> str:
+    """Fetch blocking/major findings from the last quality report for the prior chapter.
+
+    Returns compact text suitable for injection into Writer's prompt as
+    "⚠️ 注意事项" (Watch Out For).
+    """
+    from sqlalchemy import desc
+    from sqlalchemy import select as sa_select
+
+    from scriptnow.platform.models import NovelQualityReportModel
+
+    async with database.session() as session:
+        reports = list(
+            await session.scalars(
+                sa_select(NovelQualityReportModel)
+                .where(NovelQualityReportModel.project_id == project_id)
+                .order_by(desc(NovelQualityReportModel.created_at))
+                .limit(1)
+            )
+        )
+    if not reports:
+        return ""
+
+    report = reports[0]
+    dims = report.dimensions or []
+    blocking = [d for d in dims if d.get("verdict") in ("blocking", "major")]
+    if not blocking:
+        return ""
+
+    lines = ["## ⚠️ Review Findings (Watch Out For)"]
+    for d in blocking:
+        verdict = d.get("verdict", "?")
+        dimension = d.get("dimension", "?")
+        summary = d.get("summary", "")[:200]
+        lines.append(f"- [{verdict}] {dimension}: {summary}")
+    return "\n".join(lines)
+
+
+
 def build_prior_summary(revisions, current_chapter_id: str) -> str:
     """Compact summary of prior chapters — last 6, ~500 chars each."""
     prior = [r for r in revisions if r.chapter_id != current_chapter_id]
@@ -58,18 +97,15 @@ async def build_character_graph(database, project_id: str, current_chapter_id: s
         lines.append("\n### Characters")
         for n in characters:
             name = n.get("label", n.get("name", "?"))
-            desc = (n.get("summary", "") or n.get("description", ""))[:120]
-            aliases = n.get("aliases") or []
-            alias_str = " (aka " + ", ".join(aliases[:3]) + ")" if aliases else ""
-            lines.append(f"- **{name}**{alias_str}: {desc}")
+            ntype = n.get("type", "")
+            lines.append(f"- **{name}** [{ntype}]")
 
     locations = [n for n in nodes if n.get("type") == "location"][:5]
     if locations:
         lines.append("\n### Locations")
         for n in locations:
             name = n.get("label", n.get("name", "?"))
-            desc = (n.get("summary", "") or n.get("description", ""))[:100]
-            lines.append(f"- **{name}**: {desc}")
+            lines.append(f"- **{name}**")
 
     return "\n".join(lines)
 

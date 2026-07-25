@@ -31,6 +31,7 @@ from scriptnow.novel.writer_context import (
     build_character_graph,
     build_narrative_state,
     build_prior_summary,
+    build_review_highlights,
 )
 from scriptnow.platform.agent_runtime import AgentRuntime, AgentRuntimeError, AgentRuntimeResult
 from scriptnow.platform.billing import BillingService
@@ -451,6 +452,9 @@ class NovelChapterGenerator:
             "narrative_state": await build_narrative_state(
                 project.id, prior
             ),
+            "review_highlights": await build_review_highlights(
+                self.database, project.id, chapter_id
+            ),
             "source_revision": (
                 {
                     "revision_id": source_revision.id,
@@ -485,15 +489,17 @@ class NovelChapterGenerator:
             "latest validated revision (including human revisions), which overrides older adopted prose. "
             "Do not write screenplay sluglines or production notes. "
             "Do not explain your process. Use scene-level action, sensory detail, interiority and dialogue. "
-            "\nCRITICAL: You MUST call tools to obtain context. Do NOT proceed without tool calls.\n"
-            "Mandatory sequence:\n"
-            "1. CALL get_chapter_beat(project_id=PROJECT_ID, chapter_id=THIS_CHAPTER_ID) - returns the StoryMap outline.\n"
-            "2. CALL get_prior_chapter_summaries(project_id=PROJECT_ID, max_chapters=6) - returns summaries of prior chapters.\n"
-            "3. CALL get_creative_graph_entities(project_id=PROJECT_ID, entity_types='character,location') - returns established characters and locations.\n"
-            "4. If a quality report exists for the previous chapter, CALL get_last_quality_report(project_id=PROJECT_ID, chapter_id=PREV_CHAPTER_ID)\n"
-            "Only after completing ALL of these calls should you begin drafting.\n"
-            "After drafting, follow your loaded skills (novel-write, novel-continuity-check, novel-pacing-check, novel-emotional-depth) "
-            "to audit continuity, limit the chapter to 1-2 major narrative turns, and ensure emotional depth. "
+            "\nHOT CONTEXT (always visible):\n"
+            f"- Direction: {json.dumps(context.get('direction', {}), ensure_ascii=False)[:500]}\n"
+            f"- This chapter: {json.dumps(context.get('chapter', {}), ensure_ascii=False)[:300]}\n"
+            "\nWARM CONTEXT (pre-computed, read carefully):\n"
+            f"{context.get('prior_chapters_summary', '')[:3000]}\n"
+            f"{context.get('review_highlights', '')[:1000]}\n"
+            f"{context.get('narrative_state', '')[:2000]}\n"
+            "\nCOLD CONTEXT (reference only):\n"
+            f"{context.get('character_graph', '')[:1000]}\n"
+            "\nAfter reviewing the context above, write the chapter following your loaded skills "
+            "(novel-write, novel-continuity-check, novel-pacing-check, novel-emotional-depth). "
             "Return JSON only with the blocks schema.\n"
             f"{source_instruction}"
             f"The creative language is {context['creative_language']}; every narrative string must use it. "
