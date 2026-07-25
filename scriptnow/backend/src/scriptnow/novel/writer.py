@@ -439,20 +439,6 @@ class NovelChapterGenerator:
                 "constraints": list(core.narrative_constraints),
             },
             "chapter": chapter,
-            "blueprint_anchors": [
-                {"kind": item.kind, "name": item.name, "payload": item.payload} for item in anchors
-            ],
-            "prior_chapter_revisions": [
-                {
-                    "chapter_id": item.chapter_id,
-                    "revision_id": item.id,
-                    "revision_number": item.revision_number,
-                    "source": item.source,
-                    "status": item.status,
-                    "blocks": list(item.blocks)[-30:],
-                }
-                for item in prior
-            ],
             "source_revision": (
                 {
                     "revision_id": source_revision.id,
@@ -487,12 +473,14 @@ class NovelChapterGenerator:
             "latest validated revision (including human revisions), which overrides older adopted prose. "
             "Do not write screenplay sluglines or production notes. "
             "Do not explain your process. Use scene-level action, sensory detail, interiority and dialogue. "
-            "\nBEFORE DRAFTING, call the following tools in order:\n"
-            "1. get_chapter_beat(project_id, chapter_id) — retrieve the planned StoryMap outline.\n"
-            "2. get_prior_chapter_summaries(project_id, max_chapters=6) — read prior chapter summaries.\n"
-            "3. get_creative_graph_entities(project_id, entity_types=character,location) — verify established entities.\n"
-            "4. get_last_quality_report(project_id, chapter_id_of_previous) — check prior review findings.\n"
-            "\nAFTER CALLING THESE TOOLS: follow your loaded skills (novel-write, novel-continuity-check, novel-pacing-check, novel-emotional-depth) "
+            "\nCRITICAL: You MUST call tools to obtain context. Do NOT proceed without tool calls.\n"
+            "Mandatory sequence:\n"
+            "1. CALL get_chapter_beat(project_id=PROJECT_ID, chapter_id=THIS_CHAPTER_ID) - returns the StoryMap outline.\n"
+            "2. CALL get_prior_chapter_summaries(project_id=PROJECT_ID, max_chapters=6) - returns summaries of prior chapters.\n"
+            "3. CALL get_creative_graph_entities(project_id=PROJECT_ID, entity_types='character,location') - returns established characters and locations.\n"
+            "4. If a quality report exists for the previous chapter, CALL get_last_quality_report(project_id=PROJECT_ID, chapter_id=PREV_CHAPTER_ID)\n"
+            "Only after completing ALL of these calls should you begin drafting.\n"
+            "After drafting, follow your loaded skills (novel-write, novel-continuity-check, novel-pacing-check, novel-emotional-depth) "
             "to audit continuity, limit the chapter to 1-2 major narrative turns, and ensure emotional depth. "
             "Return JSON only with the blocks schema.\n"
             f"{source_instruction}"
