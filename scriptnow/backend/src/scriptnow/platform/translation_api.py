@@ -13,6 +13,10 @@ from scriptnow.platform.config import Settings
 from scriptnow.platform.database import Database
 from scriptnow.platform.models import ProjectMedium, ProjectModel
 from scriptnow.platform.translation import FaithfulTranslationService
+from scriptnow.platform.translation_glossary import (
+    create_glossary,
+    get_glossary,
+)
 
 
 class CreateTranslationRequest(BaseModel):
@@ -55,6 +59,11 @@ def create_translation_router(
             session.add(project)
             await session.flush()
             pid = project.id
+        create_glossary(
+            project_id=pid,
+            source_language=source.direction.get("language", "en-US"),
+            target_language=body.target_language,
+        )
         return {"id": pid, "name": project.name, "medium": "translation"}
 
     @router.get("/projects/{project_id}/chapters")
@@ -168,6 +177,8 @@ def create_translation_router(
             blocks=tuple(source_blocks),
         )
         idem_key = f"trans:{project_id}:{chapter_id}:{uuid.uuid4().hex[:12]}"
+        glossary = get_glossary(project_id)
+        glossary_block = glossary.to_prompt_block() if glossary else ""
         translated = await translator.translate(
             tenant_id=tid,
             project_id=project_id,
@@ -175,6 +186,7 @@ def create_translation_router(
             target_language=target_lang,
             units=(unit,),
             idempotency_key=idem_key,
+            glossary_block=glossary_block,
         )
         async with database.session() as session:
             rev = NovelDocumentRevisionModel(
@@ -187,10 +199,91 @@ def create_translation_router(
             )
             session.add(rev)
             await session.flush()
+        # Update glossary with extracted terms from translated pair
+        glossary = get_glossary(project_id)
+        if glossary:
+            source_text = " ".join(
+                str(b.get("text", "")) for b in source_blocks
+                if isinstance(b, dict) and b.get("type") in ("prose", "dialogue")
+            )
+            translated_text = " ".join(
+                str(b.get("text", "")) for b in translated[0].blocks
+                if isinstance(b, dict) and b.get("type") in ("prose", "dialogue")
+            )
+            glossary.extract_from_text_pair(source_text, translated_text)
         return {
             "chapter_id": chapter_id,
             "status": "completed",
             "blocks": list(translated[0].blocks),
         }
+
+    @router.post("/projects/{project_id}/translate-all")
+    async def translate_all(
+        project_id: str,
+        access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
+    ):
+        """Translate all pending chapters in sequence, accumulating glossary."""
+        context = await auth.validate_access(access_token)
+        str(context.tenant_id)
+
+        # Get all pending chapters
+        chapters_raw = await list_chapters(project_id=project_id, access_token=access_token)
+        pending = [c for c in chapters_raw if c["status"] == "pending"]
+        if not pending:
+            return {"status": "no_pending", "message": "all chapters already translated"}
+
+        results = []
+        glossary = get_glossary(project_id)
+        for ch in pending:
+            cid = ch["chapter_id"]
+            try:
+                await translate_chapter(
+                    project_id=project_id,
+                    chapter_id=cid,
+                    access_token=access_token,
+                )
+                results.append({"chapter_id": cid, "status": "completed"})
+            except Exception as exc:
+                results.append({"chapter_id": cid, "status": "failed", "error": str(exc)})
+
+        glossary_info = glossary.to_dict() if glossary else {}
+        return {
+            "status": "completed",
+            "translated": len([r for r in results if r["status"] == "completed"]),
+            "failed": len([r for r in results if r["status"] == "failed"]),
+            "chapters": results,
+            "glossary_terms": glossary_info.get("term_count", 0),
+        }
+
+    @router.get("/projects/{project_id}/glossary")
+    async def get_glossary_endpoint(
+        project_id: str,
+        access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
+    ):
+        context = await auth.validate_access(access_token)
+        tid = str(context.tenant_id)
+        async with database.session() as session:
+            project = await session.get(ProjectModel, project_id)
+            if project is None or project.tenant_id != tid:
+                raise HTTPException(404, "project not found")
+        glossary = get_glossary(project_id)
+        if glossary is None:
+            return {"terms": {}}
+        return glossary.to_dict()
+
+    @router.put("/projects/{project_id}/glossary")
+    async def update_glossary_endpoint(
+        project_id: str,
+        body: dict,
+        access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
+    ):
+        context = await auth.validate_access(access_token)
+        str(context.tenant_id)
+        glossary = get_glossary(project_id)
+        if glossary is None:
+            raise HTTPException(404, "glossary not found")
+        if "terms" in body:
+            glossary.add_batch(body["terms"])
+        return glossary.to_dict()
 
     return router

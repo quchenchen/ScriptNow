@@ -48,6 +48,7 @@ class FaithfulTranslationService:
         target_language: str,
         units: tuple[TranslationUnit, ...],
         idempotency_key: str,
+        glossary_block: str = "",
     ) -> tuple[TranslationUnit, ...]:
         target_language = target_language.strip()
         if not target_language:
@@ -104,6 +105,7 @@ class FaithfulTranslationService:
                         source_language=source_language,
                         target_language=target_language,
                         unit=unit,
+                        glossary_block=glossary_block,
                     ),
                     context_snapshot={
                         "project_id": project_id,
@@ -150,12 +152,15 @@ class FaithfulTranslationService:
 
     @staticmethod
     def _prompt(
-        *, source_language: str, target_language: str, unit: TranslationUnit
+        *, source_language: str, target_language: str, unit: TranslationUnit,
+        glossary_block: str = "",
     ) -> str:
         payload = {"titles": unit.titles, "blocks": list(unit.blocks)}
+        glossary_section = f"\n{glossary_block}\n" if glossary_block else ""
         return (
             "You are performing faithful literary translation for an export copy.\n"
             f"Translate from {source_language or 'the source language'} into {target_language}.\n"
+            f"{glossary_section}"
             "Preserve meaning, story facts, names, worldview, plot, tone, point of view, tense, "
             "paragraph order and block roles. Use an established target-language form for a proper "
             "name only when one exists. Do not localize culture, customs, setting, food, clothing, "
