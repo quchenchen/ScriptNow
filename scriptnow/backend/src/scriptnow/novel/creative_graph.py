@@ -123,9 +123,13 @@ class CreativeGraphQueue:
             asyncio.create_task(self._drain())
 
     async def _drain(self) -> None:
+        import logging
+        _logger = logging.getLogger(__name__)
+        _logger.info("creative graph queue: starting drain (%d jobs)", len(self._jobs))
         while self._jobs and self._extractor:
             job = self._jobs.pop(0)
-            with __import__("contextlib").suppress(Exception):
+            _logger.info("creative graph queue: extracting %s", job.chapter_id)
+            try:
                 await self._extractor.extract_chapter(
                     tenant_id=job.tenant_id,
                     project_id=job.project_id,
@@ -134,6 +138,10 @@ class CreativeGraphQueue:
                     blocks=job.blocks,
                     idempotency_key=job.idempotency_key,
                 )
+                _logger.info("creative graph queue: %s done", job.chapter_id)
+            except Exception:
+                _logger.exception("creative graph queue: %s failed", job.chapter_id)
+        _logger.info("creative graph queue: drain complete")
         self._running = False
 
 # ── Extractor ────────────────────────────────────────────────────────────
