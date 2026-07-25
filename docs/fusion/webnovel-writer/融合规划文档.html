@@ -1,0 +1,1506 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ScriptNow × webnovel-writer 融合规划文档</title>
+<style>
+  :root {
+    --bg-primary: #0d1117;
+    --bg-secondary: #161b22;
+    --bg-tertiary: #21262d;
+    --bg-card: #1c2128;
+    --border: #30363d;
+    --border-accent: #58a6ff;
+    --text-primary: #e6edf3;
+    --text-secondary: #8b949e;
+    --text-tertiary: #6e7681;
+    --accent-blue: #58a6ff;
+    --accent-green: #3fb950;
+    --accent-orange: #d29922;
+    --accent-purple: #a371f7;
+    --accent-red: #f85149;
+    --accent-cyan: #39d2c0;
+    --accent-pink: #db61a2;
+    --gradient-quick: linear-gradient(135deg, #238636, #3fb950);
+    --gradient-medium: linear-gradient(135deg, #9e6a03, #d29922);
+    --gradient-horizon: linear-gradient(135deg, #6e40c9, #a371f7);
+    --shadow-card: 0 4px 24px rgba(0,0,0,0.4);
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ===== HEADER ===== */
+  .hero {
+    background: linear-gradient(180deg, #0d1117 0%, #161b22 60%, #0d1117 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 80px 40px 60px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::before {
+    content: '';
+    position: absolute;
+    top: -50%; left: -50%;
+    width: 200%; height: 200%;
+    background: radial-gradient(ellipse at 30% 20%, rgba(88,166,255,0.08) 0%, transparent 50%),
+                radial-gradient(ellipse at 70% 80%, rgba(163,113,247,0.06) 0%, transparent 50%);
+    pointer-events: none;
+  }
+  .hero h1 {
+    font-size: 2.8rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, #58a6ff 0%, #a371f7 50%, #3fb950 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 16px;
+    position: relative;
+  }
+  .hero .subtitle {
+    font-size: 1.15rem;
+    color: var(--text-secondary);
+    max-width: 720px;
+    margin: 0 auto;
+    position: relative;
+  }
+  .hero .meta-bar {
+    display: flex;
+    justify-content: center;
+    gap: 32px;
+    margin-top: 32px;
+    position: relative;
+  }
+  .hero .meta-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-tertiary);
+    font-size: 0.9rem;
+  }
+  .hero .meta-item .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  .dot.green { background: var(--accent-green); }
+  .dot.blue { background: var(--accent-blue); }
+  .dot.purple { background: var(--accent-purple); }
+
+  /* ===== CONTAINER ===== */
+  .container {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+  }
+
+  /* ===== SECTION TITLE ===== */
+  .section-title {
+    font-size: 1.6rem;
+    font-weight: 700;
+    margin: 48px 0 24px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .section-title .icon { font-size: 1.5rem; }
+  .section-title.quick { border-color: var(--accent-green); color: var(--accent-green); }
+  .section-title.medium { border-color: var(--accent-orange); color: var(--accent-orange); }
+  .section-title.horizon { border-color: var(--accent-purple); color: var(--accent-purple); }
+  .section-title.priority { border-color: var(--accent-blue); color: var(--accent-blue); }
+
+  /* ===== BADGE ===== */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 0.78rem;
+    font-weight: 600;
+  }
+  .badge.quick { background: rgba(63,185,80,0.15); color: var(--accent-green); }
+  .badge.medium { background: rgba(210,153,34,0.15); color: var(--accent-orange); }
+  .badge.horizon { background: rgba(163,113,247,0.15); color: var(--accent-purple); }
+  .badge.p0 { background: rgba(248,81,73,0.15); color: var(--accent-red); }
+  .badge.p1 { background: rgba(210,153,34,0.15); color: var(--accent-orange); }
+  .badge.p2 { background: rgba(88,166,255,0.15); color: var(--accent-blue); }
+  .badge.p3 { background: rgba(139,148,158,0.15); color: var(--text-secondary); }
+
+  /* ===== CARD ===== */
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 28px;
+    margin-bottom: 20px;
+    box-shadow: var(--shadow-card);
+    transition: border-color 0.2s;
+  }
+  .card:hover { border-color: var(--border-accent); }
+  .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 18px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .card-header h3 {
+    font-size: 1.2rem;
+    font-weight: 700;
+  }
+  .card-header .tags {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  /* ===== COMPARISON TABLE ===== */
+  .comp-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    margin: 12px 0;
+    font-size: 0.9rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .comp-table thead th {
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    text-align: left;
+    padding: 10px 14px;
+    font-weight: 600;
+    font-size: 0.82rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .comp-table thead th:first-child { width: 18%; }
+  .comp-table tbody td {
+    padding: 10px 14px;
+    border-top: 1px solid var(--border);
+    vertical-align: top;
+  }
+  .comp-table tbody tr:first-child td { border-top: none; }
+  .comp-table .label {
+    color: var(--text-tertiary);
+    font-weight: 600;
+    font-size: 0.8rem;
+    white-space: nowrap;
+  }
+  .comp-table .wn { border-left: 3px solid var(--accent-purple); }
+  .comp-table .sn { border-left: 3px solid var(--accent-cyan); }
+  .comp-table .fusion { border-left: 3px solid var(--accent-green); }
+
+  /* ===== METRICS ===== */
+  .metrics-row {
+    display: flex;
+    gap: 12px;
+    margin: 12px 0;
+    flex-wrap: wrap;
+  }
+  .metric {
+    background: var(--bg-tertiary);
+    border-radius: 8px;
+    padding: 10px 16px;
+    text-align: center;
+    flex: 1;
+    min-width: 100px;
+  }
+  .metric .value {
+    font-size: 1.4rem;
+    font-weight: 800;
+  }
+  .metric .label {
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+    margin-top: 2px;
+  }
+  .metric .value.green { color: var(--accent-green); }
+  .metric .value.orange { color: var(--accent-orange); }
+  .metric .value.purple { color: var(--accent-purple); }
+
+  /* ===== ROADMAP ===== */
+  .roadmap {
+    position: relative;
+    padding-left: 32px;
+  }
+  .roadmap::before {
+    content: '';
+    position: absolute;
+    left: 11px; top: 8px; bottom: 8px;
+    width: 2px;
+    background: var(--border);
+  }
+  .roadmap-item {
+    position: relative;
+    margin-bottom: 24px;
+    padding: 16px 20px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+  .roadmap-item::before {
+    content: '';
+    position: absolute;
+    left: -25px; top: 20px;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    border: 2px solid;
+    background: var(--bg-primary);
+  }
+  .roadmap-item.phase1::before { border-color: var(--accent-green); }
+  .roadmap-item.phase2::before { border-color: var(--accent-orange); }
+  .roadmap-item.phase3::before { border-color: var(--accent-purple); }
+  .roadmap-item .phase-tag {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 6px;
+  }
+  .roadmap-item .phase-tag.phase1 { color: var(--accent-green); }
+  .roadmap-item .phase-tag.phase2 { color: var(--accent-orange); }
+  .roadmap-item .phase-tag.phase3 { color: var(--accent-purple); }
+  .roadmap-item h4 { font-size: 1.05rem; margin-bottom: 6px; }
+  .roadmap-item p { color: var(--text-secondary); font-size: 0.9rem; }
+
+  /* ===== MISC ===== */
+  code {
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 0.85em;
+    background: var(--bg-tertiary);
+    padding: 1px 6px;
+    border-radius: 4px;
+    color: var(--accent-orange);
+  }
+  .highlight-box {
+    background: var(--bg-tertiary);
+    border-left: 3px solid var(--accent-blue);
+    padding: 14px 18px;
+    border-radius: 0 8px 8px 0;
+    margin: 12px 0;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+  }
+  .highlight-box strong { color: var(--text-primary); }
+  .callout {
+    padding: 12px 16px;
+    border-radius: 8px;
+    margin: 8px 0;
+    font-size: 0.88rem;
+  }
+  .callout.info { background: rgba(88,166,255,0.1); border: 1px solid rgba(88,166,255,0.3); }
+  .callout.warn { background: rgba(210,153,34,0.1); border: 1px solid rgba(210,153,34,0.3); }
+  .callout.success { background: rgba(63,185,80,0.1); border: 1px solid rgba(63,185,80,0.3); }
+  hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+  a { color: var(--accent-blue); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  ol, ul { padding-left: 20px; color: var(--text-secondary); font-size: 0.9rem; }
+  li { margin-bottom: 4px; }
+  .footnote {
+    margin-top: 48px;
+    padding: 20px 24px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    color: var(--text-tertiary);
+    font-size: 0.82rem;
+  }
+
+  /* ===== TABLE OF CONTENTS ===== */
+  .toc {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px 28px;
+    margin-bottom: 32px;
+  }
+  .toc h3 {
+    font-size: 1rem;
+    font-weight: 700;
+    margin-bottom: 14px;
+    color: var(--text-secondary);
+  }
+  .toc ol { counter-reset: toc; }
+  .toc li {
+    list-style: none;
+    margin-bottom: 8px;
+    counter-increment: toc;
+  }
+  .toc li::before {
+    content: counter(toc);
+    display: inline-block;
+    width: 24px;
+    height: 24px;
+    line-height: 24px;
+    border-radius: 6px;
+    background: var(--bg-tertiary);
+    text-align: center;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--text-tertiary);
+    margin-right: 8px;
+  }
+  .toc li a { font-size: 0.92rem; }
+
+  /* ===== SUMMARY STATS ===== */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+    margin: 20px 0;
+  }
+  .stat-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px;
+    text-align: center;
+  }
+  .stat-card .stat-value {
+    font-size: 2rem;
+    font-weight: 800;
+    margin-bottom: 4px;
+  }
+  .stat-card .stat-label {
+    font-size: 0.78rem;
+    color: var(--text-tertiary);
+  }
+
+  @media (max-width: 768px) {
+    .hero { padding: 48px 20px 36px; }
+    .hero h1 { font-size: 1.8rem; }
+    .container { padding: 24px 16px; }
+    .comp-table { font-size: 0.8rem; }
+    .card { padding: 18px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== HERO ===== -->
+<header class="hero">
+  <h1>ScriptNow × webnovel-writer 融合规划</h1>
+  <p class="subtitle">
+    将 webnovel-writer v6.2.1 成熟的长篇网文创作架构，系统性地融合到 ScriptNow 通用小说/剧本平台中，
+    补齐「超长上下文记忆」「追读力保障」「合同驱动质量」三大核心短板。
+  </p>
+  <div class="meta-bar">
+    <span class="meta-item"><span class="dot green"></span> 可直接借鉴 7 项</span>
+    <span class="meta-item"><span class="dot blue"></span> 需适配改造 6 项</span>
+    <span class="meta-item"><span class="dot purple"></span> 长远规划 5 项</span>
+  </div>
+</header>
+
+<!-- ===== MAIN ===== -->
+<div class="container">
+
+<!-- ===== TOC ===== -->
+<div class="toc">
+  <h3>📋 目录</h3>
+  <ol>
+    <li><a href="#overview">项目对比总览</a></li>
+    <li><a href="#quick-wins">第一档：可直接借鉴（Quick Wins）</a></li>
+    <li><a href="#medium">第二档：需适配改造（Medium）</a></li>
+    <li><a href="#horizon">第三档：长远规划（Horizon）</a></li>
+    <li><a href="#roadmap">优先级排序与推荐实施路线图</a></li>
+    <li><a href="#appendix">附录：架构对照</a></li>
+  </ol>
+</div>
+
+<!-- ===== SECTION: OVERVIEW ===== -->
+<h2 class="section-title" id="overview"><span class="icon">🔍</span> 项目对比总览</h2>
+
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-value" style="color:var(--accent-purple)">v6.2.1</div>
+    <div class="stat-label">webnovel-writer 版本</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value" style="color:var(--accent-green)">37</div>
+    <div class="stat-label">题材模板</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value" style="color:var(--accent-blue)">5</div>
+    <div class="stat-label">核心 Agent</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value" style="color:var(--accent-orange)">6+1</div>
+    <div class="stat-label">Skill 流程</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value" style="color:var(--accent-cyan)">173/196</div>
+    <div class="stat-label">ScriptNow 图谱节点/边</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value" style="color:var(--accent-pink)">5</div>
+    <div class="stat-label">投影维度</div>
+  </div>
+</div>
+
+<table class="comp-table">
+  <thead>
+    <tr>
+      <th>维度</th>
+      <th>webnovel-writer</th>
+      <th>ScriptNow</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="label">定位</td>
+      <td class="wn">Claude Code 插件，专攻长篇网文</td>
+      <td class="sn">通用小说/剧本 SaaS 平台</td>
+    </tr>
+    <tr>
+      <td class="label">Agent 运行时</td>
+      <td class="wn">Claude Code subagent 子进程</td>
+      <td class="sn">AgentScope 框架内独立 Agent</td>
+    </tr>
+    <tr>
+      <td class="label">前端</td>
+      <td class="wn">只读 Dashboard（React+ECharts）</td>
+      <td class="sn">全功能 Web 前端（Vue3）</td>
+    </tr>
+    <tr>
+      <td class="label">创作流程</td>
+      <td class="wn">Init → Plan → Write(6步) → Review → Dashboard</td>
+      <td class="sn">方向→蓝图→StoryMap→逐章→审查→图谱→导出</td>
+    </tr>
+    <tr>
+      <td class="label">记忆架构</td>
+      <td class="wn">三层记忆 + 五维投影</td>
+      <td class="sn">上下文冷热分层</td>
+    </tr>
+    <tr>
+      <td class="label">质量保障</td>
+      <td class="wn">合同驱动 + 防幻觉三定律 + 五维审查</td>
+      <td class="sn">审查 Agent + 图谱验证</td>
+    </tr>
+    <tr>
+      <td class="label">节奏管理</td>
+      <td class="wn">Strand Weave 三线 + 追读力系统</td>
+      <td class="sn">叙事状态机（钩子/特质/关系变化）</td>
+    </tr>
+    <tr>
+      <td class="label">约束体系</td>
+      <td class="wn">core-constraints.md + author_glossary.json + genre-profiles.md</td>
+      <td class="sn">创作规则配置</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ===== SECTION: QUICK WINS ===== -->
+<h2 class="section-title quick" id="quick-wins"><span class="icon">⚡</span> 第一档：可直接借鉴（Quick Wins）</h2>
+
+<p style="color:var(--text-secondary); margin-bottom:20px;">
+  以下融合项无需改动 ScriptNow 核心架构，可直接在现有框架内实现。工期短（1-3天/项），风险低，收益明确。
+</p>
+
+<!-- QW1: 防幻觉三定律 -->
+<div class="card">
+  <div class="card-header">
+    <h3>QW-1：防幻觉三定律审查增强</h3>
+    <div class="tags">
+      <span class="badge quick">Quick Win</span>
+      <span class="badge p0">P0</span>
+    </div>
+  </div>
+
+  <table class="comp-table">
+    <thead><tr><th>webnovel-writer 做法</th><th>ScriptNow 现状</th><th>融合方案</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="wn">
+          三大定律：<br>
+          • 大纲即法律<br>
+          • 设定即物理<br>
+          • 发明需识别<br>
+          每次写章前加载 <code>core-constraints.md</code>
+        </td>
+        <td class="sn">
+          Writer→Reviewer 闭环已存在，但缺乏系统化的防幻觉协议。
+          审查主要关注文本质量，未显式检查设定一致性和大纲遵循度。
+        </td>
+        <td class="fusion">
+          <strong>在 ScriptNow 审查 Agent 中新增「设定一致性」和「大纲遵循度」两个检查维度</strong>，实现：<br>
+          1. 审查时自动比对本章内容与 StoryMap 节点<br>
+          2. 自动校验是否引入未登记的新实体<br>
+          3. 输出结构化 warning/blocking 问题清单<br>
+          4. 前端展示防幻觉通过率指标
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="metrics-row">
+    <div class="metric"><div class="value green">高</div><div class="label">预期收益</div></div>
+    <div class="metric"><div class="value green">低</div><div class="label">实施难度</div></div>
+    <div class="metric"><div class="value">2-3天</div><div class="label">预估工期</div></div>
+  </div>
+
+  <div class="callout success">
+    <strong>预期收益：</strong>直接提升长文一致性，减少"写到后面忘了前面"的问题。
+    ScriptNow 已有的创作图谱（173节点/196边）天然适合做设定一致性校验的数据源。
+  </div>
+</div>
+
+<!-- QW2: Hook分类体系 -->
+<div class="card">
+  <div class="card-header">
+    <h3>QW-2：Hook 分类体系增强叙事状态机</h3>
+    <div class="tags">
+      <span class="badge quick">Quick Win</span>
+      <span class="badge p0">P0</span>
+    </div>
+  </div>
+
+  <table class="comp-table">
+    <thead><tr><th>webnovel-writer 做法</th><th>ScriptNow 现状</th><th>融合方案</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="wn">
+          五类 Hook 分类：<br>
+          • 危机钩 Crisis<br>
+          • 悬念钩 Mystery<br>
+          • 渴望钩 Desire<br>
+          • 情绪钩 Emotion<br>
+          • 选择钩 Choice<br>
+          每章章末必须至少有一个未闭合 Hook
+        </td>
+        <td class="sn">
+          叙事状态机已支持钩子/特质/关系变化追踪，
+          但缺乏细粒度分类和强度评估。
+        </td>
+        <td class="fusion">
+          <strong>将 Hook 五分类整合到现有叙事状态机：</strong><br>
+          1. 扩展钩子数据模型，增加 type/strength 字段<br>
+          2. 审查 Agent 自动识别章末 Hook 类型与强度<br>
+          3. 前端展示 Hook 分布图和债务追踪面板<br>
+          4. 提供"读者会想继续看吗"的软提示问句
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="metrics-row">
+    <div class="metric"><div class="value green">高</div><div class="label">预期收益</div></div>
+    <div class="metric"><div class="value green">低</div><div class="label">实施难度</div></div>
+    <div class="metric"><div class="value">1-2天</div><div class="label">预估工期</div></div>
+  </div>
+</div>
+
+<!-- QW3: Strand Weave -->
+<div class="card">
+  <div class="card-header">
+    <h3>QW-3：Strand Weave 三线节奏建议</h3>
+    <div class="tags">
+      <span class="badge quick">Quick Win</span>
+      <span class="badge p1">P1</span>
+    </div>
+  </div>
+
+  <table class="comp-table">
+    <thead><tr><th>webnovel-writer 做法</th><th>ScriptNow 现状</th><th>融合方案</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="wn">
+          三线定义 + 交织规则：<br>
+          • Quest 60% / Fire 20% / Constellation 20%<br>
+          • 连续不超5章 / 断档不超10/15章<br>
+          • 前30章织网模板
+        </td>
+        <td class="sn">
+          流程中无显式的多线节奏管理。
+          StoryMap 可规划多线但无动态提醒。
+        </td>
+        <td class="fusion">
+          <strong>在创作流程中增加 Strand 推荐：</strong><br>
+          1. StoryMap 阶段支持标注每条大纲线属于哪个 Strand<br>
+          2. 写前检查当前 Strand 分布，给出切换建议<br>
+          3. 前端展示 Strand 分布饼图和连续章节数告警<br>
+          4. 三线可自定义（适配剧本/短篇等）
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="metrics-row">
+    <div class="metric"><div class="value green">中高</div><div class="label">预期收益</div></div>
+    <div class="metric"><div class="value green">低</div><div class="label">实施难度</div></div>
+    <div class="metric"><div class="value">2-3天</div><div class="label">预估工期</div></div>
+  </div>
+</div>
+
+<!-- QW4: Cool-point体系 -->
+<div class="card">
+  <div class="card-header">
+    <h3>QW-4：Cool-point 六模式爽点体系</h3>
+    <div class="tags">
+      <span class="badge quick">Quick Win</span>
+      <span class="badge p1">P1</span>
+    </div>
+  </div>
+
+  <table class="comp-table">
+    <thead><tr><th>webnovel-writer 做法</th><th>ScriptNow 现状</th><th>融合方案</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="wn">
+          六种执行模式：<br>
+          • 装逼打脸 / 扮猪吃虎<br>
+          • 越级反杀 / 打脸权威<br>
+          • 反派翻车 / 甜蜜超预期<br>
+          配套 30/40/30 三段式结构<br>
+          压扬比例按题材调整
+        </td>
+        <td class="sn">
+          无显式的爽点/高潮设计体系。
+          创作方向阶段可定义关键节点但缺乏执行方法论。
+        </td>
+        <td class="fusion">
+          <strong>将 Cool-point 体系作为可选创作引导：</strong><br>
+          1. 蓝图阶段让用户选择爽点偏好和压扬比例<br>
+          2. 写前 Context 中注入目标章节爽点执行建议<br>
+          3. 审查 Agent 检查爽点兑现情况<br>
+          4. 前端展示爽点密度曲线
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="metrics-row">
+    <div class="metric"><div class="value green">中高</div><div class="label">预期收益</div></div>
+    <div class="metric"><div class="value green">低</div><div class="label">实施难度</div></div>
+    <div class="metric"><div class="value">2-3天</div><div class="label">预估工期</div></div>
+  </div>
+</div>
+
+<!-- QW5: 核心约束文件 -->
+<div class="card">
+  <div class="card-header">
+    <h3>QW-5：核心约束文件体系</h3>
+    <div class="tags">
+      <span class="badge quick">Quick Win</span>
+      <span class="badge p0">P0</span>
+    </div>
+  </div>
+
+  <table class="comp-table">
+    <thead><tr><th>webnovel-writer 做法</th><th>ScriptNow 现状</th><th>融合方案</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="wn">
+          三层约束文件：<br>
+          • <code>core-constraints.md</code>（硬/软/风格/Anti-AI）<br>
+          • <code>author_glossary.json</code>（命名规范）<br>
+          • <code>genre-profiles.md</code>（题材推理）
+        </td>
+        <td class="sn">
+          创作规则配置存在但不够系统化。
+          缺乏硬约束/软约束/风格/反AI 的分层概念。
+        </td>
+        <td class="fusion">
+          <strong>引入分层约束配置系统：</strong><br>
+          1. 每个项目自动生成硬约束(Hard)/软约束(Soft)/风格(Style)/Anti-AI 四层<br>
+          2. 蓝图阶段收集用户偏好写入约束<br>
+          3. 写前注入 Context Agent 提示中<br>
+          4. 审查时逐层检查合规性
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="metrics-row">
+    <div class="metric"><div class="value green">高</div><div class="label">预期收益</div></div>
+    <div class="metric"><div class="value green">低</div><div class="label">实施难度</div></div>
+    <div class="metric"><div class="value">2-3天</div><div class="label">预估工期</div></div>
+  </div>
+
+  <div class="callout info">
+    <strong>关键差异：</strong>ScriptNow 面向通用创作，约束应支持更多类型（短篇、剧本、非虚构等），
+    不仅限于网文。建议设计为可插拔的约束模块。
+  </div>
+</div>
+
+<!-- QW6: Dashboard 可视化 -->
+<div class="card">
+  <div class="card-header">
+    <h3>QW-6：创作数据可视化面板</h3>
+    <div class="tags">
+      <span class="badge quick">Quick Win</span>
+      <span class="badge p1">P1</span>
+    </div>
+  </div>
+
+  <table class="comp-table">
+    <thead><tr><th>webnovel-writer 做法</th><th>ScriptNow 现状</th><th>融合方案</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="wn">
+          React+ECharts 只读面板：<br>
+          • 创作进度<br>
+          • 实体关系图谱<br>
+          • 追读力曲线<br>
+          • 章节列表
+        </td>
+        <td class="sn">
+          Vue3 前端已有创作图谱（173节点/196边），
+          但缺少综合数据看板。
+        </td>
+        <td class="fusion">
+          <strong>在 ScriptNow 前端新增「创作数据分析」页面：</strong><br>
+          1. 章节统计：字数/节奏/Hook 分布<br>
+          2. 实体活跃度：登场频率/关系变化<br>
+          3. 质量趋势：审查通过率/Blocking 问题变化<br>
+          4. Strand 分布饼图<br>
+          5. 复用 Vue3 + ECharts（与现有技术栈一致）
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="metrics-row">
+    <div class="metric"><div class="value green">高</div><div class="label">预期收益</div></div>
+    <div class="metric"><div class="value orange">中</div><div class="label">实施难度</div></div>
+    <div class="metric"><div class="value">3-5天</div><div class="label">预估工期</div></div>
+  </div>
+</div>
+
+<!-- QW7: 体裁模板灵感 -->
+<div class="card">
+  <div class="card-header">
+    <h3>QW-7：体裁模板参考库</h3>
+    <div class="tags">
+      <span class="badge quick">Quick Win</span>
+      <span class="badge p2">P2</span>
+    </div>
+  </div>
+
+  <table class="comp-table">
+    <thead><tr><th>webnovel-writer 做法</th><th>ScriptNow 现状</th><th>融合方案</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="wn">
+          37 个题材模板文件：<br>
+          每个含结构建议/爽点模式/节奏曲线/
+          词库/禁忌/命名规则等
+        </td>
+        <td class="sn">
+          创作方向阶段可定义题材，
+          但缺乏配套的结构化模板参考。
+        </td>
+        <td class="fusion">
+          <strong>选取通用题材模板作为 ScriptNow 参考库：</strong><br>
+          1. 将模板 JSON 化，按通用度筛选（科幻/悬疑/言情/奇幻等）<br>
+          2. 蓝图阶段根据题材自动加载对应的结构建议<br>
+          3. 在前端以可折叠面板形式展示参考信息<br>
+          4. 作为 Context Agent 的附加输入
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="metrics-row">
+    <div class="metric"><div class="value orange">中</div><div class="label">预期收益</div></div>
+    <div class="metric"><div class="value green">低</div><div class="label">实施难度</div></div>
+    <div class="metric"><div class="value">1-2天</div><div class="label">预估工期</div></div>
+  </div>
+</div>
+
+<!-- ===== SECTION: MEDIUM ===== -->
+<h2 class="section-title medium" id="medium"><span class="icon">🔧</span> 第二档：需适配改造（Medium）</h2>
+
+<p style="color:var(--text-secondary); margin-bottom:20px;">
+  以下融合项需要改动 ScriptNow 核心架构或 AgentScope 框架，工期中等（1-3周/项），需技术评审后实施。
+</p>
+
+<!-- MD1: 合同驱动体系 -->
+<div class="card">
+  <div class="card-header">
+    <h3>MD-1：合同驱动创作体系</h3>
+    <div class="tags">
+      <span class="badge medium">Medium</span>
+      <span class="badge p0">P0</span>
+    </div>
+  </div>
+
+  <table class="comp-table">
+    <thead><tr><th>webnovel-writer 做法</th><th>ScriptNow 现状</th><th>融合方案</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="wn">
+          三层合同树：<br>
+          <code>MASTER_SETTING.json</code> → <code>volume_{N}.json</code> → <code>chapter_{N}.json</code><br>
+          + <code>chapter_{N}.review.json</code><br>
+          唯一事实源，派生只读视图。<br>
+          写入通过 accepted CHAPTER_COMMIT 驱动五维投影。
+        </td>
+        <td class="sn">
+          StoryMap 已承担类似"蓝图"角色，
+          但缺乏严格的合同层概念和写前写后闸门。
+          审查结果独立存储，未与蓝图形成强约束链路。
+        </td>
+        <td class="fusion">
+          <strong>改造 StoryMap 为合同驱动体系：</strong><br>
+          1. 定义三层合同：项目设定 → 卷/幕 → 章/场景，每层有 locked/append_only/override_allowed 策略<br>
+          2. 写前生成章节合同（含 must_cover_nodes / forbidden_zones / chapter_directive）<br>
+          3. 写后通过 accepted CHAPTER_COMMIT 驱动状态投影<br>
+          4. 前端展示合同层状态（locked: N, append_only: M, overridable: K）
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="metrics-row">
+    <div class="metric"><div class="value green">很高</div><div class="label">预期收益</div></div>
+    <div class="metric"><div class="value orange">高</div><div class="label">实施难度</div></div>
+    <div class="metric"><div class="value">2-3周</div><div class="label">预估工期</div></div>
+  </div>
+
+  <div class="callout warn">
+    <strong>关键改造点：</strong>webnovel-writer 的合同系统深度依赖 Claude Code 的文件系统和 subagent 机制。
+    ScriptNow 需要将其改造为 AgentScope 框架内的「合同管理 Agent + 合同 DB」，
+    同时保持 StoryMap 作为用户可编辑的蓝图视图。
+  </div>
+</div>
+
+<!-- MD2: Agent三剑客 -->
+<div class="card">
+  <div class="card-header">
+    <h3>MD-2：Agent 三剑客 + Data Agent</h3>
+    <div class="tags">
+      <span class="badge medium">Medium</span>
+      <span class="badge p0">P0</span>
+    </div>
+  </div>
+
+  <table class="comp-table">
+    <thead><tr><th>webnovel-writer 做法</th><th>ScriptNow 现状</th><th>融合方案</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="wn">
+          严格流水线：<br>
+          1. <strong>Context Agent</strong> → 写前任务书<br>
+          2. <strong>Writer</strong> → 起草正文<br>
+          3. <strong>Reviewer</strong> → 五维审查<br>
+          4. <strong>Data Agent</strong> → 事实提取<br>
+          禁止并步跳步，Reviewer 只输出 JSON
+        </td>
+        <td class="sn">
+          已有 Writer → Reviewer 闭环，
+          但缺少 Context Agent 和 Data Agent。
+          审查维度较少，缺乏事实提取环节。
+        </td>
+        <td class="fusion">
+          <strong>在 AgentScope 框架内实现四 Agent 流水线：</strong><br>
+          1. <strong>Context Agent</strong>：读取合同/记忆/图谱，输出结构化写作任务书<br>
+          2. <strong>Writer</strong>：纯正文起草（已有，增强）<br>
+          3. <strong>Reviewer</strong>：五维审查（已有，扩展维度到5个）<br>
+          4. <strong>Data Agent</strong>：自动提取新实体/状态变化/关系变化<br>
+          5. 流水线编排器确保串行执行和失败隔离
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="metrics-row">
+    <div class="metric"><div class="value green">很高</div><div class="label">预期收益</div></div>
+    <div class="metric"><div class="value orange">高</div><div class="label">实施难度</div></div>
+    <div class="metric"><div class="value">2-3周</div><div class="label">预估工期</div></div>
+  </div>
+
+  <div class="callout warn">
+    <strong>关键改造点：</strong>webnovel-writer 的 Agent 是 Claude Code 的 subagent 子进程。
+    ScriptNow 需要将其重写为 AgentScope Agent，需解决上下文传递、状态同步和失败恢复。
+    已有 Writer+Reviewer 可复用 60% 逻辑。
+  </div>
+</div>
+
+<!-- MD3: 三层记忆 -->
+<div class="card">
+  <div class="card-header">
+    <h3>MD-3：三层记忆系统扩展</h3>
+    <div class="tags">
+      <span class="badge medium">Medium</span>
+      <span class="badge p1">P1</span>
+    </div>
+  </div>
+
+  <table class="comp-table">
+    <thead><tr><th>webnovel-writer 做法</th><th>ScriptNow 现状</th><th>融合方案</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="wn">
+          三层记忆：<br>
+          • <strong>Working Memory</strong>：运行时上下文<br>
+          • <strong>Episodic Memory</strong>：近期章节摘要<br>
+          • <strong>Semantic Memory</strong>：长期 scratchpad JSON<br>
+          （含 character_state / story_facts / world_rules /
+          timeline / open_loops / reader_promises / relationships）
+        </td>
+        <td class="sn">
+          上下文冷热分层已实现，
+          但缺乏系统化的三层结构和 scratchpad 机制。
+          图谱仅限于实体关系，未覆盖伏笔/规则/承诺。
+        </td>
+        <td class="fusion">
+          <strong>在冷热分层基础上构建三层记忆：</strong><br>
+          1. Working Memory = 当前章节上下文（已有时实现增强）<br>
+          2. Episodic Memory = 最近N章摘要索引<br>
+          3. Semantic Memory = scratchpad JSON<br>
+          扩展图谱覆盖：timeline / open_loops / reader_promises / world_rules<br>
+          实现记忆衰减和优先级排序
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="metrics-row">
+    <div class="metric"><div class="value green">很高</div><div class="label">预期收益</div></div>
+    <div class="metric"><div class="value orange">高</div><div class="label">实施难度</div></div>
+    <div class="metric"><div class="value">2-3周</div><div class="label">预估工期</div></div>
+  </div>
+</div>
+
+<!-- MD4: 追读力系统 -->
+<div class="card">
+  <div class="card-header">
+    <h3>MD-4：追读力保障系统</h3>
+    <div class="tags">
+      <span class="badge medium">Medium</span>
+      <span class="badge p1">P1</span>
+    </div>
+  </div>
+
+  <table class="comp-table">
+    <thead><tr><th>webnovel-writer 做法</th><th>ScriptNow 现状</th><th>融合方案</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="wn">
+          完整追读力体系：<br>
+          • 五类 Hook + 强度评估<br>
+          • 六种 Cool-point + 三段式 30/40/30<br>
+          • 微兑现频率控制<br>
+          • 债务追踪（open_loops）<br>
+          • 滚动窗口评估（5章/10-15章）
+        </td>
+        <td class="sn">
+          叙事状态机覆盖 Hook/特质/关系变化，
+          但缺乏量化评估和追踪机制。
+          无微兑现和债务概念。
+        </td>
+        <td class="fusion">
+          <strong>构建追读力量化体系：</strong><br>
+          1. 审查 Agent 扩展：每次审查输出 hook_strength / coolpoint_patterns / micropayoffs<br>
+          2. 债务追踪器：记录 reader_promises 和 open_loops，追踪回收率<br>
+          3. 滚动窗口告警：连续N章无钩子/无爽点/无变现时预警<br>
+          4. 前端追读力 Dashboard：Hook 强度曲线、爽点密度、债务健康度
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="metrics-row">
+    <div class="metric"><div class="value green">很高</div><div class="label">预期收益</div></div>
+    <div class="metric"><div class="value orange">高</div><div class="label">实施难度</div></div>
+    <div class="metric"><div class="value">2-3周</div><div class="label">预估工期</div></div>
+  </div>
+</div>
+
+<!-- MD5: 章节提交链 -->
+<div class="card">
+  <div class="card-header">
+    <h3>MD-5：章节提交链与五维投影</h3>
+    <div class="tags">
+      <span class="badge medium">Medium</span>
+      <span class="badge p1">P1</span>
+    </div>
+  </div>
+
+  <table class="comp-table">
+    <thead><tr><th>webnovel-writer 做法</th><th>ScriptNow 现状</th><th>融合方案</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="wn">
+          完整提交链：<br>
+          prewrite gate → write → review → data-agent →
+          precommit gate → <code>chapter-commit</code> →
+          postcommit gate<br>
+          accepted → state/index/summary/memory/vector 五维投影<br>
+          rejected → 阻断并告知原因
+        </td>
+        <td class="sn">
+          章节完成后更新状态和审查记录，
+          但缺乏严格的闸门(gate)机制和统一的提交链。
+          投影概念缺失。
+        </td>
+        <td class="fusion">
+          <strong>在 ScriptNow 实现章节提交流水线：</strong><br>
+          1. 定义 prewrite / precommit / postcommit 三级闸门<br>
+          2. 实现 CHAPTER_COMMIT 数据结构（含所有 artifact 引用）<br>
+          3. 五维投影适配 ScriptNow 存储（state→状态DB, index→图谱, summary→摘要, memory→记忆DB, vector→向量）<br>
+          4. 失败隔离：commit rejected 时阻断，projection failed 时补跑
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="metrics-row">
+    <div class="metric"><div class="value green">高</div><div class="label">预期收益</div></div>
+    <div class="metric"><div class="value orange">高</div><div class="label">实施难度</div></div>
+    <div class="metric"><div class="value">2-3周</div><div class="label">预估工期</div></div>
+  </div>
+</div>
+
+<!-- MD6: 题材写作指导 -->
+<div class="card">
+  <div class="card-header">
+    <h3>MD-6：题材驱动的写作指导引擎</h3>
+    <div class="tags">
+      <span class="badge medium">Medium</span>
+      <span class="badge p2">P2</span>
+    </div>
+  </div>
+
+  <table class="comp-table">
+    <thead><tr><th>webnovel-writer 做法</th><th>ScriptNow 现状</th><th>融合方案</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="wn">
+          题材推理引擎：<br>
+          • CSV 多表检索（调性/爽点/桥段/写作技法/命名）<br>
+          • 题材特定 guidance text<br>
+          • 压力源/释放目标映射<br>
+          • anti_patterns 合并与排序
+        </td>
+        <td class="sn">
+          创作方向阶段可选择风格/类型，
+          但无系统化的题材推理和写作指导注入。
+        </td>
+        <td class="fusion">
+          <strong>实现题材推理中间件：</strong><br>
+          1. 构建体裁知识库（结构化 JSON 替代 CSV）<br>
+          2. 实现 StorySystemEngine 的 AgentScope 适配版<br>
+          3. 根据题材自动注入：guidance text + 压力源/释放目标 + anti_patterns<br>
+          4. 提供题材自定义接口供用户微调
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="metrics-row">
+    <div class="metric"><div class="value orange">中高</div><div class="label">预期收益</div></div>
+    <div class="metric"><div class="value orange">中</div><div class="label">实施难度</div></div>
+    <div class="metric"><div class="value">1-2周</div><div class="label">预估工期</div></div>
+  </div>
+</div>
+
+<!-- ===== SECTION: HORIZON ===== -->
+<h2 class="section-title horizon" id="horizon"><span class="icon">🔭</span> 第三档：长远规划（Horizon）</h2>
+
+<p style="color:var(--text-secondary); margin-bottom:20px;">
+  以下为战略性融合方向，需要较长的研发周期和架构预研，建议在中期融合稳定后再启动。
+</p>
+
+<!-- HZ1: 完整题材模板 -->
+<div class="card">
+  <div class="card-header">
+    <h3>HZ-1：37 题材模板完整适配</h3>
+    <div class="tags">
+      <span class="badge horizon">Horizon</span>
+      <span class="badge p3">P3</span>
+    </div>
+  </div>
+
+  <table class="comp-table">
+    <thead><tr><th>webnovel-writer 做法</th><th>ScriptNow 现状</th><th>融合方案</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="wn">
+          37 种题材各含完整的：<br>
+          • 结构建议（黄金三章/节奏/卷结构）<br>
+          • 爽点模式与频率<br>
+          • 禁忌与毒点<br>
+          • 命名规则<br>
+          • 词库偏好<br>
+          • 题材融合逻辑
+        </td>
+        <td class="sn">
+          通用创作，无题材细分模板。
+        </td>
+        <td class="fusion">
+          • 分三批适配：先 10 种通用题材 → 再 15 种细分 → 最后 12 种网文专项<br>
+          • 设计题材融合组合引擎<br>
+          • 用户可自定义/分享模板<br>
+          • 评估是否需扩展 ScriptNow 定位到网文市场
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="metrics-row">
+    <div class="metric"><div class="value purple">战略级</div><div class="label">预期收益</div></div>
+    <div class="metric"><div class="value orange">高</div><div class="label">实施难度</div></div>
+    <div class="metric"><div class="value">4-6周</div><div class="label">预估工期</div></div>
+  </div>
+</div>
+
+<!-- HZ2: Story System 合同树 -->
+<div class="card">
+  <div class="card-header">
+    <h3>HZ-2：完整 Story System 合同树</h3>
+    <div class="tags">
+      <span class="badge horizon">Horizon</span>
+      <span class="badge p2">P2</span>
+    </div>
+  </div>
+
+  <table class="comp-table">
+    <thead><tr><th>webnovel-writer 做法</th><th>ScriptNow 现状</th><th>融合方案</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="wn">
+          完整合同树：<br>
+          <code>.story-system/</code> 目录下：<br>
+          MASTER_SETTING / anti_patterns /
+          chapters / volumes / reviews / commits / events<br>
+          合同合并策略：locked / append_only / override_allowed<br>
+          StorySystemEngine 题材路由
+        </td>
+        <td class="sn">
+          StoryMap 承担部分合同职能但不完整。
+        </td>
+        <td class="fusion">
+          • 完整实现合同树数据库（MD-1 深度版）<br>
+          • 实现题材路由引擎的通用版<br>
+          • 支持多项目、多用户合同模板共享<br>
+          • 合同版本管理与对比
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="metrics-row">
+    <div class="metric"><div class="value purple">战略级</div><div class="label">预期收益</div></div>
+    <div class="metric"><div class="value orange">很高</div><div class="label">实施难度</div></div>
+    <div class="metric"><div class="value">3-4周</div><div class="label">预估工期</div></div>
+  </div>
+</div>
+
+<!-- HZ3: 追读力完整 Dashboard -->
+<div class="card">
+  <div class="card-header">
+    <h3>HZ-3：追读力深度分析 Dashboard</h3>
+    <div class="tags">
+      <span class="badge horizon">Horizon</span>
+      <span class="badge p3">P3</span>
+    </div>
+  </div>
+
+  <table class="comp-table">
+    <thead><tr><th>webnovel-writer 做法</th><th>ScriptNow 现状</th><th>融合方案</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="wn">
+          React+ECharts 面板：<br>
+          • 追读力元数据存储（chapter_reading_power 表）<br>
+          • Hook 类型/强度趋势<br>
+          • Cool-point 密度曲线<br>
+          • 微兑现频率<br>
+          • 债务健康度
+        </td>
+        <td class="sn">
+          前端已有基础图表能力。
+        </td>
+        <td class="fusion">
+          • 完整实现 MD-4 追读力数据后端<br>
+          • 前端 Deep Analytics 页面（追读力趋势 / 反套路合规 / 节奏健康 / 实体活跃度）<br>
+          • 导出 PDF 分析报告<br>
+          • AI 自动诊断与改进建议
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="metrics-row">
+    <div class="metric"><div class="value purple">战略级</div><div class="label">预期收益</div></div>
+    <div class="metric"><div class="value orange">高</div><div class="label">实施难度</div></div>
+    <div class="metric"><div class="value">3-4周</div><div class="label">预估工期</div></div>
+  </div>
+</div>
+
+<!-- HZ4: 学习系统 -->
+<div class="card">
+  <div class="card-header">
+    <h3>HZ-4：创作学习系统（webnovel-learn 理念）</h3>
+    <div class="tags">
+      <span class="badge horizon">Horizon</span>
+      <span class="badge p3">P3</span>
+    </div>
+  </div>
+
+  <table class="comp-table">
+    <thead><tr><th>webnovel-writer 做法</th><th>ScriptNow 现状</th><th>融合方案</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="wn">
+          project_memory.json：<br>
+          • 模式积累（pattern_type / description）<br>
+          • 来源于用户反馈和审查发现<br>
+          • 跨章节复用经验
+        </td>
+        <td class="sn">
+          无系统化的学习机制。
+        </td>
+        <td class="fusion">
+          • 项目级记忆积累：自动从审查反馈中提取改进点<br>
+          • 跨项目经验共享（匿名化）<br>
+          • 用户写作风格建模<br>
+          • "我的写作偏好"自动调优
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="metrics-row">
+    <div class="metric"><div class="value purple">战略级</div><div class="label">预期收益</div></div>
+    <div class="metric"><div class="value orange">很高</div><div class="label">实施难度</div></div>
+    <div class="metric"><div class="value">4-6周</div><div class="label">预估工期</div></div>
+  </div>
+</div>
+
+<!-- HZ5: 多项目记忆 -->
+<div class="card">
+  <div class="card-header">
+    <h3>HZ-5：多项目记忆复用与创作智能体网络</h3>
+    <div class="tags">
+      <span class="badge horizon">Horizon</span>
+      <span class="badge p3">P3</span>
+    </div>
+  </div>
+
+  <table class="comp-table">
+    <thead><tr><th>webnovel-writer 做法</th><th>ScriptNow 现状</th><th>融合方案</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="wn">
+          单项目独立运行，无跨项目共享。
+        </td>
+        <td class="sn">
+          多项目独立管理。
+        </td>
+        <td class="fusion">
+          <strong>这是 ScriptNow 超越 webnovel-writer 的战略机会：</strong><br>
+          • 跨项目模式复用（安全的写作风格/节奏偏好迁移）<br>
+          • 创作智能体网络：一个项目学到的约束/模式可选择性迁移到新项目<br>
+          • 行业知识图谱：从多项目积累结构化创作知识<br>
+          • 这是两者定位差异（平台 vs 插件）带来的独特优势
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="metrics-row">
+    <div class="metric"><div class="value purple">战略级</div><div class="label">预期收益</div></div>
+    <div class="metric"><div class="value orange">很高</div><div class="label">实施难度</div></div>
+    <div class="metric"><div class="value">6-8周</div><div class="label">预估工期</div></div>
+  </div>
+
+  <div class="callout info">
+    <strong>战略价值：</strong>这是 ScriptNow 作为 SaaS 平台相比 webnovel-writer（本地 CLI 插件）的独特优势。
+    多项目记忆网络能形成数据飞轮，随着用户创作量增长，AI 质量持续提升。
+  </div>
+</div>
+
+<!-- ===== SECTION: ROADMAP ===== -->
+<h2 class="section-title priority" id="roadmap"><span class="icon">🗺️</span> 优先级排序与推荐实施路线图</h2>
+
+<div class="callout success">
+  <strong>总体策略：</strong>先 Quick Wins 建立信心和可见效果 → 再 Medium 攻坚核心架构 →
+  最后 Horizon 作为长期竞争力构建。总预估工期约 <strong>10-14 周</strong>（不含 Horizon 战略级项目）。
+</div>
+
+<h3 style="margin:28px 0 16px; font-size:1.1rem;">综合优先级矩阵</h3>
+
+<table class="comp-table">
+  <thead>
+    <tr>
+      <th style="width:8%">#</th>
+      <th style="width:28%">融合项</th>
+      <th style="width:8%">档位</th>
+      <th style="width:8%">优先级</th>
+      <th style="width:8%">收益</th>
+      <th style="width:8%">难度</th>
+      <th style="width:8%">工期</th>
+      <th style="width:24%">依赖</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td class="label">1</td><td>QW-1 防幻觉三定律</td><td><span class="badge quick">Quick</span></td><td><span class="badge p0">P0</span></td><td>高</td><td>低</td><td>2-3天</td><td>无</td></tr>
+    <tr><td class="label">2</td><td>QW-2 Hook 分类体系</td><td><span class="badge quick">Quick</span></td><td><span class="badge p0">P0</span></td><td>高</td><td>低</td><td>1-2天</td><td>无</td></tr>
+    <tr><td class="label">3</td><td>QW-5 核心约束文件</td><td><span class="badge quick">Quick</span></td><td><span class="badge p0">P0</span></td><td>高</td><td>低</td><td>2-3天</td><td>无</td></tr>
+    <tr><td class="label">4</td><td>QW-3 Strand Weave</td><td><span class="badge quick">Quick</span></td><td><span class="badge p1">P1</span></td><td>中高</td><td>低</td><td>2-3天</td><td>无</td></tr>
+    <tr><td class="label">5</td><td>QW-4 Cool-point 体系</td><td><span class="badge quick">Quick</span></td><td><span class="badge p1">P1</span></td><td>中高</td><td>低</td><td>2-3天</td><td>QW-2</td></tr>
+    <tr><td class="label">6</td><td>QW-6 Dashboard 可视化</td><td><span class="badge quick">Quick</span></td><td><span class="badge p1">P1</span></td><td>高</td><td>中</td><td>3-5天</td><td>QW-2/3/4</td></tr>
+    <tr><td class="label">7</td><td>MD-1 合同驱动体系</td><td><span class="badge medium">Medium</span></td><td><span class="badge p0">P0</span></td><td>很高</td><td>高</td><td>2-3周</td><td>QW-5</td></tr>
+    <tr><td class="label">8</td><td>MD-2 Agent 三剑客</td><td><span class="badge medium">Medium</span></td><td><span class="badge p0">P0</span></td><td>很高</td><td>高</td><td>2-3周</td><td>MD-1</td></tr>
+    <tr><td class="label">9</td><td>MD-3 三层记忆</td><td><span class="badge medium">Medium</span></td><td><span class="badge p1">P1</span></td><td>很高</td><td>高</td><td>2-3周</td><td>MD-1</td></tr>
+    <tr><td class="label">10</td><td>MD-5 章节提交链</td><td><span class="badge medium">Medium</span></td><td><span class="badge p1">P1</span></td><td>高</td><td>高</td><td>2-3周</td><td>MD-1/2</td></tr>
+    <tr><td class="label">11</td><td>MD-4 追读力系统</td><td><span class="badge medium">Medium</span></td><td><span class="badge p1">P1</span></td><td>很高</td><td>高</td><td>2-3周</td><td>MD-3/5, QW-2/4</td></tr>
+    <tr><td class="label">12</td><td>QW-7 体裁模板</td><td><span class="badge quick">Quick</span></td><td><span class="badge p2">P2</span></td><td>中</td><td>低</td><td>1-2天</td><td>QW-5</td></tr>
+    <tr><td class="label">13</td><td>MD-6 题材引擎</td><td><span class="badge medium">Medium</span></td><td><span class="badge p2">P2</span></td><td>中高</td><td>中</td><td>1-2周</td><td>QW-7</td></tr>
+    <tr><td class="label">14</td><td>HZ-2 合同树完整版</td><td><span class="badge horizon">Horizon</span></td><td><span class="badge p2">P2</span></td><td>战略级</td><td>很高</td><td>3-4周</td><td>MD-1/2/5</td></tr>
+    <tr><td class="label">15</td><td>HZ-1 题材模板完整版</td><td><span class="badge horizon">Horizon</span></td><td><span class="badge p3">P3</span></td><td>战略级</td><td>高</td><td>4-6周</td><td>MD-6</td></tr>
+    <tr><td class="label">16</td><td>HZ-3 追读力 Dashboard</td><td><span class="badge horizon">Horizon</span></td><td><span class="badge p3">P3</span></td><td>战略级</td><td>高</td><td>3-4周</td><td>MD-4, QW-6</td></tr>
+    <tr><td class="label">17</td><td>HZ-4 学习系统</td><td><span class="badge horizon">Horizon</span></td><td><span class="badge p3">P3</span></td><td>战略级</td><td>很高</td><td>4-6周</td><td>MD-3/4</td></tr>
+    <tr><td class="label">18</td><td>HZ-5 多项目记忆</td><td><span class="badge horizon">Horizon</span></td><td><span class="badge p3">P3</span></td><td>战略级</td><td>很高</td><td>6-8周</td><td>HZ-4</td></tr>
+  </tbody>
+</table>
+
+<hr>
+
+<h3 style="margin:28px 0 16px; font-size:1.1rem;">🗓️ 推荐实施路线</h3>
+
+<div class="roadmap">
+
+  <div class="roadmap-item phase1">
+    <div class="phase-tag phase1">Phase 1 · Week 1-2 · 基础增强</div>
+    <h4>Quick Wins 全部完成 + 合同驱动体系启动</h4>
+    <p>
+      <strong>第1周：</strong>QW-1（防幻觉）+ QW-2（Hook 分类）+ QW-5（约束文件）— 三项 P0 Quick Wins 并行推进<br>
+      <strong>第2周：</strong>QW-3（Strand Weave）+ QW-4（Cool-point）— P1 Quick Wins<br>
+      <strong>并行启动：</strong>MD-1（合同驱动体系）架构设计评审<br>
+      <strong>里程碑：</strong>写章质量明显提升，前端可见 Hook 分布和 Strand 建议
+    </p>
+  </div>
+
+  <div class="roadmap-item phase2">
+    <div class="phase-tag phase2">Phase 2 · Week 3-6 · 核心架构升级</div>
+    <h4>合同体系 + Agent 三剑客 + 三层记忆</h4>
+    <p>
+      <strong>第3-4周：</strong>MD-1（合同驱动体系）— StoryMap 改造、合同数据库、合同生成 Agent<br>
+      <strong>第4-6周：</strong>MD-2（Agent 三剑客）— Context Agent + Data Agent、流水线编排器<br>
+      <strong>并行：</strong>MD-3（三层记忆）— scratchpad 设计 + 图谱扩展<br>
+      <strong>里程碑：</strong>写完一章自动更新合同/状态/记忆，防幻觉能力质变
+    </p>
+  </div>
+
+  <div class="roadmap-item phase2">
+    <div class="phase-tag phase2">Phase 3 · Week 7-9 · 质量体系完善</div>
+    <h4>提交链 + 追读力 + 可视化</h4>
+    <p>
+      <strong>第7-8周：</strong>MD-5（章节提交链）+ QW-6（Dashboard 可视化）<br>
+      <strong>第8-9周：</strong>MD-4（追读力系统）— 债务追踪、滚动窗口评估<br>
+      <strong>并行：</strong>QW-7（体裁模板）→ MD-6（题材引擎）<br>
+      <strong>里程碑：</strong>完整质量闭环，追读力 Dashboard 上线，用户体验质的飞跃
+    </p>
+  </div>
+
+  <div class="roadmap-item phase3">
+    <div class="phase-tag phase3">Phase 4 · Week 10+ · 战略纵深</div>
+    <h4>Horizon 项目分批推进</h4>
+    <p>
+      <strong>第10-13周：</strong>HZ-2（完整合同树）+ HZ-3（追读力深度分析）— 在稳定基础上深化<br>
+      <strong>第14-18周：</strong>HZ-1（题材模板完整版）— 显著扩大目标用户群<br>
+      <strong>第18-24周：</strong>HZ-4（学习系统）+ HZ-5（多项目记忆）— 核心竞争壁垒<br>
+      <strong>里程碑：</strong>ScriptNow 从通用创作平台进化为「最懂你的 AI 创作伙伴」
+    </p>
+  </div>
+
+</div>
+
+<h3 style="margin:28px 0 16px; font-size:1.1rem;">⚠️ 关键风险与缓解</h3>
+
+<table class="comp-table">
+  <thead><tr><th>风险</th><th>影响</th><th>缓解措施</th></tr></thead>
+  <tbody>
+    <tr>
+      <td class="label">AgentScope 框架限制</td>
+      <td>MD-2/3/5 的 Agent 流水线可能受限于 AgentScope 的多 Agent 编排能力</td>
+      <td>Phase 1 完成后做技术预研；必要时在 AgentScope 外实现编排层</td>
+    </tr>
+    <tr>
+      <td class="label">合同系统过度工程化</td>
+      <td>MD-1 合同体系可能影响 ScriptNow 的灵活性和通用性</td>
+      <td>合同强度可配置（严格模式/建议模式/关闭）；保证 StoryMap 仍是用户可编辑的蓝图</td>
+    </tr>
+    <tr>
+      <td class="label">上下文膨胀</td>
+      <td>三层记忆 + 合同注入可能导致 Agent 上下文过长</td>
+      <td>配合 QW-5 的分层加载策略；MD-3 实现严格的记忆预算管理</td>
+    </tr>
+    <tr>
+      <td class="label">LLM 能力边界</td>
+      <td>五维审查 / Data Agent 的事实提取精度取决于 LLM 能力</td>
+      <td>审查 Agent 设计为"建议型"而非"裁决型"；关键决策保留人工确认</td>
+    </tr>
+    <tr>
+      <td class="label">兼容性断裂</td>
+      <td>频繁架构变更可能导致已有项目数据不兼容</td>
+      <td>每个 Phase 提供数据迁移脚本；保持 API 版本化</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ===== SECTION: APPENDIX ===== -->
+<h2 class="section-title" id="appendix"><span class="icon">📊</span> 附录：架构对照</h2>
+
+<h3 style="margin:20px 0 14px; font-size:1.05rem;">webnovel-writer 核心架构全景</h3>
+
+<div class="highlight-box">
+<strong>文件系统层</strong><br>
+<code>.story-system/</code>（合同树） ← MASTER_SETTING.json → volume_N.json → chapter_N.json → review.json → commit.json<br>
+<code>.webnovel/</code>（运行时） ← state.json, index.db, summaries/, memory/, vectors/, tmp/, logs/<br>
+<strong>Agent 层</strong><br>
+Context Agent → Writer → Reviewer → Data Agent（严格串行，禁止并步）<br>
+<strong>闸门层</strong><br>
+prewrite gate → precommit gate → chapter-commit（accepted/rejected）→ postcommit gate<br>
+<strong>投影层</strong><br>
+state → index → summary → memory → vector（五维投影，任一失败可补跑）<br>
+<strong>知识层</strong><br>
+core-constraints.md + genre-profiles.md + author_glossary.json + 37题材模板 + CSV多表检索
+</div>
+
+<h3 style="margin:20px 0 14px; font-size:1.05rem;">融合后 ScriptNow 目标架构</h3>
+
+<div class="highlight-box">
+<strong>合同数据层（改造 StoryMap）</strong><br>
+项目设定合同 → 幕/卷合同 → 章/场景合同 → 审查合同 → 提交记录<br>
+<strong>Agent 流水线（AgentScope 内）</strong><br>
+Context Agent → Writer → Reviewer → Data Agent（可配置模式：完整/快速/最小）<br>
+<strong>记忆系统（扩展冷热分层）</strong><br>
+Working Memory（当前上下文）+ Episodic Memory（摘要索引）+ Semantic Memory（scratchpad JSON + 扩展图谱）<br>
+<strong>质量保障（新增）</strong><br>
+防幻觉三定律 + Hook 五分类 + Strand Weave + Cool-point 六模式 + 追读力滚动评估<br>
+<strong>可视化（增强）</strong><br>
+创作数据 Dashboard + 追读力分析 + 实体活跃度 + 合同状态面板<br>
+<strong>题材引擎（新增）</strong><br>
+体裁知识库 + 推理引擎 + 写作指导注入 + 模板市场
+</div>
+
+<div class="footnote">
+  <p><strong>文档版本：</strong>v1.0</p>
+  <p><strong>生成日期：</strong>2026-07-26</p>
+  <p><strong>分析基准：</strong>webnovel-writer v6.2.1</p>
+  <p><strong>方法论：</strong>基于对 webnovel-writer 项目完整源码的深度分析（6个 Skill SKILL.md、37个题材模板、核心数据模块 story_system_engine / story_contracts / memory_contract / projections / write_gates / runtime_contract_builder 等），结合 ScriptNow 已知架构特点进行的系统性融合规划。</p>
+  <p><strong>声明：</strong>本规划为技术融合方案，具体实施需根据 ScriptNow 实际代码架构和技术栈进行调整。工期为初始估计值，以实际执行为准。</p>
+</div>
+
+</div><!-- .container -->
+
+</body>
+</html>
