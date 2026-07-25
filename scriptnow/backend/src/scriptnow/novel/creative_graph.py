@@ -295,8 +295,11 @@ class CreativeGraphExtractor:
                     id=index_key,
                     tenant_id=tenant_id,
                     project_id=project_id,
-                    name="创作图谱",
+                    source_file_id="",  # no source file for creative graph
+                    version=1,
+                    status="ready",
                     config={"source": "creative", "extraction_status": "ready"},
+                    source_hash="",  # not applicable
                 )
                 session.add(index)
                 await session.flush()
