@@ -69,10 +69,11 @@ async function goToIdeation() {
 async function load() {
   error.value = ''
   try {
-    const [availableSpecs, availableModels, existing] = await Promise.all([
+    const [availableSpecs, availableModels, existing, existingCovers] = await Promise.all([
       api<OutputSpec[]>(`/projects/${projectId.value}/packaging/cover-output-specs`),
       api<ImageModel[]>(`/projects/${projectId.value}/packaging/image-models`),
       api<WorkPackage | null>(`/projects/${projectId.value}/packaging`),
+      api<Cover[]>(`/projects/${projectId.value}/packaging/covers`),
     ])
     specs.value = availableSpecs
     models.value = availableModels
@@ -80,6 +81,7 @@ async function load() {
     selectedModel.value = availableModels.find((item) => item.available)?.id ?? ''
     workPackage.value = existing
     coverPrompt.value = existing?.cover_prompt ?? ''
+    covers.value = existingCovers ?? []
   } catch (reason) { error.value = presentError(reason, '加载作品包装失败') }
 }
 function toggle(key: string) {
