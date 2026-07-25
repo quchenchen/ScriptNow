@@ -745,8 +745,8 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
         # Determine extraction status
         extraction = "ready" if data["chapters"] else ("running" if (graph_queue._running or graph_queue._jobs) else "not_built")
 
-        # If graph is empty but chapters have been adopted, enqueue background extraction (once)
-        if not data["chapters"] and not graph_queue._running and not graph_queue._jobs:
+        # Enqueue background extraction for adopted chapters not yet in the graph
+        if not graph_queue._running and not graph_queue._jobs:
             async with database.session() as session:
                 from sqlalchemy import select as sa_select
 
@@ -759,9 +759,12 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
                         )
                     )
                 )
-            if adopted:
+            # Only enqueue chapters that haven't been extracted yet
+            extracted_ids = {ch["chapter_key"].replace("chapter:", "") for ch in data["chapters"]}
+            pending = [rev for rev in adopted if rev.chapter_id not in extracted_ids]
+            if pending:
                 tenant_id = str((await auth.validate_access(access_token)).tenant_id)
-                for rev in adopted:
+                for rev in pending:
                     chapter = next(
                         (b for b in list(rev.blocks) if isinstance(b, dict) and b.get("type") == "heading"),
                         None,
