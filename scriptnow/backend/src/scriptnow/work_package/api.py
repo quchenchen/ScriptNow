@@ -278,10 +278,8 @@ def create_work_package_router(
             if url.startswith("/files/covers/"):
                 rel = url.replace("/files/covers/", "")
                 local = _os.path.join(settings.workspace_root, "covers", rel)
-                try:
+                with suppress(OSError):
                     _os.remove(local)
-                except OSError:
-                    pass
             await session.delete(cover)
             await session.flush()
         return None
