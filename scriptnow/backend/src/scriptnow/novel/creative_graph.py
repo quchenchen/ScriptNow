@@ -344,11 +344,16 @@ class CreativeGraphExtractor:
 # ── Graph reader for Writer context ──────────────────────────────────────
 
 
-async def read_creative_graph(database: Database, *, project_id: str) -> dict[str, object]:
-    """Read the accumulated creative graph as a compact context object.
+async def read_creative_graph(database: Database, *, project_id: str, compact: bool = False) -> dict[str, object]:
+    """Read the accumulated creative graph.
 
     Returns a dict with keys: ``chapters`` (list of summaries), ``nodes``,
-    ``edges``, suitable for embedding in Writer context.
+    ``edges``.
+
+    When ``compact=True``, returns a token-efficient subset suitable for
+    embedding in Writer context: descriptions truncated to 200 chars,
+    low-confidence edges filtered, and only the most recent chapter
+    summaries.
     """
     index_key = f"creative:{project_id}"
 
@@ -379,6 +384,38 @@ async def read_creative_graph(database: Database, *, project_id: str) -> dict[st
                 .where(NarrativeEdgeModel.index_id == index_key)
             )
         )
+
+    if compact:
+        # Token-efficient subset for Writer context
+        recent_summaries = summaries[-6:]  # last 6 chapters only
+        high_conf_edges = [e for e in edges if e.confidence >= 60]
+        return {
+            "chapters": [
+                {"chapter_key": s.summary_key, "type": "chapter", "label": s.title}
+                for s in recent_summaries
+            ],
+            "nodes": [
+                {
+                    "id": n.id,
+                    "type": n.node_type,
+                    "label": n.name,
+                    "summary": (n.description or "")[:200],
+                    "aliases": list(n.aliases)[:4],
+                }
+                for n in nodes
+            ],
+            "edges": [
+                {
+                    "id": e.id,
+                    "type": e.edge_type,
+                    "source": e.source_node_id,
+                    "target": e.target_node_id,
+                    "label": (e.description or "")[:100] + ("..." if len(e.description) > 100 else ""),
+                    "inference": e.inference,
+                }
+                for e in high_conf_edges
+            ],
+        }
 
     return {
         "chapters": [

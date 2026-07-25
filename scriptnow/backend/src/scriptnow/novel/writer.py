@@ -465,7 +465,7 @@ class NovelChapterGenerator:
                 if source_revision
                 else None
             ),
-            "creative_graph": await read_creative_graph(self.database, project_id=project.id),
+            "creative_graph": await read_creative_graph(self.database, project_id=project.id, compact=True),
         }
 
     @staticmethod
