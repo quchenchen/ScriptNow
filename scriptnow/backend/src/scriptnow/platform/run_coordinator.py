@@ -116,3 +116,11 @@ class RunCoordinator:
             waiting_reason=run.waiting_reason,
             error_code=run.error_code,
         )
+
+    async def status(self, *, tenant_id: str, run_id: str) -> RunView | None:
+        """Return current run status or None if not found."""
+        async with self.database.session() as session:
+            run = await session.get(ProjectRunModel, run_id)
+            if run is None or run.tenant_id != tenant_id:
+                return None
+            return self._view(run)

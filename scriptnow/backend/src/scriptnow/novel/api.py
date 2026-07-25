@@ -1,6 +1,7 @@
+import asyncio
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Cookie, Header, HTTPException, Response, status
+from fastapi import APIRouter, Cookie, Header, HTTPException, Query, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
@@ -45,7 +46,8 @@ from scriptnow.platform.auth import AuthenticationFailed, AuthService, CsrfFaile
 from scriptnow.platform.auth_api import ACCESS_COOKIE
 from scriptnow.platform.config import Settings
 from scriptnow.platform.database import Database
-from scriptnow.platform.models import ProjectModel
+from scriptnow.platform.models import ProjectModel, RunStatus
+from scriptnow.platform.run_coordinator import RunCoordinator
 from scriptnow.platform.translation import FaithfulTranslationService
 
 
@@ -142,7 +144,31 @@ class RollbackRequest(BaseModel):
 
 
 def create_novel_router(database: Database, auth: AuthService, settings: Settings) -> APIRouter:
-    router = APIRouter(prefix="/novel/projects/{project_id}", tags=["novel"])
+    router = APIRouter(prefix="/novel")
+
+    async def _background_generate_chapter(
+        tenant_id, pid: str, cid: str,
+        idem: str, fb: str | None, src: str | None, rid: str,
+    ) -> None:
+        coordinator = RunCoordinator(database)
+        try:
+            await coordinator.transition(tenant_id=tenant_id, run_id=rid, target=RunStatus.RUNNING)
+            async with database.session() as session:
+                project = await session.get(ProjectModel, pid)
+            blocks = await writer.generate(
+                tenant_id=str(tenant_id), project=project, chapter_id=cid,
+                idempotency_key=idem, feedback=fb, source_revision_id=src,
+            )
+            await service.propose_document(
+                tenant_id=str(tenant_id), project_id=pid, chapter_id=cid,
+                blocks=blocks, idempotency_key=idem, source="agent",
+            )
+            await coordinator.transition(tenant_id=tenant_id, run_id=rid, target=RunStatus.SUCCEEDED)
+        except Exception:
+            await coordinator.transition(
+                tenant_id=tenant_id, run_id=rid, target=RunStatus.FAILED, error_code="generation_failed"
+            )
+
     service = NovelService(database)
     exports = NovelExportService(
         database, translator=FaithfulTranslationService(database, settings)
@@ -411,10 +437,24 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
         project_id: str,
         chapter_id: str,
         body: GenerateRequest,
+        background: bool = Query(default=False),
         access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
         csrf_token: Annotated[str | None, Header(alias="X-CSRF-Token")] = None,
     ) -> AdoptResponse:
         auth_context = await context(access_token, csrf_token, write=True)
+        if background:
+            run_coordinator = RunCoordinator(database)
+            run = await run_coordinator.enqueue(
+                tenant_id=str(auth_context.tenant_id),
+                project_id=project_id,
+                idempotency_key=body.idempotency_key,
+            )
+            asyncio.create_task(_background_generate_chapter(
+                auth_context.tenant_id, project_id, chapter_id,
+                body.idempotency_key, body.feedback, body.source_revision_id,
+                run.id,
+            ))
+            return AdoptResponse(id=run.id, status="queued")
         try:
             async with database.session() as session:
                 project = await session.get(ProjectModel, project_id)
@@ -439,6 +479,21 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
             return AdoptResponse(id=item.id, status=str(item.status))
         except (NovelConflict, NovelDomainError, NovelWriterError) as error:
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
+
+    @router.get("/runs/{run_id}")
+    async def run_status(
+        project_id: str,
+        run_id: str,
+        access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
+    ) -> dict[str, object]:
+        auth_context = await context(access_token)
+        run_coordinator = RunCoordinator(database)
+        run = await run_coordinator.status(
+            tenant_id=str(auth_context.tenant_id), run_id=run_id
+        )
+        if run is None or run.project_id != project_id:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "run not found")
+        return {"id": run.id, "status": run.status, "error_code": run.error_code}
 
     @router.post("/chapters/{chapter_id}/propose", response_model=AdoptResponse)
     async def propose_chapter(
