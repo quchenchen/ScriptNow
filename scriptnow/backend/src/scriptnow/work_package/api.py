@@ -1,3 +1,4 @@
+from contextlib import suppress
 from typing import Annotated
 
 from fastapi import APIRouter, Cookie, Header, HTTPException, status
