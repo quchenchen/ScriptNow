@@ -1,5 +1,7 @@
 import json
+import os
 import re
+import urllib.request
 from contextlib import suppress
 from dataclasses import dataclass
 
@@ -345,13 +347,31 @@ class WorkPackageService:
                     f"{spec.platform} cover generation failed: {error}"
                 ) from error
             async with self.database.session() as session:
+                # Download image locally
+                local_url = generated.urls[0]
+                try:
+                    local_path = os.path.join(
+                        self.settings.workspace_root, "covers", project_id
+                    )
+                    os.makedirs(local_path, exist_ok=True)
+                    ext = ".png"
+                    if "jpg" in local_url.lower() or "jpeg" in local_url.lower():
+                        ext = ".jpg"
+                    filename = f"{spec.key}_{generated.request_id[:12]}{ext}"
+                    filepath = os.path.join(local_path, filename)
+                    urllib.request.urlretrieve(local_url, filepath)
+                    if os.path.getsize(filepath) > 0:
+                        local_url = f"/files/covers/{project_id}/{filename}"
+                except Exception:
+                    pass  # fallback: keep external URL
+
                 artifact = CoverArtifactModel(
                     tenant_id=tenant_id,
                     project_id=project_id,
                     work_package_id=package.id,
                     image_model_id=image_model_id,
                     provider_request_id=generated.request_id,
-                    image_url=generated.urls[0],
+                    image_url=local_url,
                     prompt_snapshot=effective_prompt,
                     platform_key=spec.key,
                     width=spec.width,

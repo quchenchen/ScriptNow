@@ -62,6 +62,14 @@ def create_app(
 
     app.include_router(create_translation_router(resolved_database, auth, resolved_settings))
 
+    import os as _os
+
+    from fastapi.staticfiles import StaticFiles
+
+    covers_dir = _os.path.join(resolved_settings.workspace_root, "covers")
+    _os.makedirs(covers_dir, exist_ok=True)
+    app.mount("/files/covers", StaticFiles(directory=covers_dir), name="cover_files")
+
     @app.get("/health", tags=["system"])
     async def health() -> dict[str, object]:
         return {
