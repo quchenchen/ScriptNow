@@ -663,6 +663,65 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
                 headers={"Content-Disposition": f'attachment; filename="novel-{manifest.id}.docx"'},
             )
 
+    @router.post("/exports/packaged")
+    async def create_packaged_export(
+        project_id: str,
+        body: NovelExportRequest,
+        access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
+        csrf_token: Annotated[str | None, Header(alias="X-CSRF-Token")] = None,
+    ) -> Response:
+        import httpx
+
+        from scriptnow.novel.export import render_packaged_docx
+        from scriptnow.work_package.models import CoverModel, WorkPackageModel
+        auth_context = await context(access_token, csrf_token, write=True)
+        tid = str(auth_context.tenant_id)
+        await _novel_project(database, tid, project_id)
+
+        from scriptnow.novel.delivery import _ordered_chapters
+        async with database.session() as session:
+            from sqlalchemy import select as sa_select
+
+            from scriptnow.novel.domain import NovelDocumentRevisionModel, NovelRevisionStatus
+            story_map = (await session.scalars(sa_select(NovelStoryMapModel).where(NovelStoryMapModel.project_id == project_id))).one()
+            revisions = list(await session.scalars(
+                sa_select(NovelDocumentRevisionModel).where(
+                    NovelDocumentRevisionModel.project_id == project_id,
+                    NovelDocumentRevisionModel.chapter_id.in_(body.chapter_ids),
+                    NovelDocumentRevisionModel.status == NovelRevisionStatus.ADOPTED,
+                )))
+            by_chapter = {item.chapter_id: item for item in revisions}
+            if set(body.chapter_ids) != set(by_chapter):
+                raise HTTPException(409, "only completed chapters can be exported")
+            chapters = _ordered_chapters(story_map.volumes, body.chapter_ids, by_chapter)
+            from scriptnow.novel.delivery import _ordered_chapters
+            project = await session.get(ProjectModel, project_id)
+            package = (await session.scalars(sa_select(WorkPackageModel).where(WorkPackageModel.project_id == project_id))).one_or_none()
+            covers = list(await session.scalars(sa_select(CoverModel).where(CoverModel.project_id == project_id, CoverModel.status == "candidate").order_by(CoverModel.created_at.desc())))
+
+        cover_bytes = None
+        if covers and covers[0].image_url:
+            try:
+                async with httpx.AsyncClient(timeout=httpx.Timeout(30)) as client:
+                    resp = await client.get(covers[0].image_url)
+                    if resp.status_code == 200:
+                        cover_bytes = resp.content
+            except Exception:
+                pass  # cover download failure is non-blocking
+
+        docx_bytes = render_packaged_docx(
+            project_name=project.name,
+            synopsis=package.synopsis if package else "",
+            tags=package.tags if package else (),
+            cover_image_bytes=cover_bytes,
+            chapters=tuple(chapters),
+        )
+        return Response(
+            content=docx_bytes,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={"Content-Disposition": f'attachment; filename="{project.name}-打包.docx"'},
+        )
+
     @router.post("/snapshots", status_code=status.HTTP_201_CREATED)
     async def create_snapshot(
         project_id: str,
