@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Cookie, HTTPException
+from fastapi import APIRouter, Cookie, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
@@ -286,5 +286,147 @@ def create_translation_router(
         if "terms" in body:
             glossary.add_batch(body["terms"])
         return glossary.to_dict()
+
+    @router.post("/documents")
+    async def upload_and_translate(
+        file: UploadFile,
+        target_language: str = Form(...),
+        access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
+    ):
+        """Upload a document (TXT/PDF/DOCX), extract text, create translation project."""
+        import os
+        import uuid
+
+        context = await auth.validate_access(access_token)
+        tid = str(context.tenant_id)
+
+        # Read file content
+        raw = await file.read()
+        ext = os.path.splitext(file.filename or "")[1].lower()
+
+        # Extract text
+        text = ""
+        if ext == ".txt":
+            text = raw.decode("utf-8", errors="replace")
+        elif ext == ".pdf":
+            import subprocess
+            import tempfile
+            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+                tmp.write(raw)
+                tmp_path = tmp.name
+            try:
+                result = subprocess.run(
+                    ["pdftotext", "-layout", tmp_path, "-"],
+                    capture_output=True, text=True, timeout=30
+                )
+                text = result.stdout or raw.decode("utf-8", errors="replace")
+            except Exception:
+                text = f"[PDF: {file.filename} - binary content, {len(raw)} bytes]"
+            finally:
+                os.unlink(tmp_path)
+        elif ext == ".docx":
+            try:
+                import io
+
+                from docx import Document
+                doc = Document(io.BytesIO(raw))
+                text = "\n\n".join(p.text for p in doc.paragraphs if p.text.strip())
+            except Exception:
+                text = raw.decode("utf-8", errors="replace")
+        else:
+            raise HTTPException(400, f"unsupported file type: {ext}")
+
+        if not text.strip():
+            raise HTTPException(400, "document contains no extractable text")
+
+        # Split into chapters by double newlines (approximate)
+        paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+        # Group into chunks of ~2000 chars for chapter-like units
+        chapters_text = []
+        current = []
+        current_len = 0
+        for p in paragraphs:
+            if current_len > 2000 and current:
+                chapters_text.append("\n\n".join(current))
+                current = []
+                current_len = 0
+            current.append(p)
+            current_len += len(p)
+        if current:
+            chapters_text.append("\n\n".join(current))
+        if not chapters_text:
+            chapters_text = [text]
+
+        # Create translation project
+        project_name = os.path.splitext(file.filename or "translation")[0]
+        async with database.session() as session:
+            project = ProjectModel(
+                tenant_id=tid,
+                name=f"{project_name} · {target_language}",
+                medium=ProjectMedium.TRANSLATION,
+                source_mode="original",
+                direction={
+                    "source_language": "auto",
+                    "target_language": target_language,
+                    "translation_mode": "faithful",
+                    "source_type": "upload",
+                    "original_filename": file.filename,
+                },
+            )
+            session.add(project)
+            await session.flush()
+            pid = project.id
+
+        create_glossary(
+            project_id=pid,
+            source_language="auto",
+            target_language=target_language,
+        )
+
+        # Translate each chunk
+        from scriptnow.platform.translation_contracts import TranslationUnit
+        results = []
+        for idx, chunk_text in enumerate(chapters_text):
+            chapter_id = f"upload-ch-{idx + 1}"
+            unit = TranslationUnit(
+                titles={"upload": f"Section {idx + 1}"},
+                blocks=({"type": "prose", "text": chunk_text},),
+            )
+            idem_key = f"trans:{pid}:{chapter_id}:{uuid.uuid4().hex[:12]}"
+            try:
+                glossary = get_glossary(pid)
+                glossary_block = glossary.to_prompt_block() if glossary else ""
+                translated = await translator.translate(
+                    tenant_id=tid,
+                    project_id=pid,
+                    source_language="auto",
+                    target_language=target_language,
+                    units=(unit,),
+                    idempotency_key=idem_key,
+                    glossary_block=glossary_block,
+                )
+                async with database.session() as session:
+                    rev = NovelDocumentRevisionModel(
+                        project_id=pid,
+                        chapter_id=chapter_id,
+                        blocks=list(translated[0].blocks),
+                        status=NovelRevisionStatus.ADOPTED,
+                        source="translation",
+                        revision_number=1,
+                        idempotency_key=idem_key,
+                    )
+                    session.add(rev)
+                    await session.flush()
+                results.append({"chapter": idx + 1, "status": "completed"})
+            except Exception as exc:
+                results.append({"chapter": idx + 1, "status": "failed", "error": str(exc)})
+
+        return {
+            "project_id": pid,
+            "name": project.name,
+            "chapters": len(results),
+            "completed": len([r for r in results if r["status"] == "completed"]),
+            "results": results,
+        }
 
     return router

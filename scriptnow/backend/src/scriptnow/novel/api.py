@@ -197,7 +197,7 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
         except AuthenticationFailed as error:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "authentication required") from error
 
-    @router.get("/state", response_model=NovelStateResponse)
+    @router.get("/projects/{project_id}/state", response_model=NovelStateResponse)
     async def state(
         project_id: str,
         access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,

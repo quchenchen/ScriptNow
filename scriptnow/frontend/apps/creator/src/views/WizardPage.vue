@@ -27,6 +27,8 @@ const novelChapterTargetWords = ref<number | null>(null)
 const submitting = ref(false)
 const translationSourceName = ref('')
 const translationTarget = ref('ja-JP')
+const translationTab = ref<'library' | 'upload'>('library')
+const translationFile = ref<File | null>(null)
 const projects = useProjectsStore()
 const router = useRouter()
 const genrePresets = computed(() =>
@@ -77,9 +79,17 @@ function toggleGenre(value: string) {
 
 async function finish() {
   if (medium.value === 'translation') {
-    // Call translation API directly
     submitting.value = true
     try {
+      if (translationTab.value === 'upload' && translationFile.value) {
+        const form = new FormData()
+        form.append('file', translationFile.value)
+        form.append('target_language', translationTarget.value)
+        const resp = await fetch('/api/translation/documents', { method: 'POST', body: form })
+        if (!resp.ok) throw new Error(`upload failed: ${resp.status}`)
+        const data = await resp.json()
+        return router.push(`/projects/${data.project_id}`)
+      }
       const resp = await fetch('/api/translation/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -148,13 +158,28 @@ async function finish() {
         </div>
       </div>
       <div v-else-if="step === 2 && medium === 'translation'" class="form-stack">
-        <p class="eyebrow">02 · 选择源作品</p><h2>要翻译哪部小说？</h2>
-        <div class="choice-grid">
-          <button v-for="project in projects.items.filter(p => p.medium === 'novel')" :key="project.id" class="choice-card" :class="{ selected: translationSourceName === project.name }" @click="translationSourceName = project.name">
-            <strong>{{ project.name }}</strong><span>小说 · 章节已就绪</span>
+        <p class="eyebrow">02 · 选择源作品</p><h2>从库里选，还是上传文档？</h2>
+        <div class="choice-grid" style="grid-template-columns:1fr 1fr">
+          <button class="choice-card" :class="{ selected: translationTab === 'library' }" @click="translationTab = 'library'">
+            <strong>从库里选</strong><span>已有的原创小说</span>
+          </button>
+          <button class="choice-card" :class="{ selected: translationTab === 'upload' }" @click="translationTab = 'upload'">
+            <strong>上传文档</strong><span>TXT / PDF / DOCX</span>
           </button>
         </div>
-        <p v-if="projects.items.filter(p => p.medium === 'novel').length === 0" class="muted">暂无可翻译的原创小说。请先创建一部。</p>
+        <div v-if="translationTab === 'library'">
+          <div class="choice-grid" style="margin-top:12px">
+            <button v-for="project in projects.items.filter(p => p.medium === 'novel')" :key="project.id" class="choice-card" :class="{ selected: translationSourceName === project.name }" @click="translationSourceName = project.name">
+              <strong>{{ project.name }}</strong><span>小说 · 章节已就绪</span>
+            </button>
+          </div>
+          <p v-if="projects.items.filter(p => p.medium === 'novel').length === 0" class="muted">暂无可翻译的原创小说。请先创建一部。</p>
+        </div>
+        <div v-else class="upload-area" style="margin-top:12px; padding:16px; border:2px dashed #ccc; border-radius:8px; text-align:center">
+          <input type="file" accept=".txt,.pdf,.docx" @change="translationFile = ($event.target as HTMLInputElement).files?.[0] ?? null" />
+          <p v-if="translationFile" style="margin-top:8px; color:#29463b">{{ translationFile.name }}</p>
+          <p v-else style="color:#999;margin-top:8px">拖拽或点击上传 TXT / PDF / DOCX</p>
+        </div>
         <label style="margin-top:12px">目标语言
           <select v-model="translationTarget">
             <option value="ja-JP">日本語</option>
