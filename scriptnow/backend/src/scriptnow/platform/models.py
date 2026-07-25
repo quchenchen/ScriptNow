@@ -52,6 +52,7 @@ class ProviderStatus(StrEnum):
 class ProjectMedium(StrEnum):
     SCRIPT = "script"
     NOVEL = "novel"
+    TRANSLATION = "translation"
 
 
 class ProjectSource(StrEnum):
