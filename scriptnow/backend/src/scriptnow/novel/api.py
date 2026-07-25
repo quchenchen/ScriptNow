@@ -673,7 +673,7 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
         import httpx
 
         from scriptnow.novel.export import render_packaged_docx
-        from scriptnow.work_package.models import CoverModel, WorkPackageModel
+        from scriptnow.platform.models import CoverModel, WorkPackageModel
         auth_context = await context(access_token, csrf_token, write=True)
         tid = str(auth_context.tenant_id)
         await _novel_project(database, tid, project_id)
