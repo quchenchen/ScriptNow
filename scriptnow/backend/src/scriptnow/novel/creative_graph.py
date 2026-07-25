@@ -380,9 +380,6 @@ async def read_creative_graph(database: Database, *, project_id: str) -> dict[st
             )
         )
 
-    # Build node ID → key lookup for edge translation
-    id_to_key: dict[str, str] = {n.id: n.node_key for n in nodes}
-
     return {
         "chapters": [
             {
@@ -408,8 +405,8 @@ async def read_creative_graph(database: Database, *, project_id: str) -> dict[st
             {
                 "id": e.id,
                 "type": e.edge_type,
-                "source": id_to_key.get(e.source_node_id, e.source_node_id),
-                "target": id_to_key.get(e.target_node_id, e.target_node_id),
+                "source": e.source_node_id,
+                "target": e.target_node_id,
                 "label": e.description[:120] + ("..." if len(e.description) > 120 else ""),
                 "inference": e.inference,
             }
