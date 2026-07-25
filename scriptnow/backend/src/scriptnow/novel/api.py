@@ -719,7 +719,7 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
         return Response(
             content=docx_bytes,
             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            headers={"Content-Disposition": f'attachment; filename="{project.name}-打包.docx"'},
+            headers={"Content-Disposition": 'attachment; filename="novel-packaged.docx"'},
         )
 
     @router.post("/snapshots", status_code=status.HTTP_201_CREATED)
