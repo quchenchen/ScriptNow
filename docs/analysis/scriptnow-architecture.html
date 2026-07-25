@@ -5,252 +5,251 @@
 <style>
   body { background: #0f172a; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; font-family: system-ui, sans-serif; }
   svg { max-width: 100%; height: auto; }
-  .legend text { fill: #94a3b8; font-size: 11px; }
 </style>
 </head>
 <body>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 1080" width="1400" height="1080">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1480 1260" width="1480" height="1260">
   <defs>
     <linearGradient id="header" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#8b5cf6"/></linearGradient>
-    <linearGradient id="user" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f59e0b"/><stop offset="100%" stop-color="#d97706"/></linearGradient>
-    <linearGradient id="agent" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#10b981"/><stop offset="100%" stop-color="#059669"/></linearGradient>
-    <linearGradient id="store" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#6366f1"/><stop offset="100%" stop-color="#4f46e5"/></linearGradient>
-    <linearGradient id="output" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ec4899"/><stop offset="100%" stop-color="#db2777"/></linearGradient>
     <filter id="shadow"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.25"/></filter>
-    <marker id="arrowBlue" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#3b82f6"/></marker>
     <marker id="arrowGreen" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#10b981"/></marker>
     <marker id="arrowPurple" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#8b5cf6"/></marker>
-    <marker id="arrowOrange" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#f59e0b"/></marker>
+    <marker id="arrowBlue" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#3b82f6"/></marker>
     <marker id="arrowPink" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#ec4899"/></marker>
+    <marker id="arrowOrange" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#f59e0b"/></marker>
   </defs>
 
-  <!-- Background -->
-  <rect width="1400" height="1080" rx="12" fill="#0f172a"/>
+  <rect width="1480" height="1260" rx="12" fill="#0f172a"/>
 
-  <!-- Title bar -->
-  <rect x="0" y="0" width="1400" height="56" fill="url(#header)"/>
-  <text x="700" y="36" text-anchor="middle" fill="white" font-size="20" font-weight="700">ScriptNow 创作管线架构图</text>
+  <!-- Title -->
+  <rect x="0" y="0" width="1480" height="52" fill="url(#header)"/>
+  <text x="740" y="33" text-anchor="middle" fill="white" font-size="18" font-weight="700">ScriptNow 创作管线架构图 v2.1</text>
 
-  <!-- ============================================================ -->
-  <!-- ROW 1: USER INPUT → Phase Pipeline -->
-  <!-- ============================================================ -->
+  <!-- ==================== ROW 1: PHASE PIPELINE ==================== -->
+  <rect x="20" y="70" width="1440" height="100" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+  <text x="740" y="93" text-anchor="middle" fill="#94a3b8" font-size="12" font-weight="600">创作阶段流水线 Phase Pipeline</text>
 
-  <!-- Phase Pipeline -->
-  <rect x="30" y="80" width="1340" height="100" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1"/>
-  <text x="700" y="105" text-anchor="middle" fill="#94a3b8" font-size="13" font-weight="600">创作阶段流水线 (Phase Pipeline)</text>
+  <rect x="40" y="108" width="170" height="42" rx="8" fill="#334155" filter="url(#shadow)"/>
+  <text x="125" y="134" text-anchor="middle" fill="#e2e8f0" font-size="12">① 构思 ideation</text>
 
-  <!-- Phase boxes -->
-  <rect x="60" y="120" width="180" height="42" rx="8" fill="#334155" filter="url(#shadow)"/>
-  <text x="150" y="146" text-anchor="middle" fill="#e2e8f0" font-size="13">① 构思 ideation</text>
+  <rect x="240" y="108" width="170" height="42" rx="8" fill="#1e40af" filter="url(#shadow)"/>
+  <text x="325" y="125" text-anchor="middle" fill="#e2e8f0" font-size="11">② 方向 story_core</text>
+  <text x="325" y="142" text-anchor="middle" fill="#93c5fd" font-size="9">默认参数: 1卷3章2000字</text>
 
-  <rect x="270" y="120" width="180" height="42" rx="8" fill="#334155" filter="url(#shadow)"/>
-  <text x="360" y="146" text-anchor="middle" fill="#e2e8f0" font-size="13">② 方向 story_core</text>
+  <rect x="440" y="108" width="170" height="42" rx="8" fill="#334155" filter="url(#shadow)"/>
+  <text x="525" y="134" text-anchor="middle" fill="#e2e8f0" font-size="12">③ 蓝图 blueprint</text>
 
-  <rect x="480" y="120" width="180" height="42" rx="8" fill="#334155" filter="url(#shadow)"/>
-  <text x="570" y="146" text-anchor="middle" fill="#e2e8f0" font-size="13">③ 蓝图 blueprint</text>
+  <rect x="640" y="108" width="170" height="42" rx="8" fill="#334155" filter="url(#shadow)"/>
+  <text x="725" y="134" text-anchor="middle" fill="#e2e8f0" font-size="12">④ 卷章 story_map</text>
 
-  <rect x="690" y="120" width="180" height="42" rx="8" fill="#1e40af" filter="url(#shadow)"/>
-  <text x="780" y="146" text-anchor="middle" fill="#e2e8f0" font-size="13">④ 卷章 story_map</text>
+  <rect x="840" y="108" width="190" height="42" rx="8" fill="#065f46" filter="url(#shadow)"/>
+  <text x="935" y="125" text-anchor="middle" fill="#e2e8f0" font-size="12">⑤ 写作 writing</text>
+  <text x="935" y="142" text-anchor="middle" fill="#6ee7b7" font-size="9">异步模式 ?background=true</text>
 
-  <rect x="900" y="120" width="210" height="42" rx="8" fill="#065f46" filter="url(#shadow)"/>
-  <text x="1005" y="146" text-anchor="middle" fill="#e2e8f0" font-size="13">⑤ 写作 writing ⬅ 当前</text>
+  <rect x="1060" y="108" width="180" height="42" rx="8" fill="#334155" filter="url(#shadow)"/>
+  <text x="1150" y="134" text-anchor="middle" fill="#e2e8f0" font-size="12">⑥ 包装 packaging</text>
 
-  <rect x="1140" y="120" width="200" height="42" rx="8" fill="#334155" filter="url(#shadow)"/>
-  <text x="1240" y="146" text-anchor="middle" fill="#64748b" font-size="13">⑥ 包装 + 导出</text>
+  <rect x="1270" y="108" width="160" height="42" rx="8" fill="#334155" filter="url(#shadow)"/>
+  <text x="1350" y="134" text-anchor="middle" fill="#e2e8f0" font-size="12">⑦ 导出 export</text>
 
-  <!-- Phase arrows -->
-  <line x1="240" y1="141" x2="265" y2="141" stroke="#475569" stroke-width="2" marker-end="url(#arrowPurple)"/>
-  <line x1="450" y1="141" x2="475" y2="141" stroke="#475569" stroke-width="2" marker-end="url(#arrowPurple)"/>
-  <line x1="660" y1="141" x2="685" y2="141" stroke="#475569" stroke-width="2" marker-end="url(#arrowPurple)"/>
-  <line x1="870" y1="141" x2="895" y2="141" stroke="#475569" stroke-width="2" marker-end="url(#arrowPurple)"/>
-  <line x1="1110" y1="141" x2="1135" y2="141" stroke="#475569" stroke-width="2" marker-end="url(#arrowPurple)"/>
+  <!-- Arrows -->
+  <line x1="210" y1="129" x2="235" y2="129" stroke="#475569" stroke-width="2" marker-end="url(#arrowPurple)"/>
+  <line x1="410" y1="129" x2="435" y2="129" stroke="#475569" stroke-width="2" marker-end="url(#arrowPurple)"/>
+  <line x1="610" y1="129" x2="635" y2="129" stroke="#475569" stroke-width="2" marker-end="url(#arrowPurple)"/>
+  <line x1="810" y1="129" x2="835" y2="129" stroke="#475569" stroke-width="2" marker-end="url(#arrowPurple)"/>
+  <line x1="1030" y1="129" x2="1055" y2="129" stroke="#475569" stroke-width="2" marker-end="url(#arrowPurple)"/>
+  <line x1="1240" y1="129" x2="1265" y2="129" stroke="#475569" stroke-width="2" marker-end="url(#arrowPurple)"/>
 
-  <!-- User triggers -->
-  <rect x="60" y="172" width="180" height="28" rx="6" fill="#f59e0b22" stroke="#f59e0b" stroke-width="1" stroke-dasharray="4 2"/>
-  <text x="150" y="191" text-anchor="middle" fill="#f59e0b" font-size="11">用户填写创作意愿</text>
+  <!-- Translation branch -->
+  <rect x="40" y="158" width="230" height="28" rx="6" fill="#8b5cf618" stroke="#8b5cf6" stroke-width="1" stroke-dasharray="4 2"/>
+  <text x="155" y="177" text-anchor="middle" fill="#a78bfa" font-size="11">🆕 翻译项目 (translation) — 独立介质</text>
+  <line x1="270" y1="172" x2="300" y2="172" stroke="#8b5cf6" stroke-width="1.5" marker-end="url(#arrowPurple)"/>
 
-  <rect x="480" y="172" width="180" height="28" rx="6" fill="#f59e0b22" stroke="#f59e0b" stroke-width="1" stroke-dasharray="4 2"/>
-  <text x="570" y="191" text-anchor="middle" fill="#f59e0b" font-size="11">反馈循环 → Dock 对话</text>
+  <!-- Translation detail -->
+  <rect x="310" y="158" width="300" height="28" rx="6" fill="#8b5cf618" stroke="#8b5cf6" stroke-width="1"/>
+  <text x="460" y="177" text-anchor="middle" fill="#a78bfa" font-size="10">术语对照表 + 批量翻译 + 逐章直译 · 纯文本回退</text>
 
-  <rect x="1140" y="172" width="200" height="28" rx="6" fill="#f59e0b22" stroke="#f59e0b" stroke-width="1" stroke-dasharray="4 2"/>
-  <text x="1240" y="191" text-anchor="middle" fill="#f59e0b" font-size="11">导出 DOCX / 打包 (封面+简介)</text>
+  <rect x="620" y="158" width="210" height="28" rx="6" fill="#8b5cf618" stroke="#8b5cf6" stroke-width="1"/>
+  <text x="725" y="177" text-anchor="middle" fill="#a78bfa" font-size="10">📤 文档上传 (TXT/PDF/DOCX)</text>
 
-  <!-- ============================================================ -->
-  <!-- ROW 2: AGENT TEAM -->
-  <!-- ============================================================ -->
-  <rect x="30" y="220" width="1340" height="240" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1"/>
-  <text x="700" y="245" text-anchor="middle" fill="#94a3b8" font-size="13" font-weight="600">Agent 团队 (AgentScope Runtime)</text>
+  <!-- ==================== ROW 2: AGENT TEAM ==================== -->
+  <rect x="20" y="200" width="1440" height="220" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+  <text x="740" y="223" text-anchor="middle" fill="#94a3b8" font-size="12" font-weight="600">Agent 团队 AgentScope Runtime</text>
 
   <!-- Architect -->
-  <rect x="60" y="260" width="260" height="85" rx="8" fill="#065f4640" stroke="#10b981" stroke-width="1.5" filter="url(#shadow)"/>
-  <text x="190" y="283" text-anchor="middle" fill="#10b981" font-size="14" font-weight="700">🏛 Architect 建筑师</text>
-  <text x="190" y="301" text-anchor="middle" fill="#94a3b8" font-size="11">模型: deepseek-v4-flash</text>
-  <text x="190" y="317" text-anchor="middle" fill="#94a3b8" font-size="11">Skills: novel-build-story-graph</text>
-  <text x="190" y="333" text-anchor="middle" fill="#94a3b8" font-size="11">任务: 生成卷章结构 + 创作图谱提取</text>
+  <rect x="40" y="238" width="250" height="80" rx="8" fill="#065f4640" stroke="#10b981" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="165" y="258" text-anchor="middle" fill="#10b981" font-size="13" font-weight="700">🏛 Architect 建筑师</text>
+  <text x="165" y="276" text-anchor="middle" fill="#94a3b8" font-size="10">deepseek-v4-flash · 图谱提取</text>
+  <text x="165" y="294" text-anchor="middle" fill="#94a3b8" font-size="10">StoryMap 生成 + 蓝图规划</text>
 
   <!-- Writer -->
-  <rect x="470" y="260" width="260" height="85" rx="8" fill="#065f4640" stroke="#10b981" stroke-width="1.5" filter="url(#shadow)"/>
-  <text x="600" y="283" text-anchor="middle" fill="#10b981" font-size="14" font-weight="700">✍️ Writer 主笔</text>
-  <text x="600" y="301" text-anchor="middle" fill="#94a3b8" font-size="11">模型: deepseek-v4-pro</text>
-  <text x="600" y="317" text-anchor="middle" fill="#94a3b8" font-size="11">Skills: novel-write + continuity/pacing/emotion</text>
-  <text x="600" y="333" text-anchor="middle" fill="#94a3b8" font-size="11">任务: 逐章生成候选稿 (纯文本 fallback)</text>
+  <rect x="320" y="238" width="250" height="80" rx="8" fill="#065f4640" stroke="#10b981" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="445" y="258" text-anchor="middle" fill="#10b981" font-size="13" font-weight="700">✍️ Writer 主笔</text>
+  <text x="445" y="276" text-anchor="middle" fill="#94a3b8" font-size="10">deepseek-v4-pro · 逐章生成</text>
+  <text x="445" y="294" text-anchor="middle" fill="#94a3b8" font-size="10">纯文本 fallback 解析器</text>
 
   <!-- Reviewer -->
-  <rect x="880" y="260" width="230" height="85" rx="8" fill="#065f4640" stroke="#10b981" stroke-width="1.5" filter="url(#shadow)"/>
-  <text x="995" y="283" text-anchor="middle" fill="#10b981" font-size="14" font-weight="700">🔍 Reviewer 审稿</text>
-  <text x="995" y="301" text-anchor="middle" fill="#94a3b8" font-size="11">模型: deepseek-v4-pro</text>
-  <text x="995" y="317" text-anchor="middle" fill="#94a3b8" font-size="11">Skills: novel-review + serial-quality</text>
-  <text x="995" y="333" text-anchor="middle" fill="#94a3b8" font-size="11">任务: 质量报告 (独立性/因果/语法)</text>
+  <rect x="600" y="238" width="250" height="80" rx="8" fill="#065f4640" stroke="#10b981" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="725" y="258" text-anchor="middle" fill="#10b981" font-size="13" font-weight="700">🔍 Reviewer 审稿</text>
+  <text x="725" y="276" text-anchor="middle" fill="#94a3b8" font-size="10">deepseek-v4-pro · 质量报告</text>
+  <text x="725" y="294" text-anchor="middle" fill="#94a3b8" font-size="10">blocking 发现 → Writer context</text>
 
-  <!-- Agent label -->
-  <rect x="60" y="355" width="260" height="28" rx="6" fill="#f59e0b18" stroke="#f59e0b" stroke-width="1" stroke-dasharray="4 2"/>
-  <text x="190" y="374" text-anchor="middle" fill="#f59e0b" font-size="11">← StoryMap 生成 + 反馈修订</text>
+  <!-- Director -->
+  <rect x="880" y="238" width="230" height="80" rx="8" fill="#334155" stroke="#475569" stroke-width="1" filter="url(#shadow)"/>
+  <text x="995" y="258" text-anchor="middle" fill="#94a3b8" font-size="13" font-weight="700">📋 Director 统筹</text>
+  <text x="995" y="276" text-anchor="middle" fill="#64748b" font-size="10">方向生成 · 包装 · 导出</text>
 
-  <rect x="470" y="355" width="260" height="28" rx="6" fill="#f59e0b18" stroke="#f59e0b" stroke-width="1" stroke-dasharray="4 2"/>
-  <text x="600" y="374" text-anchor="middle" fill="#f59e0b" font-size="11">← 章节生成 + 精简 + 调整</text>
+  <!-- Translator -->
+  <rect x="1140" y="238" width="290" height="80" rx="8" fill="#8b5cf620" stroke="#8b5cf6" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="1285" y="258" text-anchor="middle" fill="#a78bfa" font-size="13" font-weight="700">🆕 Translator 翻译</text>
+  <text x="1285" y="276" text-anchor="middle" fill="#94a3b8" font-size="10">FaithfulTranslationService</text>
+  <text x="1285" y="294" text-anchor="middle" fill="#94a3b8" font-size="10">JSON回退 + Glossary注入</text>
 
-  <rect x="880" y="355" width="230" height="28" rx="6" fill="#f59e0b18" stroke="#f59e0b" stroke-width="1" stroke-dasharray="4 2"/>
-  <text x="995" y="374" text-anchor="middle" fill="#f59e0b" font-size="11">← 质量报告生成 (手动触发)</text>
+  <!-- Context Assembly -->
+  <rect x="40" y="330" width="1390" height="78" rx="8" fill="#1e3a5f30" stroke="#3b82f6" stroke-width="1"/>
+  <text x="740" y="348" text-anchor="middle" fill="#3b82f6" font-size="11" font-weight="600">Writer 上下文装配 — 冷热三层 (HOT/WARM/COLD)</text>
+  
+  <text x="120" y="368" fill="#f59e0b" font-size="10">🔥 HOT: direction + chapter_beat</text>
+  <text x="370" y="368" fill="#3b82f6" font-size="10">🌡 WARM: prior_summary + review_highlights + narrative_state (钩子/特质)</text>
+  <text x="830" y="368" fill="#64748b" font-size="10">❄ COLD: creative_graph_compact + character_graph</text>
+  
+  <text x="500" y="398" text-anchor="middle" fill="#10b981" font-size="10">✅ Reviewer→Writer 闭环已建立 | ✅ 叙事状态机: 四层渐进披露 (节拍→钩子→特质→摘要)</text>
 
-  <!-- Director + Other -->
-  <rect x="1150" y="260" width="190" height="85" rx="8" fill="#334155" stroke="#475569" stroke-width="1" filter="url(#shadow)"/>
-  <text x="1245" y="283" text-anchor="middle" fill="#64748b" font-size="13" font-weight="700">📋 Director 统筹</text>
-  <text x="1245" y="301" text-anchor="middle" fill="#64748b" font-size="11">+ IdeationGenerator</text>
-  <text x="1245" y="317" text-anchor="middle" fill="#64748b" font-size="11">+ WorkPackageService</text>
-  <text x="1245" y="333" text-anchor="middle" fill="#64748b" font-size="11">+ ExportService</text>
-
-  <!-- Context assembly -->
-  <rect x="60" y="395" width="1280" height="52" rx="8" fill="#1e3a5f40" stroke="#3b82f6" stroke-width="1"/>
-  <text x="700" y="415" text-anchor="middle" fill="#3b82f6" font-size="12" font-weight="600">Writer 上下文装配: direction + blueprint_anchors + prior_revisions (30 blocks) + creative_graph (compact) + chapter_beat</text>
-  <text x="700" y="435" text-anchor="middle" fill="#64748b" font-size="11">⚠️ 晚期章节（10+）上下文超过 100K tokens，依赖 AgentScope 压缩，可能丢失关键信息</text>
-
-  <!-- ============================================================ -->
-  <!-- ROW 3: DATA FLOW -->
-  <!-- ============================================================ -->
-  <rect x="30" y="480" width="1340" height="180" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1"/>
-  <text x="700" y="505" text-anchor="middle" fill="#94a3b8" font-size="13" font-weight="600">数据管道 (Data Pipeline)</text>
+  <!-- ==================== ROW 3: DATA PIPELINE ==================== -->
+  <rect x="20" y="435" width="1440" height="170" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+  <text x="740" y="458" text-anchor="middle" fill="#94a3b8" font-size="12" font-weight="600">数据管道 Data Pipeline</text>
 
   <!-- Creative Graph -->
-  <rect x="60" y="520" width="300" height="60" rx="8" fill="#4f46e520" stroke="#6366f1" stroke-width="1.5" filter="url(#shadow)"/>
-  <text x="210" y="543" text-anchor="middle" fill="#6366f1" font-size="13" font-weight="700">🧠 创作图谱 (Creative Graph)</text>
-  <text x="210" y="565" text-anchor="middle" fill="#94a3b8" font-size="11">Architect 逐章提取 → SQLite → Writer context</text>
+  <rect x="40" y="472" width="310" height="55" rx="8" fill="#4f46e520" stroke="#6366f1" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="195" y="492" text-anchor="middle" fill="#6366f1" font-size="12" font-weight="700">🧠 创作图谱 Creative Graph</text>
+  <text x="195" y="512" text-anchor="middle" fill="#94a3b8" font-size="10">Architect 逐章提取 → 173节点/196边</text>
 
-  <text x="210" y="590" text-anchor="middle" fill="#64748b" font-size="10">增量: 仅补充未提取章节 · compact 模式 40K chars</text>
+  <!-- Review Loop -->
+  <rect x="370" y="472" width="280" height="55" rx="8" fill="#10b98120" stroke="#10b981" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="510" y="492" text-anchor="middle" fill="#10b981" font-size="12" font-weight="700">✅ 质量闭环 Review Loop</text>
+  <text x="510" y="512" text-anchor="middle" fill="#94a3b8" font-size="10">Reviewer → build_review_highlights() → Writer</text>
 
-  <!-- Review Pipeline -->
-  <rect x="400" y="520" width="280" height="60" rx="8" fill="#ec489920" stroke="#ec4899" stroke-width="1.5" filter="url(#shadow)"/>
-  <text x="540" y="543" text-anchor="middle" fill="#ec4899" font-size="13" font-weight="700">📊 质量报告 (Quality Reports)</text>
-  <text x="540" y="565" text-anchor="middle" fill="#94a3b8" font-size="11">Reviewer 评估 → SQLite → (未反馈给 Writer)</text>
+  <!-- Narrative State -->
+  <rect x="670" y="472" width="290" height="55" rx="8" fill="#f59e0b20" stroke="#f59e0b" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="815" y="492" text-anchor="middle" fill="#f59e0b" font-size="12" font-weight="700">📖 叙事状态机 Narrative State</text>
+  <text x="815" y="512" text-anchor="middle" fill="#94a3b8" font-size="10">ChapterExitNote · 钩子/特质/关系变化</text>
 
-  <text x="540" y="590" text-anchor="middle" fill="#ef4444" font-size="10">🔴 闭环断裂: Review 结果未注入 Writer context</text>
+  <!-- Export -->
+  <rect x="980" y="472" width="230" height="55" rx="8" fill="#3b82f620" stroke="#3b82f6" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="1095" y="492" text-anchor="middle" fill="#3b82f6" font-size="12" font-weight="700">📦 导出 Export</text>
+  <text x="1095" y="512" text-anchor="middle" fill="#94a3b8" font-size="10">DOCX + 打包 (封面+简介+正文)</text>
 
-  <!-- Export Pipeline -->
-  <rect x="720" y="520" width="280" height="60" rx="8" fill="#3b82f620" stroke="#3b82f6" stroke-width="1.5" filter="url(#shadow)"/>
-  <text x="860" y="543" text-anchor="middle" fill="#3b82f6" font-size="13" font-weight="700">📦 导出管线 (Export)</text>
-  <text x="860" y="565" text-anchor="middle" fill="#94a3b8" font-size="11">DOCX 导出 + 打包 (封面+简介+正文)</text>
+  <!-- Translation -->
+  <rect x="1230" y="472" width="200" height="55" rx="8" fill="#8b5cf620" stroke="#8b5cf6" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="1330" y="492" text-anchor="middle" fill="#a78bfa" font-size="12" font-weight="700">🆕 翻译管道</text>
+  <text x="1330" y="512" text-anchor="middle" fill="#94a3b8" font-size="10">翻译项目 + 术语对照表</text>
 
-  <!-- Queue -->
-  <rect x="1040" y="520" width="300" height="60" rx="8" fill="#f59e0b20" stroke="#f59e0b" stroke-width="1.5" filter="url(#shadow)"/>
-  <text x="1190" y="543" text-anchor="middle" fill="#f59e0b" font-size="13" font-weight="700">⏳ 后台队列 (Background Queue)</text>
-  <text x="1190" y="565" text-anchor="middle" fill="#94a3b8" font-size="11">CreativeGraphQueue: 串行 FIFO, 防 SQLite 锁</text>
+  <!-- Bottom row: Queue + Version + Cover -->
+  <rect x="40" y="538" width="1390" height="55" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+  <text x="180" y="560" text-anchor="middle" fill="#94a3b8" font-size="11">⏳ 后台队列 — CreativeGraphQueue (串行) + 翻译队列</text>
+  <text x="560" y="560" text-anchor="middle" fill="#94a3b8" font-size="11">📊 版本系统 — revision (candidate→adopted→superseded) · StoryMap version</text>
+  <text x="1100" y="560" text-anchor="middle" fill="#10b981" font-size="11">✅ 封面本地持久化 — /files/covers/ + StaticFiles</text>
 
-  <!-- Version Control -->
-  <rect x="400" y="590" width="940" height="55" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1"/>
-  <text x="870" y="613" text-anchor="middle" fill="#64748b" font-size="12">版本系统: 章节 revision (candidate → adopted → superseded) · StoryMap version · Snapshot · Git push</text>
-  <text x="870" y="633" text-anchor="middle" fill="#ef4444" font-size="11">🔴 缺失: 章节间 Review 评分趋势追踪 / 回归检测</text>
+  <!-- ==================== ROW 4: STORAGE ==================== -->
+  <rect x="20" y="620" width="1440" height="100" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+  <text x="740" y="643" text-anchor="middle" fill="#94a3b8" font-size="12" font-weight="600">存储层 Storage Layer — SQLite</text>
 
-  <!-- ============================================================ -->
-  <!-- ROW 4: STORAGE -->
-  <!-- ============================================================ -->
-  <rect x="30" y="680" width="1340" height="110" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1"/>
-  <text x="700" y="705" text-anchor="middle" fill="#94a3b8" font-size="13" font-weight="600">存储层 (Storage Layer) — SQLite</text>
+  <rect x="40" y="656" width="220" height="45" rx="6" fill="#334155"/>
+  <text x="150" y="673" text-anchor="middle" fill="#e2e8f0" font-size="10">novel_story_maps (卷章)</text>
+  <text x="150" y="690" text-anchor="middle" fill="#64748b" font-size="9">项目 ×3 · chapters adopted</text>
 
-  <rect x="60" y="720" width="200" height="50" rx="6" fill="#334155"/>
-  <text x="160" y="741" text-anchor="middle" fill="#e2e8f0" font-size="11">novel_story_maps</text>
-  <text x="160" y="758" text-anchor="middle" fill="#64748b" font-size="10">卷章结构 · 15章节</text>
+  <rect x="275" y="656" width="220" height="45" rx="6" fill="#334155"/>
+  <text x="385" y="673" text-anchor="middle" fill="#e2e8f0" font-size="10">novel_document_revisions</text>
+  <text x="385" y="690" text-anchor="middle" fill="#64748b" font-size="9">章节正文 · 版本化 · 回退</text>
 
-  <rect x="280" y="720" width="220" height="50" rx="6" fill="#334155"/>
-  <text x="390" y="741" text-anchor="middle" fill="#e2e8f0" font-size="11">novel_document_revisions</text>
-  <text x="390" y="758" text-anchor="middle" fill="#64748b" font-size="10">章节正文 · 92K 字 · adopted</text>
+  <rect x="510" y="656" width="220" height="45" rx="6" fill="#334155"/>
+  <text x="620" y="673" text-anchor="middle" fill="#e2e8f0" font-size="10">narrative_nodes / edges</text>
+  <text x="620" y="690" text-anchor="middle" fill="#64748b" font-size="9">173节点 · 196边 · 6色边</text>
 
-  <rect x="520" y="720" width="210" height="50" rx="6" fill="#334155"/>
-  <text x="625" y="741" text-anchor="middle" fill="#e2e8f0" font-size="11">narrative_nodes / edges</text>
-  <text x="625" y="758" text-anchor="middle" fill="#64748b" font-size="10">图谱: 114 节点 · 109 边</text>
+  <rect x="745" y="656" width="200" height="45" rx="6" fill="#10b98120" stroke="#10b981" stroke-width="0.5"/>
+  <text x="845" y="673" text-anchor="middle" fill="#e2e8f0" font-size="10">novel_quality_reports ✅</text>
+  <text x="845" y="690" text-anchor="middle" fill="#10b981" font-size="9">→ Writer 消费</text>
 
-  <rect x="750" y="720" width="210" height="50" rx="6" fill="#334155"/>
-  <text x="855" y="741" text-anchor="middle" fill="#e2e8f0" font-size="11">novel_quality_reports</text>
-  <text x="855" y="758" text-anchor="middle" fill="#ef4444" font-size="10">⚠️ 孤立 — Writer 未使用</text>
+  <rect x="960" y="656" width="220" height="45" rx="6" fill="#334155"/>
+  <text x="1070" y="673" text-anchor="middle" fill="#e2e8f0" font-size="10">work_packages / covers</text>
+  <text x="1070" y="690" text-anchor="middle" fill="#10b981" font-size="9">✅ 本地文件 + DB</text>
 
-  <rect x="980" y="720" width="180" height="50" rx="6" fill="#334155"/>
-  <text x="1070" y="741" text-anchor="middle" fill="#e2e8f0" font-size="11">work_packages / covers</text>
-  <text x="1070" y="758" text-anchor="middle" fill="#64748b" font-size="10">包装: 3封面 · 1简介</text>
+  <rect x="1195" y="656" width="235" height="45" rx="6" fill="#8b5cf620" stroke="#8b5cf6" stroke-width="0.5"/>
+  <text x="1312" y="673" text-anchor="middle" fill="#e2e8f0" font-size="10">🆕 translation_glossary</text>
+  <text x="1312" y="690" text-anchor="middle" fill="#a78bfa" font-size="9">术语对照 · 内存缓存</text>
 
-  <rect x="1180" y="720" width="160" height="50" rx="6" fill="#334155"/>
-  <text x="1260" y="741" text-anchor="middle" fill="#e2e8f0" font-size="11">snapshots / runs</text>
-  <text x="1260" y="758" text-anchor="middle" fill="#64748b" font-size="10">版本 · 运行记录</text>
+  <!-- ==================== ROW 5: FRONTEND ==================== -->
+  <rect x="20" y="735" width="1440" height="100" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+  <text x="740" y="758" text-anchor="middle" fill="#94a3b8" font-size="12" font-weight="600">前端 Frontend — Vue 3 + TypeScript + Pinia</text>
 
-  <!-- ============================================================ -->
-  <!-- ROW 5: FRONTEND -->
-  <!-- ============================================================ -->
-  <rect x="30" y="810" width="1340" height="80" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1"/>
-  <text x="700" y="835" text-anchor="middle" fill="#94a3b8" font-size="13" font-weight="600">前端 (Frontend) — Vue 3 + TypeScript + Pinia</text>
+  <rect x="40" y="772" width="170" height="30" rx="6" fill="#334155"/>
+  <text x="125" y="792" text-anchor="middle" fill="#e2e8f0" font-size="10">Dashboard (3列卡片)</text>
 
-  <rect x="60" y="846" width="180" height="30" rx="6" fill="#334155"/>
-  <text x="150" y="866" text-anchor="middle" fill="#e2e8f0" font-size="11">Dashboard (2:3 封面卡片)</text>
+  <rect x="220" y="772" width="180" height="30" rx="6" fill="#334155"/>
+  <text x="310" y="792" text-anchor="middle" fill="#e2e8f0" font-size="10">NovelStudio (蓝图/写作)</text>
 
-  <rect x="255" y="846" width="190" height="30" rx="6" fill="#334155"/>
-  <text x="350" y="866" text-anchor="middle" fill="#e2e8f0" font-size="11">NovelStudio (蓝图 + 卷章 + 写作)</text>
+  <rect x="410" y="772" width="170" height="30" rx="6" fill="#334155"/>
+  <text x="495" y="792" text-anchor="middle" fill="#e2e8f0" font-size="10">NarrativeGraphPanel</text>
 
-  <rect x="460" y="846" width="160" height="30" rx="6" fill="#334155"/>
-  <text x="540" y="866" text-anchor="middle" fill="#e2e8f0" font-size="11">NarrativeGraphPanel</text>
+  <rect x="590" y="772" width="170" height="30" rx="6" fill="#065f46"/>
+  <text x="675" y="792" text-anchor="middle" fill="#e2e8f0" font-size="10">✅ AgentDock (进度)</text>
 
-  <rect x="635" y="846" width="210" height="30" rx="6" fill="#1e40af"/>
-  <text x="740" y="866" text-anchor="middle" fill="#e2e8f0" font-size="11">创作图谱 ⇄ 素材图谱 切换</text>
+  <rect x="770" y="772" width="180" height="30" rx="6" fill="#334155"/>
+  <text x="860" y="792" text-anchor="middle" fill="#e2e8f0" font-size="10">PackagingPage (封面)</text>
 
-  <rect x="860" y="846" width="170" height="30" rx="6" fill="#334155"/>
-  <text x="945" y="866" text-anchor="middle" fill="#e2e8f0" font-size="11">AgentDock (滚动箭头)</text>
+  <rect x="960" y="772" width="180" height="30" rx="6" fill="#334155"/>
+  <text x="1050" y="792" text-anchor="middle" fill="#e2e8f0" font-size="10">NovelDeliveryPanel</text>
 
-  <rect x="1045" y="846" width="180" height="30" rx="6" fill="#065f46"/>
-  <text x="1135" y="866" text-anchor="middle" fill="#e2e8f0" font-size="11">📦 打包导出 (封面+简介)</text>
+  <rect x="1150" y="772" width="170" height="30" rx="6" fill="#8b5cf620" stroke="#8b5cf6" stroke-width="1"/>
+  <text x="1235" y="792" text-anchor="middle" fill="#a78bfa" font-size="10">🆕 Wizard (翻译入口)</text>
 
-  <rect x="1240" y="846" width="100" height="30" rx="6" fill="#334155"/>
-  <text x="1290" y="866" text-anchor="middle" fill="#64748b" font-size="11">Packaging</text>
+  <rect x="1330" y="772" width="100" height="30" rx="6" fill="#334155"/>
+  <text x="1380" y="792" text-anchor="middle" fill="#64748b" font-size="10">AppShell</text>
 
-  <!-- ============================================================ -->
-  <!-- ROW 6: ISSUES & ROADMAP -->
-  <!-- ============================================================ -->
-  <rect x="30" y="910" width="1340" height="155" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1"/>
-  <text x="700" y="935" text-anchor="middle" fill="#94a3b8" font-size="13" font-weight="600">问题看板 (Issues)</text>
+  <!-- Sidebar row -->
+  <rect x="40" y="810" width="1390" height="28" rx="5" fill="#1e293b"/>
+  <text x="740" y="829" text-anchor="middle" fill="#64748b" font-size="10">侧栏重组: 导出+历史保留 · 创建项目独立按钮 · 翻译tab · Vite代理 /files/covers→:8000</text>
 
-  <!-- Critical -->
-  <rect x="60" y="950" width="300" height="50" rx="6" fill="#ef444418" stroke="#ef4444" stroke-width="1"/>
-  <text x="210" y="970" text-anchor="middle" fill="#ef4444" font-size="12" font-weight="700">🔴 P0: Review 闭环断裂</text>
-  <text x="210" y="988" text-anchor="middle" fill="#fca5a5" font-size="10">Writer 不读取 Reviewer 结果</text>
+  <!-- ==================== ROW 6: ISSUES BOARD ==================== -->
+  <rect x="20" y="850" width="1440" height="180" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+  <text x="740" y="873" text-anchor="middle" fill="#94a3b8" font-size="12" font-weight="600">问题看板 Issues Board (已解决 → 待解决)</text>
 
-  <rect x="380" y="950" width="300" height="50" rx="6" fill="#ef444418" stroke="#ef4444" stroke-width="1"/>
-  <text x="530" y="970" text-anchor="middle" fill="#ef4444" font-size="12" font-weight="700">🔴 P0: 上下文溢出</text>
-  <text x="530" y="988" text-anchor="middle" fill="#fca5a5" font-size="10">ch15 达 169K tokens, 超过 32K 限制</text>
+  <!-- RESOLVED -->
+  <text x="65" y="905" fill="#10b981" font-size="11" font-weight="700">✅ 已解决</text>
+  <rect x="40" y="912" width="430" height="50" rx="6" fill="#10b98115" stroke="#10b981" stroke-width="1"/>
+  <text x="255" y="930" text-anchor="middle" fill="#6ee7b7" font-size="10">Reviewer→Writer 闭环 + 上下文冷热分层 + 叙事状态机</text>
+  <text x="255" y="950" text-anchor="middle" fill="#6ee7b7" font-size="10">StoryMap 默认参数 · 蓝图采纳fallback · Cookie 60min</text>
 
-  <!-- Major -->
-  <rect x="700" y="950" width="300" height="50" rx="6" fill="#f59e0b18" stroke="#f59e0b" stroke-width="1"/>
-  <text x="850" y="970" text-anchor="middle" fill="#f59e0b" font-size="12" font-weight="700">🟠 P1: Skills 显式加载</text>
-  <text x="850" y="988" text-anchor="middle" fill="#fde68a" font-size="10">Writer 未传 explicit_skill_keys</text>
+  <rect x="480" y="912" width="290" height="50" rx="6" fill="#10b98115" stroke="#10b981" stroke-width="1"/>
+  <text x="625" y="930" text-anchor="middle" fill="#6ee7b7" font-size="10">封面本地持久化 /files/covers + Vite 代理</text>
+  <text x="625" y="950" text-anchor="middle" fill="#6ee7b7" font-size="10">导出/状态端点路径修复 · 异步生成</text>
 
-  <!-- Minor -->
-  <rect x="1020" y="950" width="320" height="50" rx="6" fill="#3b82f618" stroke="#3b82f6" stroke-width="1"/>
-  <text x="1180" y="970" text-anchor="middle" fill="#3b82f6" font-size="12" font-weight="700">🔵 P2: 上下文摘要 / 状态传递</text>
-  <text x="1180" y="988" text-anchor="middle" fill="#93c5fd" font-size="10">章节间缺乏结构化状态转交</text>
+  <rect x="780" y="912" width="270" height="50" rx="6" fill="#10b98115" stroke="#10b981" stroke-width="1"/>
+  <text x="915" y="930" text-anchor="middle" fill="#6ee7b7" font-size="10">翻译全链路 — 项目API + 术语表</text>
+  <text x="915" y="950" text-anchor="middle" fill="#6ee7b7" font-size="10">批量翻译 + 文档上传 + 纯文本回退</text>
 
-  <!-- Legend -->
-  <rect x="60" y="1012" width="1280" height="40" rx="6" fill="#0f172a"/>
-  <rect x="80" y="1022" width="12" height="12" rx="3" fill="#10b981"/><text x="98" y="1033" fill="#94a3b8" font-size="10">Agent</text>
-  <rect x="180" y="1022" width="12" height="12" rx="3" fill="#6366f1"/><text x="198" y="1033" fill="#94a3b8" font-size="10">存储/缓存</text>
-  <rect x="300" y="1022" width="12" height="12" rx="3" fill="#f59e0b"/><text x="318" y="1033" fill="#94a3b8" font-size="10">用户入口</text>
-  <rect x="420" y="1022" width="12" height="12" rx="3" fill="#ef4444"/><text x="438" y="1033" fill="#94a3b8" font-size="10">问题/断层</text>
-  <rect x="540" y="1022" width="12" height="12" rx="3" fill="#3b82f6"/><text x="558" y="1033" fill="#94a3b8" font-size="10">数据流</text>
-  <rect x="660" y="1022" width="12" height="12" rx="3" fill="#ec4899"/><text x="678" y="1033" fill="#94a3b8" font-size="10">Review</text>
+  <!-- OPEN -->
+  <text x="65" y="985" fill="#f59e0b" font-size="11" font-weight="700">🟡 待解决</text>
+  <rect x="40" y="992" width="460" height="28" rx="5" fill="#f59e0b10" stroke="#f59e0b" stroke-width="1"/>
+  <text x="270" y="1011" text-anchor="middle" fill="#fde68a" font-size="10">P1: 用户隔离 (AgentStateModel.user_id) · P2: AgentState append-only 消息列表</text>
 
-  <text x="900" y="1033" fill="#475569" font-size="10">ScriptNow v7 · Hermes Agent · DeepSeek API · SQLite · Vue 3 · 2026-07-25</text>
+  <rect x="510" y="992" width="450" height="28" rx="5" fill="#f59e0b10" stroke="#f59e0b" stroke-width="1"/>
+  <text x="735" y="1011" text-anchor="middle" fill="#fde68a" font-size="10">P1: 翻译前端工作区 (原文/译文对照) · 归化翻译模式设计</text>
+
+  <rect x="970" y="992" width="460" height="28" rx="5" fill="#3b82f610" stroke="#3b82f6" stroke-width="1"/>
+  <text x="1200" y="1011" text-anchor="middle" fill="#93c5fd" font-size="10">P2: 历史版本快照 · webnovel-writer 融合 (追读力/StrandWeave/Anti-AI)</text>
+
+  <!-- ==================== LEGEND ==================== -->
+  <rect x="20" y="1045" width="1440" height="40" rx="8" fill="#0f172a" stroke="#334155" stroke-width="0.5"/>
+  <rect x="40" y="1056" width="10" height="10" rx="2" fill="#10b981"/><text x="56" y="1066" fill="#94a3b8" font-size="9">Agent</text>
+  <rect x="130" y="1056" width="10" height="10" rx="2" fill="#6366f1"/><text x="146" y="1066" fill="#94a3b8" font-size="9">存储</text>
+  <rect x="220" y="1056" width="10" height="10" rx="2" fill="#3b82f6"/><text x="236" y="1066" fill="#94a3b8" font-size="9">数据流</text>
+  <rect x="320" y="1056" width="10" height="10" rx="2" fill="#ec4899"/><text x="336" y="1066" fill="#94a3b8" font-size="9">Review</text>
+  <rect x="420" y="1056" width="10" height="10" rx="2" fill="#f59e0b"/><text x="436" y="1066" fill="#94a3b8" font-size="9">叙事状态</text>
+  <rect x="530" y="1056" width="10" height="10" rx="2" fill="#8b5cf6"/><text x="546" y="1066" fill="#94a3b8" font-size="9">🆕 翻译</text>
+  <rect x="640" y="1056" width="10" height="10" rx="2" fill="#ef4444"/><text x="656" y="1066" fill="#94a3b8" font-size="9">已修复</text>
+
+  <text x="1100" y="1066" fill="#475569" font-size="9">ScriptNow v7 · 3 Projects · 18 Chapters · 92K words · Ruff+Lint+Build ✅ · 2026-07-26 (v2.1)</text>
 </svg>
 </body>
 </html>
