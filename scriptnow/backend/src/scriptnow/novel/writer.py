@@ -489,6 +489,18 @@ class NovelChapterGenerator:
             "latest validated revision (including human revisions), which overrides older adopted prose. "
             "Do not write screenplay sluglines or production notes. "
             "Do not explain your process. Use scene-level action, sensory detail, interiority and dialogue. "
+
+            "Before drafting, follow your loaded skills for continuity audit, pacing check, and emotional depth assessment. "
+
+            "Specifically: verify character names, factions, and timeline consistency from prior chapters; "
+
+            "limit each chapter to 1-2 major narrative turns with proper breather passages between revelations; "
+
+            "and ensure the protagonist experiences at least one moment of unguarded emotional exposure before the climax. "
+
+            "These checks are mandatory — a chapter that passes continuity, pacing, and emotional depth audits "
+
+            "will not contain character name duplication, faction confusion, information overload, or emotionally flat narration.\n"
             f"{source_instruction}"
             f"The creative language is {context['creative_language']}; every narrative string must use it. "
             f"The chapter limit is {chapter['target_words']} words. Count whitespace-delimited words "
