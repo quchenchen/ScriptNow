@@ -441,6 +441,7 @@ class AgentRuntime:
         from scriptnow.novel.writer_tools import create_writer_toolkit
         return create_writer_toolkit(self.database)
 
+    @staticmethod
     def _openai_model(
         *,
         credential: OpenAICredential,
