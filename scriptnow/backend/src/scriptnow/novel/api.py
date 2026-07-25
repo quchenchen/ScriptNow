@@ -742,8 +742,8 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
     ) -> dict[str, object]:
         await context(access_token)
         data = await read_creative_graph(database, project_id=project_id)
-        # If graph is empty but chapters have been adopted, enqueue background extraction
-        if not data["chapters"]:
+        # If graph is empty but chapters have been adopted, enqueue background extraction (once)
+        if not data["chapters"] and not graph_queue._running and not graph_queue._jobs:
             async with database.session() as session:
                 from sqlalchemy import select as sa_select
 
@@ -780,9 +780,10 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
                     "nodes": [],
                     "edges": [],
                 }
+                extraction = "running" if (graph_queue._running or graph_queue._jobs) else ("ready" if data["chapters"] else "not_built")
         return {
             "status": "ready" if data["chapters"] else "not_built",
-            "extraction_status": "ready",
+            "extraction_status": extraction,
             "chapters": [
                 {"id": ch["chapter_key"], "type": "chapter", "label": ch["title"]}
                 for ch in data["chapters"]
