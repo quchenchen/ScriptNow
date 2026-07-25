@@ -380,33 +380,37 @@ async def read_creative_graph(database: Database, *, project_id: str) -> dict[st
             )
         )
 
+    # Build node ID → key lookup for edge translation
+    id_to_key: dict[str, str] = {n.id: n.node_key for n in nodes}
+
     return {
         "chapters": [
             {
                 "chapter_key": s.summary_key,
-                "title": s.title,
-                "summary": s.content,
+                "id": s.summary_key,
+                "type": "chapter",
+                "label": s.title,
             }
             for s in summaries
         ],
         "nodes": [
             {
-                "key": n.node_key,
+                "id": n.id,
                 "type": n.node_type,
-                "name": n.name if hasattr(n, "name") else n.node_key,
+                "label": n.name,
+                "summary": n.description,
                 "aliases": list(n.aliases),
-                "description": n.description,
+                "evidence_count": 0,
             }
             for n in nodes
         ],
         "edges": [
             {
-                "key": e.edge_key,
+                "id": e.id,
                 "type": e.edge_type,
-                "source": e.source_node_id,
-                "target": e.target_node_id,
-                "description": e.description,
-                "confidence": e.confidence,
+                "source": id_to_key.get(e.source_node_id, e.source_node_id),
+                "target": id_to_key.get(e.target_node_id, e.target_node_id),
+                "label": e.description[:120] + ("..." if len(e.description) > 120 else ""),
                 "inference": e.inference,
             }
             for e in edges
