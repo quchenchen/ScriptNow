@@ -260,4 +260,30 @@ def create_work_package_router(
         except WorkPackageError as error:
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
 
+    @router.delete("/covers/{cover_id}", status_code=204)
+    async def delete_cover(
+        project_id: str,
+        cover_id: str,
+        access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
+        csrf_token: Annotated[str | None, Header(alias="X-CSRF-Token")] = None,
+    ):
+        auth_context = await context(access_token, csrf_token, write=True)
+        async with database.session() as session:
+            cover = await session.get(CoverArtifactModel, cover_id)
+            if cover is None or cover.project_id != project_id or cover.tenant_id != str(auth_context.tenant_id):
+                raise HTTPException(404, "cover not found")
+            # Delete local file if exists
+            import os as _os
+            url = cover.image_url or ""
+            if url.startswith("/files/covers/"):
+                rel = url.replace("/files/covers/", "")
+                local = _os.path.join(settings.workspace_root, "covers", rel)
+                try:
+                    _os.remove(local)
+                except OSError:
+                    pass
+            await session.delete(cover)
+            await session.flush()
+        return None
+
     return router
