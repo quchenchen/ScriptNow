@@ -790,7 +790,7 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
             "status": "ready" if data["chapters"] else "not_built",
             "extraction_status": extraction,
             "chapters": [
-                {"id": ch["chapter_key"], "type": "chapter", "label": ch["title"]}
+                {"id": ch["chapter_key"], "type": "chapter", "label": ch.get("title", ch.get("label", "unknown"))}
                 for ch in data["chapters"]
             ],
             "nodes": data["nodes"],
