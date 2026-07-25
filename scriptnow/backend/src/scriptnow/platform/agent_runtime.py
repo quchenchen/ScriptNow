@@ -250,11 +250,7 @@ class AgentRuntime:
                     ),
                 ),
                 model=model,
-                toolkit=Toolkit(
-                    tools=self._writer_tools() if role == "writer" else None,
-                    skills_or_loaders=loaders,
-                    mcps=mcp_clients,
-                ),
+                toolkit=Toolkit(skills_or_loaders=loaders, mcps=mcp_clients),
                 react_config=ReActConfig(
                     max_iters=min(
                         int(
@@ -436,10 +432,6 @@ class AgentRuntime:
             "服务端项目事实快照（唯一事实依据；不得虚构已采纳内容）：\n"
             f"{json.dumps(context_snapshot, ensure_ascii=False, sort_keys=True)}"
         )
-
-    def _writer_tools(self) -> list:
-        from scriptnow.novel.writer_tools import create_writer_toolkit
-        return create_writer_toolkit(self.database)
 
     @staticmethod
     def _openai_model(

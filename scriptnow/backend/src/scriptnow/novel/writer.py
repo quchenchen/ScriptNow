@@ -27,6 +27,7 @@ from scriptnow.novel.domain import (
     NovelStoryCoreCandidateModel,
 )
 from scriptnow.novel.project import NovelStoryMapModel
+from scriptnow.novel.writer_context import build_character_graph, build_prior_summary
 from scriptnow.platform.agent_runtime import AgentRuntime, AgentRuntimeError, AgentRuntimeResult
 from scriptnow.platform.billing import BillingService
 from scriptnow.platform.config import Settings
@@ -439,6 +440,10 @@ class NovelChapterGenerator:
                 "constraints": list(core.narrative_constraints),
             },
             "chapter": chapter,
+            "prior_chapters_summary": build_prior_summary(prior, chapter_id),
+            "character_graph": await build_character_graph(
+                self.database, project.id, chapter_id
+            ),
             "source_revision": (
                 {
                     "revision_id": source_revision.id,

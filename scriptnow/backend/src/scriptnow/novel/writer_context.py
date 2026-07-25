@@ -1,0 +1,74 @@
+"""Pre-computed context helpers for the Novel Writer.
+
+These functions build compact text summaries from database data BEFORE
+the prompt is assembled, avoiding the need for Agent tool calls (which
+DeepSeek v4-pro does not reliably support).
+"""
+
+
+def build_prior_summary(revisions, current_chapter_id: str) -> str:
+    """Compact summary of prior chapters — last 6, ~500 chars each."""
+    prior = [r for r in revisions if r.chapter_id != current_chapter_id]
+    if not prior:
+        return "This is the first chapter."
+    lines = ["## Prior Chapters Summary"]
+    for rev in sorted(prior, key=lambda r: r.chapter_id)[-6:]:
+        blocks = [b for b in rev.blocks if b]
+        if not blocks:
+            continue
+        title = rev.chapter_id
+        for b in blocks[:5]:
+            if hasattr(b, "type") and b.type == "heading":
+                title = str(getattr(b, "text", rev.chapter_id))
+                break
+        snippet = " ".join(
+            str(getattr(b, "text", ""))[:200]
+            for b in blocks[-10:]
+            if hasattr(b, "type") and b.type in ("prose", "dialogue")
+        )
+        lines.append(f"- **{rev.chapter_id} ({title})**: {snippet[:400]}")
+    return "\n".join(lines)
+
+
+async def build_character_graph(database, project_id: str, current_chapter_id: str) -> str:
+    """Compact character profiles + chapter summaries from creative graph."""
+    try:
+        from scriptnow.novel.creative_graph import read_creative_graph
+
+        data = await read_creative_graph(database, project_id=project_id, compact=True)
+    except Exception:
+        return ""
+
+    nodes = data.get("nodes", [])
+    chapters = data.get("chapters", [])
+    prior_chapters = [
+        c for c in chapters
+        if c.get("id", "").replace("chapter:", "") != current_chapter_id
+    ]
+
+    lines = ["## Story So Far"]
+    for ch in prior_chapters[-6:]:
+        cid = ch.get("id", "").replace("chapter:", "")
+        label = ch.get("label", ch.get("title", "untitled"))
+        summary = (ch.get("summary", "") or "")[:200]
+        lines.append(f"- [{cid}] **{label}**: {summary}")
+
+    characters = [n for n in nodes if n.get("type") == "character"]
+    if characters:
+        lines.append("\n### Characters")
+        for n in characters:
+            name = n.get("label", n.get("name", "?"))
+            desc = (n.get("summary", "") or n.get("description", ""))[:120]
+            aliases = n.get("aliases") or []
+            alias_str = " (aka " + ", ".join(aliases[:3]) + ")" if aliases else ""
+            lines.append(f"- **{name}**{alias_str}: {desc}")
+
+    locations = [n for n in nodes if n.get("type") == "location"][:5]
+    if locations:
+        lines.append("\n### Locations")
+        for n in locations:
+            name = n.get("label", n.get("name", "?"))
+            desc = (n.get("summary", "") or n.get("description", ""))[:100]
+            lines.append(f"- **{name}**: {desc}")
+
+    return "\n".join(lines)
