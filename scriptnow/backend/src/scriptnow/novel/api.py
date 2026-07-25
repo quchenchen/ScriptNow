@@ -505,6 +505,25 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
                     idempotency_key=f"adopt:{revision_id}",
                 )
             )
+            # Extract narrative exit note for cumulative state
+            try:
+                from scriptnow.novel.narrative_extractor import (
+                    extract_chapter_exit_note,
+                    update_narrative_state,
+                )
+                chapter_text = " ".join(
+                    str(b.get("text", "")) for b in blocks
+                    if isinstance(b, dict) and b.get("type") in ("prose", "dialogue")
+                )
+                if chapter_text.strip():
+                    note = extract_chapter_exit_note(
+                        chapter_id=item.chapter_id,
+                        chapter_text=chapter_text,
+                        word_count=len(chapter_text.split()),
+                    )
+                    update_narrative_state(project_id, note)
+            except Exception:
+                pass  # non-blocking
             return AdoptResponse(id=item.id, status="adopted")
         except (NovelConflict, NovelDomainError) as error:
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error

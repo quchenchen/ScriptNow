@@ -72,3 +72,44 @@ async def build_character_graph(database, project_id: str, current_chapter_id: s
             lines.append(f"- **{name}**: {desc}")
 
     return "\n".join(lines)
+
+
+async def build_narrative_state(project_id: str, prior_revisions) -> str:
+    """Build cumulative narrative state: hooks, traits, events.
+
+    This is Layer 2-3 of the progressive disclosure system.
+    For previously generated chapters, extracts and caches exit notes.
+    """
+    from scriptnow.novel.narrative_extractor import (
+        extract_chapter_exit_note,
+        get_narrative_state,
+        update_narrative_state,
+    )
+
+    state = get_narrative_state(project_id)
+    # Ensure all prior chapters have exit notes
+    for rev in prior_revisions:
+        existing = [c for c in state.chapters if c.chapter_id == rev.chapter_id]
+        if not existing:
+            # Extract exit note from the revision blocks
+            blocks = [b for b in rev.blocks if b]
+            chapter_text = " ".join(
+                str(getattr(b, "text", "")) for b in blocks
+                if hasattr(b, "type") and b.type in ("prose", "dialogue")
+            )
+            if chapter_text.strip():
+                word_count = len(chapter_text.split())
+                note = extract_chapter_exit_note(
+                    chapter_id=rev.chapter_id,
+                    chapter_text=chapter_text,
+                    word_count=word_count,
+                )
+                update_narrative_state(project_id, note)
+
+    # Return compact state
+    compact = state.to_markdown(compact=True)
+    if compact:
+        return compact
+
+    # Fallback: return the full state
+    return state.to_markdown(compact=False)
