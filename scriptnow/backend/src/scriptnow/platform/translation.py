@@ -178,15 +178,15 @@ class FaithfulTranslationService:
         except Exception:
             # Fallback: plain-text translation — model returned raw translated text
             # Use original structure but replace text content
-            return FaithfulTranslationService._parse_plain(text, original)
+            return FaithfulTranslationService._parse_plain(text, original=original)
         if set(payload.titles) != set(original.titles):
-            return FaithfulTranslationService._parse_plain(text, original)
+            return FaithfulTranslationService._parse_plain(text, original=original)
         if len(payload.blocks) != len(original.blocks):
-            return FaithfulTranslationService._parse_plain(text, original)
+            return FaithfulTranslationService._parse_plain(text, original=original)
         original_types = [str(block.get("type") or "") for block in original.blocks]
         translated_types = [block.type for block in payload.blocks]
         if translated_types != original_types:
-            return FaithfulTranslationService._parse_plain(text, original)
+            return FaithfulTranslationService._parse_plain(text, original=original)
         return TranslationUnit(
             titles=payload.titles,
             blocks=tuple(
