@@ -20,7 +20,6 @@ from sqlalchemy import select
 from scriptnow.novel.continuity import latest_effective_revisions
 from scriptnow.novel.contracts import NovelBlock
 from scriptnow.novel.domain import (
-    NovelBlueprintAnchorModel,
     NovelBlueprintModel,
     NovelCandidateStatus,
     NovelDocumentRevisionModel,
@@ -387,13 +386,6 @@ class NovelChapterGenerator:
                     )
                 )
             ).one_or_none()
-            anchors = list(
-                await session.scalars(
-                    select(NovelBlueprintAnchorModel).where(
-                        NovelBlueprintAnchorModel.blueprint_id == (blueprint.id if blueprint else "")
-                    )
-                )
-            )
             revisions = list(
                 await session.scalars(
                     select(NovelDocumentRevisionModel)
