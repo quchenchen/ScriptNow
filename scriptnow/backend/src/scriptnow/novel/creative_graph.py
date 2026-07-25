@@ -287,7 +287,7 @@ class CreativeGraphExtractor:
                     id=index_key,
                     tenant_id=tenant_id,
                     project_id=project_id,
-                    source_file_id="",  # no source file for creative graph
+                    source_file_id="ffffffff-ffff-ffff-ffff-ffffffffffff",  # dummy for FK
                     version=1,
                     status="ready",
                     config={"source": "creative", "extraction_status": "ready"},
