@@ -60,7 +60,6 @@ onMounted(async () => {
         <div class="project-card-content">
           <div class="project-card-chips"><span class="medium-chip">{{ project.medium === 'script' ? '剧本' : '小说' }}</span><span class="source-chip">{{ project.source_mode === 'adaptation' ? '改编' : '原创' }}</span></div>
           <h2 data-i18n-skip>{{ project.name }}</h2>
-          <p>继续进入创作团队协作现场</p>
           <span class="card-arrow">进入 →</span>
         </div>
       </RouterLink>
