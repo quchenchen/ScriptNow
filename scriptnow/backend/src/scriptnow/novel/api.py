@@ -673,7 +673,7 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
         import httpx
 
         from scriptnow.novel.export import render_packaged_docx
-        from scriptnow.platform.models import CoverModel, WorkPackageModel
+        from scriptnow.platform.models import CoverArtifactModel, WorkPackageModel
         auth_context = await context(access_token, csrf_token, write=True)
         tid = str(auth_context.tenant_id)
         await _novel_project(database, tid, project_id)
@@ -697,7 +697,7 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
             from scriptnow.novel.delivery import _ordered_chapters
             project = await session.get(ProjectModel, project_id)
             package = (await session.scalars(sa_select(WorkPackageModel).where(WorkPackageModel.project_id == project_id))).one_or_none()
-            covers = list(await session.scalars(sa_select(CoverModel).where(CoverModel.project_id == project_id, CoverModel.status == "candidate").order_by(CoverModel.created_at.desc())))
+            covers = list(await session.scalars(sa_select(CoverArtifactModel).where(CoverArtifactModel.project_id == project_id, CoverArtifactModel.status == "candidate").order_by(CoverArtifactModel.created_at.desc())))
 
         cover_bytes = None
         if covers and covers[0].image_url:
