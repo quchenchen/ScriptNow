@@ -12,7 +12,6 @@ from sqlalchemy import select
 
 from scriptnow.novel.domain import NovelDocumentRevisionModel, NovelRevisionStatus
 from scriptnow.platform.auth_api import ACCESS_COOKIE
-from scriptnow.platform.auth_api import context as auth_context
 from scriptnow.platform.config import Settings
 from scriptnow.platform.database import Database
 from scriptnow.platform.models import ProjectMedium, ProjectModel
@@ -32,6 +31,18 @@ class TranslationChapter(BaseModel):
     source_text: str  # original text blocks
     translated_text: str | None = None  # translated text blocks
     status: str = "pending"  # pending, translating, completed, failed
+
+
+async def _tenant_id(database: Database, access_token: str | None) -> str:
+    if not access_token:
+        raise HTTPException(401, "authentication required")
+    async with database.session() as session:
+        from scriptnow.platform.models import RefreshTokenModel
+        from datetime import datetime, timezone
+        token = await session.get(RefreshTokenModel, access_token)
+        if token is None or (token.expires_at and token.expires_at < datetime.now(timezone.utc)):
+            raise HTTPException(401, "session expired")
+        return token.tenant_id
 
 
 def create_translation_router(database: Database, settings: Settings) -> APIRouter:
