@@ -84,12 +84,21 @@ async function load() {
     covers.value = existingCovers ?? []
   } catch (reason) { error.value = presentError(reason, '加载作品包装失败') }
 }
+const deletingCover = ref<string | null>(null)
+const deleteConfirm = ref<string | null>(null)  // cover id pending confirm
+
 async function deleteCover(coverId: string) {
-  if (!confirm('删除这张封面？')) return
-  try {
-    await api(`/projects/${projectId.value}/packaging/covers/${coverId}`, { method: 'DELETE' })
-    covers.value = covers.value.filter(c => c.id !== coverId)
-  } catch (reason) { error.value = presentError(reason, '删除封面失败') }
+  if (deleteConfirm.value === coverId) {
+    deleteConfirm.value = null
+    deletingCover.value = coverId
+    try {
+      await api(`/projects/${projectId.value}/packaging/covers/${coverId}`, { method: 'DELETE' })
+      covers.value = covers.value.filter(c => c.id !== coverId)
+    } catch (reason) { error.value = presentError(reason, '删除封面失败') }
+    finally { deletingCover.value = null }
+  } else {
+    deleteConfirm.value = coverId
+  }
 }
 
 function toggle(key: string) {
@@ -133,7 +142,7 @@ onUnmounted(stopProgress)
       <div class="spec-grid"><button v-for="spec in specs" :key="spec.key" :class="{ selected: selected.includes(spec.key) }" @click="toggle(spec.key)"><span>{{ selected.includes(spec.key) ? '✓' : '' }}</span><strong>{{ spec.platform }}</strong><b>{{ spec.width }} × {{ spec.height }} px</b><small>{{ spec.ratio }} · {{ spec.formats.join('/') }}</small><p>{{ spec.note }}</p></button></div>
       <div class="cover-actions"><label>生图模型<select v-model="selectedModel" :disabled="Boolean(busy)"><option value="" disabled>选择可用模型</option><option v-for="model in models" :key="model.id" :value="model.id" :disabled="!model.available" data-i18n-skip>{{ model.display_name }} · {{ model.provider_name }}{{ model.available ? '' : '（不可用）' }}</option></select></label><button class="primary" :disabled="!workPackage || !selected.length || !selectedModel || Boolean(busy)" @click="generateCovers">{{ busy === 'cover' ? `正在生成 ${selected.length} 种封面…` : `生成 ${selected.length} 种封面` }}</button></div>
     </section>
-    <section v-if="covers.length" class="cover-results"><article v-for="cover in covers" :key="cover.id" style="position:relative"><button style="position:absolute;top:6px;right:6px;width:24px;height:24px;border:0;border-radius:50%;background:#fff;color:#8d3729;font-size:14px;cursor:pointer;z-index:1;box-shadow:0 1px 4px #0002" @click="deleteCover(cover.id)" title="删除这张封面">✕</button><img :src="cover.image_url" :alt="`${cover.width} × ${cover.height} 封面候选`" /><strong>{{ specs.find((item) => item.key === cover.platform_key)?.platform }}</strong><small>{{ cover.width }} × {{ cover.height }} · {{ cover.language }}</small></article></section>
+    <section v-if="covers.length" class="cover-results"><article v-for="cover in covers" :key="cover.id" style="position:relative"><button style="position:absolute;top:6px;right:6px;width:24px;height:24px;border:0;border-radius:50%;background:#fff;color:#8d3729;font-size:14px;cursor:pointer;z-index:1;box-shadow:0 1px 4px #0002" @click.stop="deleteCover(cover.id)" :title="deleteConfirm === cover.id ? '再次点击确认删除' : '删除这张封面'" :style="deleteConfirm === cover.id ? {background:'#8d3729',color:'#fff',width:'auto',borderRadius:'6px',padding:'3px 8px',fontSize:'11px'} : {}">{{ deleteConfirm === cover.id ? '确认删除？' : '✕' }}</button><img :src="cover.image_url" :alt="`${cover.width} × ${cover.height} 封面候选`" /><strong>{{ specs.find((item) => item.key === cover.platform_key)?.platform }}</strong><small>{{ cover.width }} × {{ cover.height }} · {{ cover.language }}</small></article></section>
   </AppShell>
 </template>
 
