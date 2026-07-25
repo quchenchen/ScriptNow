@@ -437,7 +437,6 @@ class AgentRuntime:
             f"{json.dumps(context_snapshot, ensure_ascii=False, sort_keys=True)}"
         )
 
-    @staticmethod
     def _writer_tools(self) -> list:
         from scriptnow.novel.writer_tools import create_writer_toolkit
         return create_writer_toolkit(self.database)
