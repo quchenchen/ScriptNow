@@ -58,6 +58,9 @@ def create_app(
     app.include_router(create_review_router(resolved_database, auth))
     app.include_router(create_dock_router(resolved_database, auth, resolved_settings))
     app.include_router(create_work_package_router(resolved_database, auth, resolved_settings))
+    from scriptnow.platform.translation_api import create_translation_router
+
+    app.include_router(create_translation_router(resolved_database, resolved_settings))
 
     @app.get("/health", tags=["system"])
     async def health() -> dict[str, object]:
