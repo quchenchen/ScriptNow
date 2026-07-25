@@ -9,9 +9,16 @@ export interface RuntimeRoleStatus {
   reason: string
 }
 
+export interface ActiveRun {
+  run_id: string
+  status: string
+  created_at: string | null
+}
+
 export interface RuntimeStatus {
   connected: boolean
   roles: Record<'director' | 'architect' | 'writer' | 'reviewer', RuntimeRoleStatus>
+  active_runs?: ActiveRun[]
 }
 
 export const useRuntimeStore = defineStore('agent-runtime-status', {

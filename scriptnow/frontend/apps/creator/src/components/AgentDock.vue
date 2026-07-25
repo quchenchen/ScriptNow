@@ -24,6 +24,18 @@ const operationLabel = computed(() => ({ expand: '扩写', shorten: '缩写', po
 const roleLabel = computed(() => creativeRoleLabel(dock.role))
 const runtimeRole = computed(() => dock.role === 'editor' ? 'reviewer' : dock.role as 'director' | 'architect' | 'writer')
 const activeRuntime = computed(() => runtime.status?.roles[runtimeRole.value])
+
+const activeRunCount = computed(() => (runtime.status?.active_runs || []).filter(r => r.status === 'queued' || r.status === 'running').length)
+const activeRunStatus = computed(() => {
+  const runs = (runtime.status?.active_runs || []).filter(r => r.status === 'queued' || r.status === 'running')
+  if (runs.length === 0) return ''
+  return runs.length === 1 ? `1 个任务 ${runs[0].status === 'queued' ? '排队中' : '执行中'}` : `${runs.length} 个任务执行中`
+})
+const roleProgressLabel = computed(() => {
+  if (!activeRuntime.value?.connected) return '未连接'
+  if (activeRunCount.value > 0) return `🔄 ${activeRunStatus.value}`
+  return '✓ 就绪'
+})
 const actionLabels: Record<string, string> = {
   'story_core.adopt': '已采纳创意方向', 'blueprint.propose': '蓝图候选已生成',
   'blueprint.revise': '蓝图修订候选已生成', 'blueprint.adopt': '已采纳蓝图',

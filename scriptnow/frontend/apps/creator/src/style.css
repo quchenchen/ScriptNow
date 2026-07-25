@@ -239,6 +239,8 @@ input, textarea, select { width: 100%; border: 1px solid #d8d1c4; border-radius:
 .agent-message { display: grid; gap: 8px; margin-top: 7px; color: #4f4a42; font-size: .76rem; line-height: 1.65; }.agent-message h3 { margin: 5px 0 0; color: #29463b; font: 700 1rem/1.3 Georgia, serif; }.agent-message h3.level-3, .agent-message h3.level-4 { font-size: .85rem; }.agent-message p { margin: 0; white-space: normal; }.agent-message ol, .agent-message ul { display: grid; gap: 6px; margin: 0; padding-left: 21px; }.agent-message li { padding-left: 2px; }.agent-message hr { width: 100%; margin: 4px 0; border: 0; border-top: 1px solid #ddd6ca; }
 @media (max-width: 560px) { .agent-dock { right: 8px; bottom: 8px; width: calc(100vw - 16px); max-height: calc(100vh - 80px); }.dock-feed { max-height: 42vh; } }
 .dock-notice { margin: 0 14px 5px; color: #315745; font-size: .74rem; }
+.dock-run-status { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; margin-right: 3px; border-radius: 4px; background: #fef3c7; color: #92400e; font-size: .68rem; font-weight: 600; animation: pulse 1.5s infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .6; } }
 .agent-dock:not(.collapsed) .dock-feed { min-height: 120px; max-height: none; flex: 1 1 auto; }
 .creator-shell.writer-focus .agent-dock:not(.collapsed) { max-height: calc(100vh - 56px); }.creator-shell.writer-focus .agent-dock:not(.collapsed) .dock-feed { min-height: 120px; max-height: none; }
 @media (max-width: 560px) { .agent-dock { width: calc(100vw - 16px) !important; height: min(620px, calc(100vh - 80px)) !important; }.agent-dock.collapsed { height: auto !important; }.dock-resize-grip { display: none; }.dock-handle { padding-left: 15px; } }

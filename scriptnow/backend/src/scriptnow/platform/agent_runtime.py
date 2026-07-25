@@ -42,6 +42,9 @@ from scriptnow.platform.models import (
     ProviderStatus,
     TenantAgentConfigModel,
 )
+from scriptnow.platform.models import (
+    RunStatus as RunStatusEnum,
+)
 
 
 class AgentRuntimeError(RuntimeError):
@@ -133,7 +136,31 @@ class AgentRuntime:
                     "provider_key": provider.key if provider else None,
                     "reason": "connected" if connected else self._reason(template, model, provider),
                 }
-        return {"connected": all(item["connected"] for item in roles.values()), "roles": roles}
+            # Query active runs for progress visibility
+            active_runs = list(
+                await session.scalars(
+                    select(ProjectRunModel).where(
+                        ProjectRunModel.tenant_id == tenant_id,
+                        ProjectRunModel.project_id == project_id,
+                        ProjectRunModel.status.in_([
+                            RunStatusEnum.QUEUED, RunStatusEnum.RUNNING
+                        ]),
+                    ).order_by(ProjectRunModel.created_at)
+                )
+            )
+            active = [
+                {
+                    "run_id": run.id,
+                    "status": str(run.status),
+                    "created_at": run.created_at.isoformat() if run.created_at else None,
+                }
+                for run in active_runs
+            ]
+        return {
+            "connected": all(item["connected"] for item in roles.values()),
+            "roles": roles,
+            "active_runs": active,
+        }
 
     async def generate(
         self,
