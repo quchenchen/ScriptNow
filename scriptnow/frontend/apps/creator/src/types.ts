@@ -1,4 +1,4 @@
-export type Medium = 'script' | 'novel'
+export type Medium = 'script' | 'novel' | 'translation'
 export type SourceMode = 'original' | 'adaptation'
 
 export interface Session {

@@ -121,7 +121,7 @@ async function finish() {
       <div v-if="step === 1">
         <p class="eyebrow">01 · 作品形态</p><h2>这次要生长成什么？</h2>
         <div class="choice-grid">
-          <button v-for="item in ([['script','剧本','以场景、动作和对白推进'],['novel','小说','以章节、叙述和内心推进']] as const)" :key="item[0]" class="choice-card" :class="{ selected: medium === item[0] }" @click="medium = item[0]">
+          <button v-for="item in ([['script','剧本','以场景、动作和对白推进'],['novel','小说','以章节、叙述和内心推进'],['translation','翻译','直译文学作品到目标语言']] as const)" :key="item[0]" class="choice-card" :class="{ selected: medium === item[0] }" @click="medium = item[0]">
             <strong>{{ item[1] }}</strong><span>{{ item[2] }}</span>
           </button>
         </div>
