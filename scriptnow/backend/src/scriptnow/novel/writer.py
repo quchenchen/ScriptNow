@@ -19,7 +19,6 @@ from sqlalchemy import select
 
 from scriptnow.novel.continuity import latest_effective_revisions
 from scriptnow.novel.contracts import NovelBlock
-from scriptnow.novel.creative_graph import read_creative_graph
 from scriptnow.novel.domain import (
     NovelBlueprintAnchorModel,
     NovelBlueprintModel,
@@ -465,7 +464,6 @@ class NovelChapterGenerator:
                 if source_revision
                 else None
             ),
-            "creative_graph": await read_creative_graph(self.database, project_id=project.id, compact=True),
         }
 
     @staticmethod
@@ -489,18 +487,14 @@ class NovelChapterGenerator:
             "latest validated revision (including human revisions), which overrides older adopted prose. "
             "Do not write screenplay sluglines or production notes. "
             "Do not explain your process. Use scene-level action, sensory detail, interiority and dialogue. "
-
-            "Before drafting, follow your loaded skills for continuity audit, pacing check, and emotional depth assessment. "
-
-            "Specifically: verify character names, factions, and timeline consistency from prior chapters; "
-
-            "limit each chapter to 1-2 major narrative turns with proper breather passages between revelations; "
-
-            "and ensure the protagonist experiences at least one moment of unguarded emotional exposure before the climax. "
-
-            "These checks are mandatory — a chapter that passes continuity, pacing, and emotional depth audits "
-
-            "will not contain character name duplication, faction confusion, information overload, or emotionally flat narration.\n"
+            "\nBEFORE DRAFTING, call the following tools in order:\n"
+            "1. get_chapter_beat(project_id, chapter_id) — retrieve the planned StoryMap outline.\n"
+            "2. get_prior_chapter_summaries(project_id, max_chapters=6) — read prior chapter summaries.\n"
+            "3. get_creative_graph_entities(project_id, entity_types=character,location) — verify established entities.\n"
+            "4. get_last_quality_report(project_id, chapter_id_of_previous) — check prior review findings.\n"
+            "\nAFTER CALLING THESE TOOLS: follow your loaded skills (novel-write, novel-continuity-check, novel-pacing-check, novel-emotional-depth) "
+            "to audit continuity, limit the chapter to 1-2 major narrative turns, and ensure emotional depth. "
+            "Return JSON only with the blocks schema.\n"
             f"{source_instruction}"
             f"The creative language is {context['creative_language']}; every narrative string must use it. "
             f"The chapter limit is {chapter['target_words']} words. Count whitespace-delimited words "
@@ -513,13 +507,7 @@ class NovelChapterGenerator:
             '{"blocks":[{"type":"heading|prose|dialogue|quote|divider","text":"..."}]}. '
             "The first block must be the actual chapter title from StoryMap, not an internal chapter ID.\n"
             f"Project direction: {json.dumps(project.direction, ensure_ascii=False)}\n"
-            "创作图谱 (Creative Graph) is an accumulated knowledge graph of characters, "
-            "relationships, locations, objects, events and their descriptions extracted from earlier chapters. "
-            "Use it to maintain consistency: existing characters must retain their established traits, "
-            "relationships must reflect their current state as of the end of the previous chapter, "
-            "and chapter summaries show what has already happened. "
-            "Do not contradict established facts; when new information is introduced, it should extend or "
-            "complicate the existing graph rather than overwrite it.\n"
+
             f"Writing context: {json.dumps(context, ensure_ascii=False)}"
         )
 

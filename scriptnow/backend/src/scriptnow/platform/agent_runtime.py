@@ -250,7 +250,11 @@ class AgentRuntime:
                     ),
                 ),
                 model=model,
-                toolkit=Toolkit(skills_or_loaders=loaders, mcps=mcp_clients),
+                toolkit=Toolkit(
+                    tools=self._writer_tools() if role == "writer" else None,
+                    skills_or_loaders=loaders,
+                    mcps=mcp_clients,
+                ),
                 react_config=ReActConfig(
                     max_iters=min(
                         int(
@@ -434,6 +438,10 @@ class AgentRuntime:
         )
 
     @staticmethod
+    def _writer_tools(self) -> list:
+        from scriptnow.novel.writer_tools import create_writer_toolkit
+        return create_writer_toolkit(self.database)
+
     def _openai_model(
         *,
         credential: OpenAICredential,
