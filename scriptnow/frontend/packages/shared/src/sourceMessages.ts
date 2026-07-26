@@ -504,6 +504,23 @@ export const sourceMessages: Record<string, string> = {
   '精简第': 'Condense chapter',
   '图谱暂时无法读取': 'Graph temporarily unavailable',
   '素材图谱': 'Source Graph', '创作图谱': 'Creative Graph',
+  '个任务': ' tasks', '排队中': 'Queued', '执行中': 'Running',
+  '个任务执行中': ' tasks running', '就绪': 'Ready',
+  '导出作品': 'Export work', '导出即将推出': 'Export is coming soon',
+  '项目快照功能即将推出': 'Project snapshots are coming soon',
+  '可前往': 'Go to the ', '页面导出': ' page to export', '作品': 'work',
+  '尚未建立': 'Not built yet', '采纳': 'Adopt',
+  '节后将自动提取': ' will be extracted automatically after chapter adoption',
+  '与事件关系': ' and event relationships', '下次打开即可': 'Available the next time you open this view',
+  '打包': 'Package', '回到控制台': 'Return to dashboard',
+  '打包导出': 'Packaged export', '含封面': 'Includes cover', '简介': 'Synopsis',
+  '封面': 'Cover', '再次点击': 'Click again', '这张封面': 'this cover',
+  '直译文学作品到': 'Translate a literary work faithfully into ',
+  '源作品': 'Source work', '从库里选': 'Choose from library',
+  '还是上传文档': 'or upload a document', '已有的': 'Existing ',
+  '上传文档': 'Upload document', '暂无可': 'None available',
+  '请先创建一部': 'Create one first', '拖拽或点击上传': 'Drag or click to upload',
+  '直译': 'Faithful translation', '模式': 'Mode', '忠实直译': 'Faithful translation',
 }
 
 const orderedSourceMessages = Object.entries(sourceMessages).sort(

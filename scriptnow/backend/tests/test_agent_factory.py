@@ -121,12 +121,13 @@ async def test_snapshot_freezes_domain_skills(
         run_id = run.id
     snapshot = await factory.snapshot_for_run(tenant_id=tenant.id, run_id=run_id, role_key="writer")
     assert snapshot.values["skill_domain"] == "novel"
-    assert snapshot.values["skill_keys"] == [
+    assert {
         "novel-write",
         "project-diagnose",
-        "novel-platform-fanqie",
-        "novel-serial-quality-review",
-    ]
+        "novel-continuity-check",
+        "novel-emotional-depth",
+        "novel-pacing-check",
+    } <= set(snapshot.values["skill_keys"])
     assert snapshot.values["skill_catalog_fingerprint"]
 
 

@@ -15,7 +15,7 @@ async def build_review_highlights(database, project_id: str, current_chapter_id:
     from sqlalchemy import desc
     from sqlalchemy import select as sa_select
 
-    from scriptnow.platform.models import NovelQualityReportModel
+    from scriptnow.novel.domain import NovelQualityReportModel
 
     async with database.session() as session:
         reports = list(

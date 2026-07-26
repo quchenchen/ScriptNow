@@ -17,6 +17,7 @@ from scriptnow.review.api import create_review_router
 from scriptnow.script.api import create_script_router
 from scriptnow.script.contracts import SCRIPT_BLOCK_TYPES
 from scriptnow.script.project import initialize_script_project
+from scriptnow.translation.api import create_translation_router
 from scriptnow.work_package.api import create_work_package_router
 
 
@@ -58,8 +59,6 @@ def create_app(
     app.include_router(create_review_router(resolved_database, auth))
     app.include_router(create_dock_router(resolved_database, auth, resolved_settings))
     app.include_router(create_work_package_router(resolved_database, auth, resolved_settings))
-    from scriptnow.platform.translation_api import create_translation_router
-
     app.include_router(create_translation_router(resolved_database, auth, resolved_settings))
 
     import os as _os

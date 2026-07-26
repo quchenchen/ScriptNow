@@ -172,21 +172,20 @@ class FaithfulTranslationService:
 
     @staticmethod
     def _parse(text: str, *, original: TranslationUnit) -> TranslationUnit:
-        # Try structured JSON parse first
         try:
             payload = _TranslationPayload.model_validate(repair_json(text))
-        except Exception:
-            # Fallback: plain-text translation — model returned raw translated text
-            # Use original structure but replace text content
-            return FaithfulTranslationService._parse_plain(text, original=original)
+        except Exception as error:
+            raise TranslationError(
+                "translator returned an invalid structured response"
+            ) from error
         if set(payload.titles) != set(original.titles):
-            return FaithfulTranslationService._parse_plain(text, original=original)
+            raise TranslationError("translator changed the title contract")
         if len(payload.blocks) != len(original.blocks):
-            return FaithfulTranslationService._parse_plain(text, original=original)
+            raise TranslationError("translator changed the block count")
         original_types = [str(block.get("type") or "") for block in original.blocks]
         translated_types = [block.type for block in payload.blocks]
         if translated_types != original_types:
-            return FaithfulTranslationService._parse_plain(text, original=original)
+            raise TranslationError("translator changed the block type contract")
         return TranslationUnit(
             titles=payload.titles,
             blocks=tuple(
@@ -194,33 +193,3 @@ class FaithfulTranslationService:
                 for index, block in enumerate(payload.blocks)
             ),
         )
-
-    @staticmethod
-    def _parse_plain(text: str, *, original: TranslationUnit) -> TranslationUnit:
-        """Plain-text fallback: model returned translated text without JSON wrapping.
-
-        Preserves original block structure and types, replaces only the text content.
-        Splits the raw output by paragraph breaks to match original block count.
-        """
-        # Split raw text into paragraphs
-        paragraphs = [p.strip() for p in text.strip().split("\n\n") if p.strip()]
-        # Remove JSON-like wrapper lines if present
-        paragraphs = [p for p in paragraphs if not p.startswith("{") and not p.startswith("}")]
-
-        if not paragraphs:
-            raise TranslationError("translator returned empty content")
-
-        [str(block.get("type") or "") for block in original.blocks]
-        # Build translated blocks — map paragraphs to matching block types
-        translated_blocks = []
-        for idx, block in enumerate(original.blocks):
-            block_type = str(block.get("type") or "")
-            # For non-text blocks (heading, divider), keep original
-            if block_type not in ("prose", "dialogue", "quote"):
-                translated_blocks.append(block)
-                continue
-            # Use corresponding paragraph if available
-            text_idx = min(idx, len(paragraphs) - 1)
-            translated_blocks.append({**block, "text": paragraphs[text_idx]})
-
-        return TranslationUnit(titles=original.titles, blocks=tuple(translated_blocks))

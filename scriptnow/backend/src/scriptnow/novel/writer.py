@@ -118,7 +118,16 @@ class NovelChapterGenerator:
             run_id=run.id,
             idempotency_key=f"novel-chapter:{chapter_id}:{idempotency_key}",
             tier=tenant.tier,
-            max_tokens=min(24_000, max(6_000, int(context["chapter"]["target_words"]) * 3)),
+            max_tokens=min(
+                self.settings.novel_writer_max_reserved_tokens,
+                max(
+                    self.settings.novel_writer_min_reserved_tokens,
+                    int(
+                        int(context["chapter"]["target_words"])
+                        * self.settings.novel_writer_token_reserve_ratio
+                    ),
+                ),
+            ),
         )
         await self.runs.transition(tenant_id=tenant_id, run_id=run.id, target=RunStatus.RUNNING)
         await self._event(
@@ -555,22 +564,9 @@ class NovelChapterGenerator:
                 raw = {**raw, "blocks": normalized}
             payload = _Payload.model_validate(raw)
         except (json.JSONDecodeError, ValidationError, ValueError, TypeError) as error:
-            # Fallback: if JSON parsing fails, treat the entire response as prose blocks
-            # split by double newlines, with the first block as heading
-            text = value.strip()
-            if not text:
-                raise NovelWriterError("主笔返回的章节结构不完整，旧稿未受影响，请重新生成。") from error
-            paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
-            if len(paragraphs) < 2:
-                raise NovelWriterError("主笔返回的章节结构不完整，旧稿未受影响，请重新生成。") from error
-            raw = {
-                "blocks": [
-                    {"type": "heading", "text": paragraphs[0]}
-                ] + [
-                    {"type": "prose", "text": p} for p in paragraphs[1:]
-                ]
-            }
-            payload = _Payload.model_validate(raw)
+            raise NovelWriterError(
+                "主笔返回的章节结构不完整，旧稿未受影响，请重新生成。"
+            ) from error
         readable_blocks: list[_Block] = []
         for item in payload.blocks:
             if item.type != "prose":

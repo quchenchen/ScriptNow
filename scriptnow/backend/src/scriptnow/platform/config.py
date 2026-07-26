@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     translation_min_reserved_tokens: int = Field(default=4_000, ge=1)
     translation_max_reserved_tokens: int = Field(default=200_000, ge=1)
     translation_token_reserve_ratio: float = Field(default=1.5, ge=0.1, le=10)
+    novel_writer_min_reserved_tokens: int = Field(default=6_000, ge=1)
+    novel_writer_max_reserved_tokens: int = Field(default=24_000, ge=1)
+    novel_writer_token_reserve_ratio: float = Field(default=3, ge=0.1, le=20)
 
     @model_validator(mode="after")
     def validate_production_secrets(self) -> "Settings":
@@ -45,6 +48,8 @@ class Settings(BaseSettings):
             raise ValueError("default Agent iterations cannot exceed the safety maximum")
         if self.translation_min_reserved_tokens > self.translation_max_reserved_tokens:
             raise ValueError("translation token reservation range is invalid")
+        if self.novel_writer_min_reserved_tokens > self.novel_writer_max_reserved_tokens:
+            raise ValueError("novel writer token reservation range is invalid")
         if self.environment == "production":
             if self.access_token_secret == "development-only-change-me":
                 raise ValueError("production access token secret must be configured")

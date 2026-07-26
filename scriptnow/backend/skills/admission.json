@@ -19,6 +19,9 @@
       "novel-serial-quality-review": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["serial-quality-positive", "wrong-stage-negative", "serial-quality-regression"]},
       "novel-source-distiller": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["source-analysis-explicit", "implicit-mount-negative", "source-distillation-regression"]},
       "novel-build-story-graph": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["graph-extraction-explicit", "unknown-ordinal-negative", "graph-extraction-regression"]},
+      "novel-continuity-check": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["continuity-writing-positive", "wrong-stage-negative", "continuity-writing-regression"]},
+      "novel-emotional-depth": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["emotional-writing-positive", "wrong-stage-negative", "emotional-writing-regression"]},
+      "novel-pacing-check": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["pacing-writing-positive", "wrong-stage-negative", "pacing-writing-regression"]},
       "novel-speculative-intimacy-reviewer": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["speculative-review-positive", "wrong-role-negative", "speculative-review-regression"]},
       "novel-speculative-intimacy-writer": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["speculative-write-positive", "wrong-role-negative", "speculative-write-regression"]},
       "novel-structure-planning": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["novel-structure-positive", "wrong-stage-negative", "novel-structure-regression"]}

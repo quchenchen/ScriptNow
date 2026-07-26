@@ -1,4 +1,4 @@
-"""Translation project API — faithful literary translation."""
+"""Translation application API — coordinates platform and novel adapters."""
 
 from typing import Annotated
 

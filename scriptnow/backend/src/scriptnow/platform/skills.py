@@ -330,6 +330,8 @@ def _match_skill(skill: SkillDescriptor, profile: CreativeProfile) -> tuple[int,
         if matched:
             score += weight * len(matched)
             reasons.append(f"{label}匹配：{'、'.join(matched)}")
+    if not any(expected for _, expected, _, _ in dimensions):
+        reasons.append("阶段通用能力")
     return score, tuple(reasons)
 
 

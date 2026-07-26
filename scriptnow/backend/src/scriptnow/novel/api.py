@@ -205,7 +205,10 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
         auth_context = await context(access_token)
         return await _state(database, str(auth_context.tenant_id), project_id)
 
-    @router.post("/story-cores/generate", response_model=list[dict[str, object]])
+    @router.post(
+        "/projects/{project_id}/story-cores/generate",
+        response_model=list[dict[str, object]],
+    )
     async def generate_story_cores(
         project_id: str,
         body: GenerateRequest,
@@ -234,7 +237,10 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
         except (NovelConflict, NovelDomainError) as error:
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
 
-    @router.post("/story-cores/{candidate_id}/adopt", response_model=AdoptResponse)
+    @router.post(
+        "/projects/{project_id}/story-cores/{candidate_id}/adopt",
+        response_model=AdoptResponse,
+    )
     async def adopt_story_core(
         project_id: str,
         candidate_id: str,
@@ -252,7 +258,10 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
         except (NovelConflict, NovelDomainError) as error:
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
 
-    @router.post("/story-cores/propose", response_model=list[dict[str, object]])
+    @router.post(
+        "/projects/{project_id}/story-cores/propose",
+        response_model=list[dict[str, object]],
+    )
     async def propose_story_cores(
         project_id: str,
         body: ProposeStoryCoresRequest,
@@ -272,7 +281,10 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
         except (NovelConflict, NovelDomainError) as error:
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
 
-    @router.post("/blueprints/generate", response_model=AdoptResponse)
+    @router.post(
+        "/projects/{project_id}/blueprints/generate",
+        response_model=AdoptResponse,
+    )
     async def generate_blueprint(
         project_id: str,
         body: GenerateRequest,
@@ -306,7 +318,10 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
         except (NovelConflict, NovelDomainError) as error:
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
 
-    @router.post("/blueprints/{candidate_id}/adopt", response_model=AdoptResponse)
+    @router.post(
+        "/projects/{project_id}/blueprints/{candidate_id}/adopt",
+        response_model=AdoptResponse,
+    )
     async def adopt_blueprint(
         project_id: str,
         candidate_id: str,
@@ -315,29 +330,19 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
     ) -> AdoptResponse:
         auth_context = await context(access_token, csrf_token, write=True)
         try:
-            try:
-                item = await service.adopt_blueprint(
-                    tenant_id=str(auth_context.tenant_id),
-                    project_id=project_id,
-                    candidate_id=candidate_id,
-                )
-            except NovelDomainError:
-                # Fallback: candidate_id may be stale, retry with latest
-                state = await _state(database, str(auth_context.tenant_id), project_id)
-                candidates = state.blueprint_candidates
-                if candidates:
-                    item = await service.adopt_blueprint(
-                        tenant_id=str(auth_context.tenant_id),
-                        project_id=project_id,
-                        candidate_id=candidates[-1]["id"],
-                    )
-                else:
-                    raise
+            item = await service.adopt_blueprint(
+                tenant_id=str(auth_context.tenant_id),
+                project_id=project_id,
+                candidate_id=candidate_id,
+            )
             return AdoptResponse(id=item.id, status="adopted")
         except (NovelConflict, NovelDomainError) as error:
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
 
-    @router.post("/blueprints/propose", response_model=AdoptResponse)
+    @router.post(
+        "/projects/{project_id}/blueprints/propose",
+        response_model=AdoptResponse,
+    )
     async def propose_blueprint(
         project_id: str,
         body: ProposeBlueprintRequest,
@@ -356,7 +361,10 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
         except (NovelConflict, NovelDomainError) as error:
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
 
-    @router.post("/story-map/generate", response_model=AdoptResponse)
+    @router.post(
+        "/projects/{project_id}/story-map/generate",
+        response_model=AdoptResponse,
+    )
     async def generate_story_map(
         project_id: str,
         body: GenerateRequest,
@@ -369,12 +377,17 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
             project = await _novel_project(
                 database, str(auth_context.tenant_id), project_id
             )
-            # Guard against empty volume settings
             direction = project.direction or {}
-            for key, default in (("volume_one", "1"), ("volume_two", "3"), ("chapter_target_words", "2000")):
-                if not direction.get(key):
-                    direction[key] = default
-                    project.direction = direction
+            missing = [
+                key
+                for key in ("volume_one", "volume_two", "chapter_target_words")
+                if not str(direction.get(key) or "").strip()
+            ]
+            if missing:
+                raise NovelDomainError(
+                    "请先在项目设置中补充创作规模："
+                    + "、".join(missing)
+                )
             volumes = await story_map_generator.generate(
                 tenant_id=str(auth_context.tenant_id),
                 project=project,
@@ -394,7 +407,10 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
         except (NovelConflict, NovelDomainError) as error:
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
 
-    @router.post("/story-map/propose", response_model=AdoptResponse)
+    @router.post(
+        "/projects/{project_id}/story-map/propose",
+        response_model=AdoptResponse,
+    )
     async def propose_story_map(
         project_id: str,
         body: ProposeStoryMapRequest,
@@ -414,7 +430,10 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
         except (NovelConflict, NovelDomainError) as error:
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
 
-    @router.post("/story-map/{candidate_id}/adopt", response_model=AdoptResponse)
+    @router.post(
+        "/projects/{project_id}/story-map/{candidate_id}/adopt",
+        response_model=AdoptResponse,
+    )
     async def adopt_story_map(
         project_id: str,
         candidate_id: str,
@@ -432,7 +451,10 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
         except (NovelConflict, NovelDomainError) as error:
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
 
-    @router.post("/chapters/{chapter_id}/generate", response_model=AdoptResponse)
+    @router.post(
+        "/projects/{project_id}/chapters/{chapter_id}/generate",
+        response_model=AdoptResponse,
+    )
     async def generate_chapter(
         project_id: str,
         chapter_id: str,
@@ -495,7 +517,10 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
             raise HTTPException(status.HTTP_404_NOT_FOUND, "run not found")
         return {"id": run.id, "status": run.status, "error_code": run.error_code}
 
-    @router.post("/chapters/{chapter_id}/propose", response_model=AdoptResponse)
+    @router.post(
+        "/projects/{project_id}/chapters/{chapter_id}/propose",
+        response_model=AdoptResponse,
+    )
     async def propose_chapter(
         project_id: str,
         chapter_id: str,
@@ -518,7 +543,7 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
 
     @router.post(
-        "/chapters/{chapter_id}/revisions/{revision_id}/manual",
+        "/projects/{project_id}/chapters/{chapter_id}/revisions/{revision_id}/manual",
         response_model=AdoptResponse,
     )
     async def create_manual_chapter_revision(
@@ -545,7 +570,8 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
 
     @router.post(
-        "/chapters/{chapter_id}/revisions/{revision_id}/adopt", response_model=AdoptResponse
+        "/projects/{project_id}/chapters/{chapter_id}/revisions/{revision_id}/adopt",
+        response_model=AdoptResponse,
     )
     async def adopt_chapter(
         project_id: str,
@@ -602,7 +628,9 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
         except (NovelConflict, NovelDomainError) as error:
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
 
-    @router.post("/chapters/{chapter_id}/quality-reports/generate")
+    @router.post(
+        "/projects/{project_id}/chapters/{chapter_id}/quality-reports/generate"
+    )
     async def generate_quality_report(
         project_id: str,
         chapter_id: str,
@@ -624,7 +652,7 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
         except NovelQualityError as error:
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
 
-    @router.get("/chapters/{chapter_id}/quality-reports")
+    @router.get("/projects/{project_id}/chapters/{chapter_id}/quality-reports")
     async def quality_report_history(
         project_id: str,
         chapter_id: str,
@@ -641,7 +669,7 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
         except NovelQualityError as error:
             raise HTTPException(status.HTTP_404_NOT_FOUND, str(error)) from error
 
-    @router.post("/chapters/{chapter_id}/selection-edits")
+    @router.post("/projects/{project_id}/chapters/{chapter_id}/selection-edits")
     async def propose_selection_edit(
         project_id: str,
         chapter_id: str,
@@ -703,7 +731,7 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
             "instruction": body.instruction,
         }
 
-    @router.get("/exports/options")
+    @router.get("/projects/{project_id}/exports/options")
     async def export_options(
         project_id: str,
         access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
@@ -815,7 +843,10 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
             headers={"Content-Disposition": 'attachment; filename="novel-packaged.docx"'},
         )
 
-    @router.post("/snapshots", status_code=status.HTTP_201_CREATED)
+    @router.post(
+        "/projects/{project_id}/snapshots",
+        status_code=status.HTTP_201_CREATED,
+    )
     async def create_snapshot(
         project_id: str,
         body: SnapshotRequest,
@@ -832,7 +863,7 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
         except NovelHistoryError as error:
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
 
-    @router.get("/snapshots")
+    @router.get("/projects/{project_id}/snapshots")
     async def list_snapshots(
         project_id: str,
         access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
@@ -848,7 +879,7 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
         except NovelHistoryError as error:
             raise HTTPException(status.HTTP_404_NOT_FOUND, str(error)) from error
 
-    @router.get("/snapshots/{snapshot_id}/diff")
+    @router.get("/projects/{project_id}/snapshots/{snapshot_id}/diff")
     async def snapshot_diff(
         project_id: str,
         snapshot_id: str,
@@ -864,7 +895,7 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
         except NovelHistoryError as error:
             raise HTTPException(status.HTTP_404_NOT_FOUND, str(error)) from error
 
-    @router.post("/snapshots/{snapshot_id}/rollback")
+    @router.post("/projects/{project_id}/snapshots/{snapshot_id}/rollback")
     async def rollback_snapshot(
         project_id: str,
         snapshot_id: str,
@@ -887,7 +918,7 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
         except NovelHistoryError as error:
             raise HTTPException(status.HTTP_404_NOT_FOUND, str(error)) from error
 
-    @router.get("/creative-graph")
+    @router.get("/projects/{project_id}/creative-graph")
     async def creative_graph_data(
         project_id: str,
         access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,

@@ -1,6 +1,6 @@
 ---
 name: novel-continuity-check
-description: Before drafting any chapter, audit character names, faction affiliations, geographical details, relationship states, and established canon pulled from prior chapters and the creative graph. Catch continuity breaks before they become canon.
+description: Review character names, faction affiliations, geographical details, relationship states, and established canon before drafting a chapter. Catch continuity breaks before they become canon.
 metadata:
   scriptnow:
     roles: [writer]

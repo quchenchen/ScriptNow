@@ -1,6 +1,6 @@
 ---
 name: novel-emotional-depth
-description: Ensure characters register as emotionally alive rather than as analytical instruments. Track emotional beats, insert sensory memories, and verify that high-stakes moments land with feeling, not just intelligence.
+description: Apply emotional-depth checks so characters register as emotionally alive rather than as analytical instruments. Track emotional beats, sensory memories, and whether high-stakes moments land with feeling.
 metadata:
   scriptnow:
     roles: [writer]
