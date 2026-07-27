@@ -93,6 +93,7 @@ async def platform_api(tmp_path):
         AsyncClient(transport=transport, base_url="http://test") as client_b,
     ):
         yield client_a, client_b, database
+    await app.state.active_runs.cancel_all()
     await database.dispose()
 
 

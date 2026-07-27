@@ -1,5 +1,6 @@
 import json
 import re
+from contextlib import suppress
 
 from json_repair import loads as repair_json
 from pydantic import ValidationError
@@ -60,6 +61,7 @@ class NovelQualityEvaluator:
         )
         status = await self.runtime.status(tenant_id=tenant_id, project_id=project.id)
         reviewer = dict(dict(status["roles"])["reviewer"])
+        run_id: str | None = None
         if self.settings.environment != "production" and reviewer.get("reason") == "mock_only":
             draft = self._test_draft(context)
             fingerprint = "development-mock-quality-v1"
@@ -73,6 +75,7 @@ class NovelQualityEvaluator:
                 project_id=project.id,
                 idempotency_key=f"novel-quality:{chapter_id}:{revision_id}:{idempotency_key}",
             )
+            run_id = run.id
             await self.runs.transition(
                 tenant_id=tenant_id, run_id=run.id, target=RunStatus.RUNNING
             )
@@ -105,9 +108,6 @@ class NovelQualityEvaluator:
                     )
                     draft = self.parse(repaired.text)
                 fingerprint = result.config_fingerprint
-                await self.runs.transition(
-                    tenant_id=tenant_id, run_id=run.id, target=RunStatus.SUCCEEDED
-                )
             except (AgentRuntimeError, NovelQualityError, ValidationError, ValueError) as error:
                 await self.runs.transition(
                     tenant_id=tenant_id,
@@ -116,17 +116,35 @@ class NovelQualityEvaluator:
                     error_code="novel_quality_failed",
                 )
                 raise NovelQualityError(str(error)) from error
-        return await self.reports.record(
-            tenant_id=tenant_id,
-            project_id=project.id,
-            chapter_id=chapter_id,
-            revision_id=revision_id,
-            draft=draft,
-            skill_plan_fingerprint=fingerprint,
-            source_profile_version=str(context.get("source_profile_version") or "") or None,
-            author="小说审读 Agent",
-            idempotency_key=idempotency_key,
-        )
+        try:
+            report = await self.reports.record(
+                tenant_id=tenant_id,
+                project_id=project.id,
+                chapter_id=chapter_id,
+                revision_id=revision_id,
+                draft=draft,
+                skill_plan_fingerprint=fingerprint,
+                source_profile_version=str(context.get("source_profile_version") or "") or None,
+                author="小说审读 Agent",
+                idempotency_key=idempotency_key,
+            )
+            if run_id is not None:
+                await self.runs.transition(
+                    tenant_id=tenant_id, run_id=run_id, target=RunStatus.SUCCEEDED
+                )
+            return report
+        except Exception as error:
+            if run_id is not None:
+                with suppress(Exception):
+                    await self.runs.transition(
+                        tenant_id=tenant_id,
+                        run_id=run_id,
+                        target=RunStatus.FAILED,
+                        error_code="novel_quality_persistence_failed",
+                    )
+            if isinstance(error, NovelQualityError):
+                raise
+            raise NovelQualityError(f"quality report could not be persisted: {error}") from error
 
     async def _context(
         self,

@@ -1,7 +1,9 @@
 import json
+from decimal import Decimal
 
 import pytest
 from pydantic import ValidationError
+from sqlalchemy import select
 
 from scriptnow.novel.domain import NovelDocumentRevisionModel
 from scriptnow.novel.project import NovelStoryMapModel
@@ -16,9 +18,16 @@ from scriptnow.novel.quality import (
     NovelQualityVerdict,
 )
 from scriptnow.novel.quality_evaluator import NovelQualityEvaluator
+from scriptnow.platform.agent_runtime import AgentRuntimeResult
 from scriptnow.platform.config import Settings
 from scriptnow.platform.database import Database
-from scriptnow.platform.models import ProjectMedium, ProjectModel, TenantModel
+from scriptnow.platform.models import (
+    ProjectMedium,
+    ProjectModel,
+    ProjectRunModel,
+    RunStatus,
+    TenantModel,
+)
 
 
 def quality_draft(
@@ -242,6 +251,62 @@ async def test_development_evaluator_records_review_without_adopting_candidate(q
     assert report.overall_status == NovelQualityReadiness.REVISION_REQUIRED
     assert report.revision_id == revision.id
     assert revision.status == "candidate"
+
+
+async def test_quality_run_only_succeeds_after_report_is_persisted(quality_data):
+    service, tenant, _, project, revision = quality_data
+    evaluator = NovelQualityEvaluator(
+        service.database,
+        Settings(environment="test"),
+    )
+
+    class ConnectedRuntime:
+        async def status(self, **kwargs):
+            del kwargs
+            return {"roles": {"reviewer": {"connected": True, "reason": None}}}
+
+        async def generate(self, **kwargs):
+            del kwargs
+            return AgentRuntimeResult(
+                text=quality_draft().model_dump_json(),
+                runtime="test",
+                model_key="test-reviewer",
+                input_tokens=1,
+                output_tokens=1,
+                input_price_per_million=Decimal(0),
+                output_price_per_million=Decimal(0),
+                config_fingerprint="test-fingerprint",
+            )
+
+    class FailingReports:
+        async def record(self, **kwargs):
+            del kwargs
+            raise RuntimeError("storage unavailable")
+
+    evaluator.runtime = ConnectedRuntime()  # type: ignore[assignment]
+    evaluator.reports = FailingReports()  # type: ignore[assignment]
+
+    with pytest.raises(NovelQualityError, match="could not be persisted"):
+        await evaluator.evaluate(
+            tenant_id=tenant.id,
+            project=project,
+            chapter_id="chapter-1",
+            revision_id=revision.id,
+            idempotency_key="persistence-boundary",
+        )
+
+    async with service.database.session() as session:
+        run = (
+            await session.scalars(
+                select(ProjectRunModel).where(
+                    ProjectRunModel.idempotency_key
+                    == "novel-quality:chapter-1:"
+                    f"{revision.id}:persistence-boundary"
+                )
+            )
+        ).one()
+    assert run.status == RunStatus.FAILED
+    assert run.error_code == "novel_quality_persistence_failed"
 
 
 async def test_quality_context_uses_latest_effective_human_continuity(quality_data):

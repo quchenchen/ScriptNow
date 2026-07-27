@@ -154,9 +154,12 @@ P1 首批实现已完成：
 - Thinking、Text、Tool、Phase 事件继续使用 AgentScope block/event identity；
 - 应用级 `ActiveRunRegistry` 持有可取消任务，后台章节取消会终止 asyncio task；
 - 章节任务收到取消后释放预算、停止心跳、记录 `CANCELLED`，应用关闭也会回收活跃任务。
+- 章节采纳后的创作图谱抽取统一进入串行队列，队列任务由同一 registry 持有；
+  应用关闭会先取消并等待图谱任务完成清理，不再遗留异步数据库会话。
 
-当前取消注册范围仅覆盖后台章节生成。Script、Translation、Recreation 入口必须在
-P1 退出前全部接入同一 registry；不得把当前局部接入描述为全系统完成。
+当前取消注册范围覆盖后台章节生成与创作图谱队列。Script、Translation、Recreation
+尚无统一后台 operation 入口；迁移为后台执行时必须接入同一 registry，不得在各领域
+重新创建无所有者的 task。
 
 ## 5. 风险与控制
 

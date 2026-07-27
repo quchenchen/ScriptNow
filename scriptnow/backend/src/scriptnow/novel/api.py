@@ -185,7 +185,7 @@ def create_novel_router(
     writer = NovelChapterGenerator(database, settings)
     quality = NovelQualityService(database)
     creative_graph = CreativeGraphExtractor(database, settings)
-    graph_queue = CreativeGraphQueue()
+    graph_queue = CreativeGraphQueue(active_runs)
     graph_queue.attach(creative_graph)
     quality_evaluator = NovelQualityEvaluator(database, settings)
 
@@ -600,16 +600,14 @@ def create_novel_router(
                 project_id=project_id,
                 revision_id=revision_id,
             )
-            # Trigger creative graph extraction in background
-            import asyncio
             chapter = next(
                 (b for b in list(item.blocks) if isinstance(b, dict) and b.get("type") == "heading"),
                 None,
             )
             chapter_title = str(chapter.get("text", "")) if chapter else chapter_id
             blocks = [dict(b) if isinstance(b, dict) else {"type": "prose", "text": str(b)} for b in list(item.blocks)]
-            asyncio.create_task(
-                creative_graph.extract_chapter(
+            graph_queue.enqueue(
+                _ExtractionJob(
                     tenant_id=str(auth_context.tenant_id),
                     project_id=project_id,
                     chapter_id=item.chapter_id,

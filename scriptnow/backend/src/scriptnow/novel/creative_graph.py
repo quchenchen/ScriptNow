@@ -17,6 +17,7 @@ from json_repair import loads as repair_json
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from sqlalchemy import select
 
+from scriptnow.platform.active_runs import ActiveRunRegistry
 from scriptnow.platform.agent_runtime import AgentRuntime, AgentRuntimeError
 from scriptnow.platform.config import Settings
 from scriptnow.platform.database import Database
@@ -107,10 +108,12 @@ class _ExtractionJob:
 class CreativeGraphQueue:
     """Serial background queue that processes extraction jobs one at a time."""
 
-    def __init__(self) -> None:
+    def __init__(self, active_runs: ActiveRunRegistry) -> None:
         self._jobs: list[_ExtractionJob] = []
         self._running = False
         self._extractor: CreativeGraphExtractor | None = None
+        self._active_runs = active_runs
+        self._task_key = f"creative-graph-queue:{id(self)}"
 
     def attach(self, extractor: CreativeGraphExtractor) -> None:
         self._extractor = extractor
@@ -119,29 +122,29 @@ class CreativeGraphQueue:
         self._jobs.append(job)
         if not self._running:
             self._running = True
-            asyncio.create_task(self._drain())
+            task = asyncio.create_task(self._drain())
+            self._active_runs.track(self._task_key, task)
 
     async def _drain(self) -> None:
-        import traceback
-        print(f"[creative-graph] starting drain ({len(self._jobs)} jobs)", flush=True)
-        while self._jobs and self._extractor:
-            job = self._jobs.pop(0)
-            print(f"[creative-graph] extracting {job.chapter_id}", flush=True)
-            try:
-                await self._extractor.extract_chapter(
-                    tenant_id=job.tenant_id,
-                    project_id=job.project_id,
-                    chapter_id=job.chapter_id,
-                    chapter_title=job.chapter_title,
-                    blocks=job.blocks,
-                    idempotency_key=job.idempotency_key,
-                )
-                print(f"[creative-graph] {job.chapter_id} done", flush=True)
-            except Exception as e:
-                traceback.print_exc()
-                print(f"[creative-graph] {job.chapter_id} FAILED: {e}", flush=True)
-        print("[creative-graph] drain complete", flush=True)
-        self._running = False
+        try:
+            while self._jobs and self._extractor:
+                job = self._jobs.pop(0)
+                try:
+                    await self._extractor.extract_chapter(
+                        tenant_id=job.tenant_id,
+                        project_id=job.project_id,
+                        chapter_id=job.chapter_id,
+                        chapter_title=job.chapter_title,
+                        blocks=job.blocks,
+                        idempotency_key=job.idempotency_key,
+                    )
+                except asyncio.CancelledError:
+                    self._jobs.insert(0, job)
+                    raise
+                except Exception:
+                    continue
+        finally:
+            self._running = False
 
 # ── Extractor ────────────────────────────────────────────────────────────
 
