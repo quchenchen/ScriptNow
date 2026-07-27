@@ -1,5 +1,6 @@
 import hashlib
 from dataclasses import dataclass
+from typing import Any
 from uuid import uuid4
 
 from sqlalchemy import func, select
@@ -20,6 +21,7 @@ from scriptnow.script.domain import (
     ScriptStructureCandidateModel,
     StoryCoreDraft,
 )
+from scriptnow.script.format_profiles import validate_script_structure
 from scriptnow.script.project import ScriptPlanModel, ScriptStoryMapModel
 from scriptnow.script.story_map import Episode
 
@@ -455,9 +457,9 @@ class ScriptService:
         blocks: tuple[ScriptBlock, ...],
         idempotency_key: str,
     ) -> ScriptDocumentRevisionModel:
-        self._validate_blocks(blocks)
         async with self.database.session() as session:
             await self._project(session, tenant_id, project_id)
+            self._validate_blocks(blocks)
             existing = (
                 await session.scalars(
                     select(ScriptDocumentRevisionModel).where(
@@ -560,6 +562,31 @@ class ScriptService:
     ) -> dict[str, object]:
         async with self.database.session() as session:
             await self._project(session, tenant_id, project_id)
+            story_map = await self._story_map(session, project_id)
+            ordered_scenes = [
+                scene
+                for episode in story_map.episodes
+                for scene in episode.get("scenes", [])  # type: ignore[union-attr]
+            ]
+            scene_index = next(
+                (
+                    index
+                    for index, scene in enumerate(ordered_scenes)
+                    if str(scene.get("id")) == scene_id
+                ),
+                None,
+            )
+            if scene_index is None:
+                raise ScriptDomainError("scene is outside the adopted StoryMap")
+            current_scene = ordered_scenes[scene_index]
+            referenced_anchor_ids = {
+                str(anchor_id)
+                for beat in current_scene.get("beats", [])  # type: ignore[union-attr]
+                for anchor_id in beat.get("anchor_ids", [])
+            }
+            continuity_scene_ids = {scene_id}
+            if scene_index > 0:
+                continuity_scene_ids.add(str(ordered_scenes[scene_index - 1]["id"]))
             blueprint = (
                 await session.scalars(
                     select(ScriptBlueprintModel).where(
@@ -573,7 +600,8 @@ class ScriptService:
                 anchors = list(
                     await session.scalars(
                         select(ScriptBlueprintAnchorModel).where(
-                            ScriptBlueprintAnchorModel.blueprint_id == blueprint.id
+                            ScriptBlueprintAnchorModel.blueprint_id == blueprint.id,
+                            ScriptBlueprintAnchorModel.anchor_key.in_(referenced_anchor_ids),
                         )
                     )
                 )
@@ -582,6 +610,7 @@ class ScriptService:
                     select(ScriptDocumentRevisionModel).where(
                         ScriptDocumentRevisionModel.project_id == project_id,
                         ScriptDocumentRevisionModel.status == RevisionStatus.ADOPTED,
+                        ScriptDocumentRevisionModel.scene_id.in_(continuity_scene_ids),
                     )
                 )
             )
@@ -592,7 +621,7 @@ class ScriptService:
                         "id": item.anchor_key,
                         "kind": item.kind,
                         "name": item.name,
-                        "payload": item.payload,
+                        "payload": self._writer_anchor_projection(item.payload),
                     }
                     for item in anchors
                 ],
@@ -601,6 +630,42 @@ class ScriptService:
                     for item in documents
                 ],
             }
+
+    @staticmethod
+    def _writer_anchor_projection(payload: dict[str, Any]) -> dict[str, object]:
+        """Keep the writer prompt focused without altering the adopted blueprint."""
+
+        preferred_keys = (
+            "description",
+            "arc_statement",
+            "event",
+            "purpose",
+            "rule",
+            "setup",
+            "payoff",
+        )
+        projected: dict[str, object] = {}
+        for key in preferred_keys:
+            value = payload.get(key)
+            if isinstance(value, str) and value.strip():
+                projected[key] = value[:1200]
+        if projected:
+            return projected
+
+        for key, value in payload.items():
+            if len(projected) >= 4:
+                break
+            if isinstance(value, str) and value.strip():
+                projected[key] = value[:800]
+            elif isinstance(value, int | float | bool):
+                projected[key] = value
+            elif isinstance(value, list):
+                projected[key] = [
+                    item[:300] if isinstance(item, str) else item
+                    for item in value[:6]
+                    if isinstance(item, str | int | float | bool)
+                ]
+        return projected
 
     @staticmethod
     async def _project(session, tenant_id: str, project_id: str) -> ProjectModel:
@@ -680,13 +745,9 @@ class ScriptService:
 
     @staticmethod
     def _validate_blocks(blocks: tuple[ScriptBlock, ...]) -> None:
-        if not blocks or blocks[0].type != "slugline":
-            raise ScriptDomainError("Script document must begin with a slugline")
-        if len({block.para_id for block in blocks}) != len(blocks):
-            raise ScriptDomainError("Script para_id values must be unique")
-        for index, block in enumerate(blocks):
-            if block.type == "dialogue" and (index == 0 or blocks[index - 1].type != "character"):
-                raise ScriptDomainError("dialogue must follow a character block")
+        issues = validate_script_structure(blocks)
+        if issues:
+            raise ScriptDomainError("；".join(issues))
 
     @staticmethod
     async def _event(

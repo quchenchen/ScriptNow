@@ -48,6 +48,22 @@ export function categoryDisplayLabel(kind: string) {
   return categoryLabels[kind] ?? kind
 }
 
+const scriptBlueprintAliases: Record<string, string> = {
+  world: 'worldview',
+  world_rule: 'worldview',
+  relationship: 'character',
+  plot: 'arc',
+  narrative_arc: 'arc',
+  key_event: 'event',
+  setup: 'foreshadow',
+  payoff: 'foreshadow',
+}
+
+export function scriptBlueprintCategory(kind: string) {
+  const normalized = kind.trim().toLocaleLowerCase().replace(/[-\s]+/g, '_')
+  return scriptBlueprintAliases[normalized] ?? normalized
+}
+
 export function anchorDisplayLabel(anchorId: string, kind: string) {
   return anchorLabels[anchorId] ?? categoryDisplayLabel(kind)
 }

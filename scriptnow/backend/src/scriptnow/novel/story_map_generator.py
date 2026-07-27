@@ -77,10 +77,11 @@ class NovelStoryMapGenerator:
 
     def __init__(self, database: Database, settings: Settings) -> None:
         self.database = database
+        self.settings = settings
         self.runtime = AgentRuntime(database, settings)
         self.runs = RunCoordinator(database)
         self.billing = BillingService(
-            database, enforce_limits=settings.environment == "production"
+            database, enforce_limits=settings.enforce_agent_budget
         )
 
     async def generate(
@@ -130,7 +131,15 @@ class NovelStoryMapGenerator:
             run_id=run.id,
             idempotency_key=f"novel-story-map:{idempotency_key}",
             tier=tenant.tier,
-            max_tokens=min(48_000, max(12_000, volume_count * chapters_per_volume * 1_200)),
+            max_tokens=min(
+                self.settings.novel_story_map_max_reserved_tokens,
+                max(
+                    self.settings.novel_story_map_min_reserved_tokens,
+                    volume_count
+                    * chapters_per_volume
+                    * self.settings.novel_story_map_tokens_per_chapter,
+                ),
+            ),
         )
         await self.runs.transition(tenant_id=tenant_id, run_id=run.id, target=RunStatus.RUNNING)
         try:

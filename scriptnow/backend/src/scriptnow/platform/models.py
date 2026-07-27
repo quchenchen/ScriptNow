@@ -60,6 +60,12 @@ class ProjectSource(StrEnum):
     ADAPTATION = "adaptation"
 
 
+class ProjectWorkflow(StrEnum):
+    ORIGINAL = "original"
+    ADAPTATION = "adaptation"
+    CROSS_CULTURAL_RECREATION = "cross_cultural_recreation"
+
+
 class RunStatus(StrEnum):
     QUEUED = "queued"
     RUNNING = "running"
@@ -425,8 +431,12 @@ class ProjectModel(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     medium: Mapped[str] = mapped_column(String(32), nullable=False)
     source_mode: Mapped[str] = mapped_column(String(32), default=ProjectSource.ORIGINAL)
+    workflow_kind: Mapped[str] = mapped_column(
+        String(48), default=ProjectWorkflow.ORIGINAL, nullable=False
+    )
     direction: Mapped[dict[str, object]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class WorkPackageModel(Base):

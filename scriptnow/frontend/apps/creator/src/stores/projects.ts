@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 
 import { api } from '../api'
-import type { Medium, Project, SourceMode, WorkspaceFile } from '../types'
+import type { Medium, Project, SourceMode, WorkflowKind, WorkspaceFile } from '../types'
 
 export const useProjectsStore = defineStore('projects', {
   state: () => ({ items: [] as Project[], loading: false }),
@@ -18,6 +18,7 @@ export const useProjectsStore = defineStore('projects', {
       name: string
       medium: Medium
       sourceMode: SourceMode
+      workflowKind?: WorkflowKind
       direction: Record<string, string>
     }) {
       const project = await api<Project>('/projects', {
@@ -26,11 +27,19 @@ export const useProjectsStore = defineStore('projects', {
           name: input.name,
           medium: input.medium,
           source_mode: input.sourceMode,
+          workflow_kind: input.workflowKind,
           direction: input.direction,
         }),
       })
       this.items.push(project)
       return project
+    },
+    async remove(projectId: string, confirmationName: string) {
+      await api<void>(`/projects/${projectId}`, {
+        method: 'DELETE',
+        body: JSON.stringify({ confirmation_name: confirmationName }),
+      })
+      this.items = this.items.filter((item) => item.id !== projectId)
     },
     upload(projectId: string, file: File) {
       const body = new FormData()

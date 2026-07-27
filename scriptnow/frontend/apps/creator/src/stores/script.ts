@@ -140,20 +140,27 @@ export const useScriptStore = defineStore('script-domain', {
         }),
       )
     },
-    async generateAndAdoptScene(projectId: string, sceneId: string) {
-      return this.perform(projectId, '主笔正在生成场景…', async () => {
-        const candidate = await api<AdoptResponse>(
+    generateSceneCandidate(projectId: string, sceneId: string, feedback?: string) {
+      return this.perform(projectId, '主笔正在生成场景候选…', () =>
+        api<AdoptResponse>(
           `/script/projects/${projectId}/scenes/${sceneId}/generate`,
           {
             method: 'POST',
-            body: JSON.stringify({ idempotency_key: crypto.randomUUID() }),
+            body: JSON.stringify({
+              idempotency_key: crypto.randomUUID(),
+              feedback: feedback || null,
+            }),
           },
-        )
-        await api(
-          `/script/projects/${projectId}/scenes/${sceneId}/revisions/${candidate.id}/adopt`,
+        ),
+      )
+    },
+    adoptSceneCandidate(projectId: string, sceneId: string, revisionId: string) {
+      return this.perform(projectId, '正在确认场景正文…', () =>
+        api(
+          `/script/projects/${projectId}/scenes/${sceneId}/revisions/${revisionId}/adopt`,
           { method: 'POST' },
-        )
-      })
+        ),
+      )
     },
   },
 })

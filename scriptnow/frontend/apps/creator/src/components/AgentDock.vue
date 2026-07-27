@@ -50,6 +50,19 @@ const actionLabels: Record<string, string> = {
   'script_snapshot.created': '创建剧本快照', 'script.exported': '导出剧本',
   'review_finding.create': '发现审读问题', 'review_finding.accept': '接受审读建议',
   'review_finding.dismiss': '忽略审读建议', 'context.compress': '压缩 Agent 上下文',
+  'cross_cultural.source_story_model.propose': '源作品分析已完成',
+  'cross_cultural.source_story_model.adopt': '已确认源作品分析',
+  'cross_cultural.target_story_contract.propose': '目标故事契约已形成',
+  'cross_cultural.target_story_contract.adopt': '已确认目标故事契约',
+  'cross_cultural.recreation_strategy.propose': '归化策略候选已生成',
+  'cross_cultural.recreation_strategy.adopt': '已确认归化策略',
+  'cross_cultural.pilot.propose': '代表性试写已生成',
+  'cross_cultural.pilot.adopt': '已确认代表性试写',
+  'cross_cultural.scale_plan.propose': '整书扩展方案已生成',
+  'cross_cultural.scale_plan.adopt': '已确认整书扩展方案',
+  'cross_cultural.production.propose': '正文候选已生成',
+  'cross_cultural.production.adopt': '已确认正文单元',
+  'cross_cultural.generation.failed': '本次归化创作未完成',
 }
 const eventKindLabels: Record<string, string> = { chat: '对话', decision: '已确认', node: '执行过程', system: '运行信息' }
 const streamBlockLabels: Record<string, string> = { thinking: '思考摘要', tool: '能力调用', data: '项目上下文', text: '正文预览', system: '运行信息' }

@@ -9,7 +9,6 @@ from scriptnow.platform.models import (
     AgentTemplateVersionModel,
     LanguageModelModel,
     ProviderModel,
-    ProviderStatus,
     TenantModel,
     TierModel,
     TokenAccountModel,
@@ -51,26 +50,17 @@ async def seed() -> None:
             tier = TierModel(code="plus", name="Plus", rank=10, monthly_token_quota=100_000)
             session.add(tier)
             await session.flush()
-        provider = (
-            await session.scalars(select(ProviderModel).where(ProviderModel.key == "mock"))
-        ).one_or_none()
-        if provider is None:
-            provider = ProviderModel(key="mock", name="MockRuntime", status=ProviderStatus.CONNECTED)
-            session.add(provider)
-            await session.flush()
         model = (
-            await session.scalars(select(LanguageModelModel).where(LanguageModelModel.key == "mock-v1"))
-        ).one_or_none()
-        if model is None:
-            model = LanguageModelModel(
-                key="mock-v1",
-                display_name="Mock Runtime",
-                provider_id=provider.id,
-                agentscope_class="OpenAIChatModel",
-                min_tier_id=tier.id,
+            await session.scalars(
+                select(LanguageModelModel)
+                .join(ProviderModel, ProviderModel.id == LanguageModelModel.provider_id)
+                .where(
+                    LanguageModelModel.enabled.is_(True),
+                    ProviderModel.status == "connected",
+                )
+                .order_by(LanguageModelModel.created_at)
             )
-            session.add(model)
-            await session.flush()
+        ).first()
         role_souls = {
             "director": "Clarify intent and protect the creative direction.",
             "architect": "Build coherent structures from adopted creative anchors.",
@@ -94,7 +84,7 @@ async def seed() -> None:
                     )
                 )
             ).first()
-            if template is None:
+            if template is None and model is not None:
                 session.add(
                     AgentTemplateVersionModel(
                         role_key=role_key,

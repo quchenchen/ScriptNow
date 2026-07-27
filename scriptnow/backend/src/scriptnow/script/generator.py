@@ -1,5 +1,8 @@
 import json
+import logging
+import re
 from contextlib import suppress
+from typing import Literal
 from uuid import uuid4
 
 from json_repair import loads as repair_json
@@ -10,17 +13,43 @@ from scriptnow.platform.config import Settings
 from scriptnow.platform.database import Database
 from scriptnow.platform.models import ProjectModel, RunStatus
 from scriptnow.platform.run_coordinator import RunCoordinator
+from scriptnow.script.contracts import ScriptBlock
 from scriptnow.script.domain import (
     BlueprintAnchorDraft,
     BlueprintDraft,
     StoryCoreDetails,
     StoryCoreDraft,
 )
+from scriptnow.script.format_profiles import generation_instructions, scene_craft_instructions
 from scriptnow.script.story_map import Episode, Scene, ScriptStoryBeat
+
+logger = logging.getLogger(__name__)
+
+SCRIPT_BLUEPRINT_KINDS = frozenset(
+    {"worldview", "character", "arc", "character_arc", "event", "foreshadow"}
+)
+SCRIPT_BLUEPRINT_KIND_ALIASES = {
+    "world": "worldview",
+    "world_rule": "worldview",
+    "relationship": "character",
+    "plot": "arc",
+    "narrative_arc": "arc",
+    "key_event": "event",
+    "setup": "foreshadow",
+    "payoff": "foreshadow",
+}
 
 
 class ScriptGenerationError(RuntimeError):
     pass
+
+
+def normalize_blueprint_kind(kind: str) -> str:
+    normalized = kind.strip().casefold().replace("-", "_").replace(" ", "_")
+    normalized = SCRIPT_BLUEPRINT_KIND_ALIASES.get(normalized, normalized)
+    if normalized not in SCRIPT_BLUEPRINT_KINDS:
+        raise ValueError(f"unsupported script blueprint kind: {kind}")
+    return normalized
 
 
 class _Core(BaseModel):
@@ -29,7 +58,7 @@ class _Core(BaseModel):
     title: str = Field(min_length=2, max_length=160)
     concept: str = Field(min_length=80)
     angles: tuple[str, ...] = Field(min_length=5, max_length=5)
-    narrative_engine: tuple[str, ...] = Field(min_length=2, max_length=8)
+    narrative_engine: tuple[str, ...] = Field(min_length=1, max_length=8)
     viewpoint_anchor: tuple[str, ...] = Field(min_length=1, max_length=6)
     pacing_recipe: tuple[str, ...] = Field(min_length=1, max_length=8)
     market_judgement: tuple[str, ...] = Field(min_length=1, max_length=6)
@@ -89,6 +118,99 @@ class _StoryMapPayload(BaseModel):
     episodes: tuple[_Episode, ...] = Field(min_length=1)
 
 
+class _ScriptBlockPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["slugline", "action", "character", "dialogue", "transition"]
+    text: str = Field(min_length=1)
+
+
+class _SceneDocumentPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    blocks: tuple[_ScriptBlockPayload, ...] = Field(min_length=4)
+
+
+def _validate_scene_document_payload(value: object) -> _SceneDocumentPayload:
+    """Accept the two semantically equivalent structured-output envelopes."""
+
+    if isinstance(value, list):
+        value = {"blocks": value}
+    elif isinstance(value, dict) and "blocks" in value:
+        # Provider-specific envelope metadata does not belong to the Script
+        # document contract. The blocks themselves remain strictly validated.
+        value = {"blocks": value["blocks"]}
+    elif isinstance(value, dict) and isinstance(value.get("content"), list):
+        blocks = list(value["content"])
+        if value.get("slugline") and (
+            not blocks
+            or not isinstance(blocks[0], dict)
+            or blocks[0].get("type") != "slugline"
+        ):
+            blocks.insert(0, {"type": "slugline", "text": value["slugline"]})
+        value = {"blocks": blocks}
+    return _SceneDocumentPayload.model_validate(value)
+
+
+def _restore_embedded_scene_blocks(
+    blocks: tuple[_ScriptBlockPayload, ...],
+) -> tuple[_ScriptBlockPayload, ...]:
+    """Restore an exact block array collapsed into one text field by JSON repair.
+
+    Some OpenAI-compatible providers truncate an otherwise valid blocks array
+    at a string boundary. ``json_repair`` can then preserve the remaining JSON
+    source inside that block's text. We only restore the tail when it parses as
+    the same strict block schema; otherwise the contamination remains visible
+    and the domain validator rejects it.
+    """
+
+    restored: list[_ScriptBlockPayload] = []
+    marker = '"},{"type":'
+    for block in blocks:
+        offset = block.text.find(marker)
+        if offset < 0:
+            restored.append(block)
+            continue
+        prefix = block.text[:offset]
+        source = (
+            '[{"type":'
+            + json.dumps(block.type)
+            + ',"text":'
+            + json.dumps(prefix, ensure_ascii=False)
+            + block.text[offset + 1 :]
+            + "]"
+        )
+        try:
+            nested = json.loads(source)
+            restored.extend(_ScriptBlockPayload.model_validate(item) for item in nested)
+        except (json.JSONDecodeError, ValidationError, TypeError):
+            # A provider may leave ordinary quotation marks inside the
+            # collapsed text unescaped. The block boundary is still explicit,
+            # so recover on that boundary and strictly validate every item.
+            parts = block.text.split(marker)
+            recovered: list[_ScriptBlockPayload] = [
+                _ScriptBlockPayload(type=block.type, text=parts[0])
+            ]
+            try:
+                for index, part in enumerate(parts[1:], start=1):
+                    block_type, text = part.split('","text":"', maxsplit=1)
+                    block_type = block_type.removeprefix('"')
+                    if index == len(parts) - 1:
+                        if not text.endswith('"}'):
+                            raise ValueError("collapsed block tail is incomplete")
+                        text = text[:-2]
+                    recovered.append(
+                        _ScriptBlockPayload.model_validate(
+                            {"type": block_type, "text": text}
+                        )
+                    )
+            except (ValidationError, TypeError, ValueError):
+                restored.append(block)
+            else:
+                restored.extend(recovered)
+    return tuple(restored)
+
+
 class ScriptCreativeGenerator:
     """Let the configured Agent own semantics; keep only user-selected bounds in code."""
 
@@ -113,8 +235,8 @@ class ScriptCreativeGenerator:
 修订反馈：{feedback or "无"}
 
 只返回 JSON：
-{{"candidates":[{{"title":"...","concept":"至少80字的具体故事机制","angles":["欲望","阻力","关系变化","终局代价","最终选择"],"narrative_engine":["..."],"viewpoint_anchor":["..."],"pacing_recipe":["..."],"market_judgement":["优势","风险"]}}]}}
-数组必须恰好三个，且不是同一故事换标题。
+{{"candidates":[{{"title":"...","concept":"至少80字的具体故事机制","angles":["欲望","阻力","关系变化","终局代价","最终选择"],"narrative_engine":["因果推进机制，可用一至八条完整描述"],"viewpoint_anchor":["视角与信息策略"],"pacing_recipe":["关键节奏路径"],"market_judgement":["优势","风险"]}}]}}
+数组必须恰好三个，且不是同一故事换标题。每个字段都必须提供完整、非空的字符串数组；narrative_engine 可用一条完整机制或多条互补机制表达。
 """.strip()
         try:
             payload = _CorePayload.model_validate(
@@ -123,8 +245,9 @@ class ScriptCreativeGenerator:
                 )
             )
         except ValidationError as error:
+            logger.warning("invalid script StoryCore payload: %s", error)
             raise ScriptGenerationError(
-                f"创意总监返回的候选结构不完整：{error}"
+                "创意方向暂未形成完整候选，请保留当前设定并重新生成。"
             ) from error
         return tuple(
             StoryCoreDraft(
@@ -147,43 +270,140 @@ class ScriptCreativeGenerator:
         tenant_id: str,
         project: ProjectModel,
         story_core: dict[str, object],
+        existing_anchors: list[dict[str, object]] | None = None,
         feedback: str | None,
     ) -> BlueprintDraft:
+        revision_context = (
+            "当前蓝图候选："
+            + json.dumps(existing_anchors, ensure_ascii=False)
+            + "\n必须在保留未被反馈否定的有效内容基础上修订，并返回完整蓝图，不能只返回差异。"
+            if existing_anchors
+            else "当前尚无蓝图候选，请从已采纳方向建立完整蓝图。"
+        )
         prompt = f"""
 你是剧本故事建筑师。根据已采纳故事方向与用户项目参数，建立可供 StoryMap 和写作引用的剧本蓝图。
 内容必须针对本项目生成；不要使用示例人物、示例地点或固定情节。
 至少覆盖：世界与规则、核心人物、人物关系、人物弧线、关键事件、伏笔。
+kind 只能使用以下六个稳定值：worldview、character、arc、character_arc、event、foreshadow。
+人物关系归入 character；世界规则归入 worldview；关键事件归入 event；伏笔埋设与回收归入 foreshadow。
 每个锚点 id 使用稳定的英文命名空间，如 character:protagonist；payload 写具体、可执行的信息。
 
 项目参数：{json.dumps(dict(project.direction), ensure_ascii=False)}
 已采纳方向：{json.dumps(story_core, ensure_ascii=False)}
+{revision_context}
 修订反馈：{feedback or "无"}
 
 只返回 JSON：
 {{"anchors":[{{"id":"character:protagonist","kind":"character","name":"...","payload":{{"description":"..."}}}}]}}
+字段名必须严格使用 id、kind、name、payload；禁止用 label 替代 name。
 """.strip()
+        context = {
+            "direction": dict(project.direction),
+            "story_core": story_core,
+            "existing_blueprint_anchors": existing_anchors or [],
+        }
         try:
-            payload = _BlueprintPayload.model_validate(
+            payload = self._validate_blueprint_payload(
                 await self._json(
-                    tenant_id,
-                    project.id,
-                    "architect",
-                    prompt,
-                    {"direction": dict(project.direction), "story_core": story_core},
-                )
+                    tenant_id, project.id, "architect", prompt, context
+                ),
+                existing_anchors=existing_anchors,
             )
-        except ValidationError as error:
+        except (ValidationError, ValueError) as first_error:
+            logger.warning("invalid script blueprint payload, retrying once: %s", first_error)
+            correction_prompt = f"""
+{prompt}
+
+上一次输出已被系统拒绝，原因是结构契约错误或内容不属于当前项目。
+请重新读取本消息中的项目参数、已采纳方向和当前蓝图候选，从头返回当前项目的完整蓝图。
+必须保留当前候选中未被反馈否定的稳定锚点 id；不得引入其他项目的人物、地点、系统或情节。
+字段名只能是 id、kind、name、payload，绝不能使用 label。
+""".strip()
+            try:
+                payload = self._validate_blueprint_payload(
+                    await self._json(
+                        tenant_id,
+                        project.id,
+                        "architect",
+                        correction_prompt,
+                        {
+                            **context,
+                            "contract_retry": True,
+                            "rejected_reason": str(first_error),
+                        },
+                        skills_enabled=False,
+                    ),
+                    existing_anchors=existing_anchors,
+                )
+            except (ValidationError, ValueError) as error:
+                logger.warning("invalid script blueprint payload after retry: %s", error)
+                raise ScriptGenerationError(
+                    "故事建筑师未能形成属于当前项目的完整蓝图，请保留现有候选后重试。"
+                ) from error
+        except ScriptGenerationError:
+            raise
+        except Exception as error:
+            logger.exception("unexpected script blueprint generation failure")
             raise ScriptGenerationError(
-                f"故事建筑师返回的蓝图结构不完整：{error}"
+                "故事建筑师暂时无法完成蓝图生成，请稍后重试。"
             ) from error
         return BlueprintDraft(
             anchors=tuple(
                 BlueprintAnchorDraft(
-                    id=item.id, kind=item.kind, name=item.name, payload=item.payload
+                    id=item.id,
+                    kind=normalize_blueprint_kind(item.kind),
+                    name=item.name,
+                    payload=item.payload,
                 )
                 for item in payload.anchors
             )
         )
+
+    @staticmethod
+    def _validate_blueprint_payload(
+        value: object,
+        *,
+        existing_anchors: list[dict[str, object]] | None,
+    ) -> _BlueprintPayload:
+        payload = _BlueprintPayload.model_validate(value)
+        if existing_anchors:
+            previous_ids = {
+                str(item.get("id") or "").strip()
+                for item in existing_anchors
+                if str(item.get("id") or "").strip()
+            }
+            revised_ids = {item.id for item in payload.anchors}
+            if previous_ids and previous_ids.isdisjoint(revised_ids):
+                previous_terms = ScriptCreativeGenerator._blueprint_affinity_terms(
+                    existing_anchors
+                )
+                revised_text = json.dumps(
+                    [item.model_dump(mode="json") for item in payload.anchors],
+                    ensure_ascii=False,
+                ).casefold()
+                retained_terms = {
+                    term for term in previous_terms if term.casefold() in revised_text
+                }
+                if len(retained_terms) >= min(2, len(previous_terms)):
+                    return payload
+                raise ValueError(
+                    "revised blueprint does not retain stable ids or semantic anchors "
+                    "from the current candidate"
+                )
+        return payload
+
+    @staticmethod
+    def _blueprint_affinity_terms(
+        anchors: list[dict[str, object]],
+    ) -> set[str]:
+        terms: set[str] = set()
+        for anchor in anchors:
+            name = str(anchor.get("name") or "").strip()
+            for term in re.split(r"[—\-：:·|/（）()，,；;\s]+", name):
+                term = term.strip()
+                if 2 <= len(term) <= 24:
+                    terms.add(term)
+        return terms
 
     async def story_map(
         self,
@@ -272,6 +492,63 @@ class ScriptCreativeGenerator:
             )
         return tuple(episodes)
 
+    async def scene_document(
+        self,
+        *,
+        tenant_id: str,
+        project: ProjectModel,
+        scene: dict[str, object],
+        context: dict[str, object],
+        feedback: str | None,
+    ) -> tuple[ScriptBlock, ...]:
+        direction = dict(project.direction)
+        format_rules = generation_instructions(str(direction.get("script_format") or "chinese"))
+        craft_rules = scene_craft_instructions()
+        prompt = f"""
+你是本项目的剧本主笔。只写指定场次的候选正文，不得自动采纳，不得写下一场。
+严格依据用户选择的创作语言、剧本格式、场次目标时长，以及已采纳蓝图、Story Beat 和此前已采纳场次。
+内容必须可拍：用动作、对白、环境与视听细节呈现，不用小说式心理解释，不输出分析、思考过程或 Markdown。
+保持角色、规则、伏笔和前后场连续性。目标时长是创作约束，不得用重复对白或冗余动作凑量。
+
+戏剧场景契约（优先级高于格式）：
+{craft_rules}
+
+交付格式投影（不得取代戏剧判断）：
+{format_rules}
+
+项目参数：{json.dumps(direction, ensure_ascii=False)}
+当前场：{json.dumps(scene, ensure_ascii=False)}
+创作上下文：{json.dumps(context, ensure_ascii=False)}
+修订反馈：{feedback or "无"}
+
+只返回 JSON：
+{{"blocks":[{{"type":"slugline","text":"..." }},{{"type":"action","text":"..."}},{{"type":"character","text":"..."}},{{"type":"dialogue","text":"..."}}]}}
+type 只能是 slugline、action、character、dialogue、transition。
+""".strip()
+        try:
+            payload = _validate_scene_document_payload(
+                await self._json(
+                    tenant_id,
+                    project.id,
+                    "writer",
+                    prompt,
+                    {"direction": direction, "scene": scene, "context": context},
+                )
+            )
+        except ValidationError as error:
+            logger.warning("invalid script scene payload: %s", error)
+            raise ScriptGenerationError("主笔返回的场次候选结构不完整") from error
+        normalized_blocks = _restore_embedded_scene_blocks(payload.blocks)
+        unique = uuid4().hex[:8]
+        return tuple(
+            ScriptBlock(
+                para_id=f"{unique}-{index}",
+                type=item.type,
+                text=item.text,
+            )
+            for index, item in enumerate(normalized_blocks, 1)
+        )
+
     async def _json(
         self,
         tenant_id: str,
@@ -279,6 +556,8 @@ class ScriptCreativeGenerator:
         role: str,
         prompt: str,
         context: dict[str, object],
+        *,
+        skills_enabled: bool = True,
     ) -> object:
         run = await self.runs.enqueue(
             tenant_id=tenant_id,
@@ -295,6 +574,7 @@ class ScriptCreativeGenerator:
                 role=role,
                 content=prompt,
                 context_snapshot=context,
+                skills_enabled=skills_enabled,
             )
             try:
                 payload = json.loads(result.text)

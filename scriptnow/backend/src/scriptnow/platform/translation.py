@@ -2,7 +2,7 @@ import json
 from contextlib import suppress
 
 from json_repair import loads as repair_json
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 from scriptnow.platform.agent_runtime import AgentRuntime, AgentRuntimeError
 from scriptnow.platform.billing import BillingService
@@ -13,18 +13,11 @@ from scriptnow.platform.run_coordinator import RunCoordinator
 from scriptnow.platform.translation_contracts import TranslationError, TranslationUnit
 
 
-class _TranslatedBlock(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    type: str = Field(min_length=1, max_length=80)
-    text: str
-
-
 class _TranslationPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    titles: dict[str, str]
-    blocks: tuple[_TranslatedBlock, ...]
+    titles: tuple[str, ...]
+    blocks: tuple[str, ...]
 
 
 class FaithfulTranslationService:
@@ -36,7 +29,7 @@ class FaithfulTranslationService:
         self.runtime = AgentRuntime(database, settings)
         self.runs = RunCoordinator(database)
         self.billing = BillingService(
-            database, enforce_limits=settings.environment == "production"
+            database, enforce_limits=settings.enforce_agent_budget
         )
 
     async def translate(
@@ -155,7 +148,10 @@ class FaithfulTranslationService:
         *, source_language: str, target_language: str, unit: TranslationUnit,
         glossary_block: str = "",
     ) -> str:
-        payload = {"titles": unit.titles, "blocks": list(unit.blocks)}
+        payload = {
+            "titles": list(unit.titles.values()),
+            "blocks": [str(block.get("text", "")) for block in unit.blocks],
+        }
         glossary_section = f"\n{glossary_block}\n" if glossary_block else ""
         return (
             "You are performing faithful literary translation for an export copy.\n"
@@ -165,8 +161,9 @@ class FaithfulTranslationService:
             "paragraph order and block roles. Use an established target-language form for a proper "
             "name only when one exists. Do not localize culture, customs, setting, food, clothing, "
             "housing, transport, institutions or plot. Do not add, omit, summarize, explain or censor.\n"
-            "Return JSON only, with exactly the same title keys, block count, block order and block "
-            'types: {"titles":{"key":"translated"},"blocks":[{"type":"unchanged","text":"translated"}]}.\n'
+            "The server owns all keys, IDs, block types and metadata. Translate only the ordered "
+            "text values supplied below; never return or alter structural metadata. Return JSON only "
+            'with the same array lengths and order: {"titles":["translated"],"blocks":["translated"]}.\n'
             f"SOURCE:\n{json.dumps(payload, ensure_ascii=False)}"
         )
 
@@ -178,18 +175,14 @@ class FaithfulTranslationService:
             raise TranslationError(
                 "translator returned an invalid structured response"
             ) from error
-        if set(payload.titles) != set(original.titles):
-            raise TranslationError("translator changed the title contract")
+        if len(payload.titles) != len(original.titles):
+            raise TranslationError("translator changed the title count")
         if len(payload.blocks) != len(original.blocks):
             raise TranslationError("translator changed the block count")
-        original_types = [str(block.get("type") or "") for block in original.blocks]
-        translated_types = [block.type for block in payload.blocks]
-        if translated_types != original_types:
-            raise TranslationError("translator changed the block type contract")
         return TranslationUnit(
-            titles=payload.titles,
+            titles=dict(zip(original.titles, payload.titles, strict=True)),
             blocks=tuple(
-                {**original.blocks[index], "text": block.text}
-                for index, block in enumerate(payload.blocks)
+                {**original.blocks[index], "text": text}
+                for index, text in enumerate(payload.blocks)
             ),
         )

@@ -4,8 +4,10 @@ import { useRoute } from 'vue-router'
 
 import AppShell from '../components/AppShell.vue'
 import AgentDock from '../components/AgentDock.vue'
+import CrossCulturalRecreationStudio from '../components/CrossCulturalRecreationStudio.vue'
 import NovelStudio from '../components/NovelStudio.vue'
 import ScriptStudio from '../components/ScriptStudio.vue'
+import TranslationStudio from '../components/TranslationStudio.vue'
 import { useProjectsStore } from '../stores/projects'
 
 const route = useRoute()
@@ -17,8 +19,19 @@ onMounted(() => { void projects.load() })
 
 <template>
   <AppShell title="创作现场" eyebrow="创作工作区">
-    <ScriptStudio v-if="project?.medium === 'script'" :project-id="projectId" :source-mode="project.source_mode" />
+    <CrossCulturalRecreationStudio
+      v-if="project?.workflow_kind === 'cross_cultural_recreation'"
+      :project-id="projectId"
+      :direction="project.direction"
+    />
+    <ScriptStudio v-else-if="project?.medium === 'script'" :project-id="projectId" :source-mode="project.source_mode" />
     <NovelStudio v-else-if="project?.medium === 'novel'" :project-id="projectId" :source-mode="project.source_mode" />
-    <AgentDock :project-id="projectId" />
+    <TranslationStudio
+      v-else-if="project?.medium === 'translation'"
+      :project-id="projectId"
+      :source-language="project.direction.source_language"
+      :target-language="project.direction.target_language"
+    />
+    <AgentDock v-if="project?.medium !== 'translation'" :project-id="projectId" />
   </AppShell>
 </template>

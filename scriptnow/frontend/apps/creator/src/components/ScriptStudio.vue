@@ -4,7 +4,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import ReviewPanel from './ReviewPanel.vue'
 import ScriptDeliveryPanel from './ScriptDeliveryPanel.vue'
 import ScriptStoryMapEditor from './ScriptStoryMapEditor.vue'
-import { fieldDisplayLabel } from '../semanticLabels'
+import { fieldDisplayLabel, scriptBlueprintCategory } from '../semanticLabels'
 import SourceCitations from './SourceCitations.vue'
 import { pickCreativeCopy } from '../creativeCopy'
 import { useDockStore } from '../stores/dock'
@@ -40,7 +40,13 @@ const adoptedDocuments = computed(
 )
 const adoptedSceneIds = computed(() => new Set(adoptedDocuments.value.map((item) => item.scene_id)))
 const focusedUnitId = ref('scene-1')
-const focusedDocument = computed(() => adoptedDocuments.value.find((item) => item.scene_id === focusedUnitId.value) ?? adoptedDocuments.value[0])
+const focusedDocument = computed(() => adoptedDocuments.value.find((item) => item.scene_id === focusedUnitId.value))
+const focusedCandidate = computed(() =>
+  script.state?.documents
+    .filter((item) => item.scene_id === focusedUnitId.value && item.status === 'candidate')
+    .sort((left, right) => right.revision_number - left.revision_number)[0],
+)
+const visibleDocument = computed(() => focusedCandidate.value ?? focusedDocument.value)
 const focusedScene = computed(() => script.state?.story_map.episodes.flatMap((episode) => episode.scenes).find((scene) => scene.id === focusedUnitId.value))
 const reviewElements = computed(() => focusedDocument.value?.blocks.map((item) => ({ id: item.para_id, text: item.text, type: item.type })) ?? [])
 const severityByElement = computed(() => Object.fromEntries(review.items.filter((item) => item.status === 'open').map((item) => [item.element_id, item.severity])))
@@ -79,8 +85,8 @@ async function reviseBlueprint() {
   try {
     dock.role = 'architect'
     dock.expanded = true
-    await dock.send(props.projectId, `请审阅当前蓝图候选，并针对【${blueprintFeedbackCategory.value}】提出可执行修订：${instruction}`)
     await script.generateBlueprint(props.projectId, `${blueprintFeedbackCategory.value}: ${instruction}`)
+    await dock.load(props.projectId)
     blueprintFeedback.value = ''
   } finally {
     revisingBlueprint.value = false
@@ -90,7 +96,6 @@ async function reviseBlueprint() {
 function selectScene(sceneId: string) {
   focusedUnitId.value = sceneId
   dock.setFocus('script', sceneId)
-  if (!adoptedSceneIds.value.has(sceneId)) script.generateAndAdoptScene(props.projectId, sceneId)
 }
 
 async function saveStoryMapDraft(episodes: ScriptState['story_map']['episodes']) {
@@ -168,7 +173,7 @@ watch(() => script.state?.story_map.episodes, (episodes) => {
       <header class="planning-header"><div><p class="eyebrow">蓝图规划 · 故事建筑师</p><h2>{{ adoptedCore?.title ?? '等待创意方向' }}</h2><p>故事建筑师只提交候选。请逐类检查设定后再明确采纳。</p></div><span class="candidate-state">{{ blueprintCandidate ? '候选待决策' : script.state.blueprint ? '已采纳' : '尚未生成' }}</span></header>
       <template v-if="visibleBlueprintAnchors.length">
         <nav class="blueprint-tabs" aria-label="蓝图类别"><button v-for="item in ([['worldview','世界观'],['character','人物'],['arc','叙事弧线'],['character_arc','人物弧线'],['event','关键事件'],['foreshadow','伏笔网络']] as const)" :key="item[0]" :class="{ active: tab === item[0] }" @click="tab = item[0]">{{ item[1] }}</button></nav>
-        <div class="anchor-grid candidate-grid"><article v-for="anchor in visibleBlueprintAnchors.filter((item) => item.kind === tab)" :key="anchor.id"><h3>{{ anchor.name }}</h3><p>{{ anchor.payload.description ?? '由故事建筑师根据已采用 StoryCore 建立的创作锚点。' }}</p><dl class="blueprint-meta"><template v-for="(value, key) in anchor.payload" :key="key"><div v-if="key !== 'description'"><dt>{{ fieldDisplayLabel(String(key)) }}</dt><dd>{{ Array.isArray(value) ? value.join(' · ') : value }}</dd></div></template></dl></article></div>
+        <div class="anchor-grid candidate-grid"><article v-for="anchor in visibleBlueprintAnchors.filter((item) => scriptBlueprintCategory(item.kind) === tab)" :key="anchor.id"><h3>{{ anchor.name }}</h3><p>{{ anchor.payload.description ?? '由故事建筑师根据已采用 StoryCore 建立的创作锚点。' }}</p><dl class="blueprint-meta"><template v-for="(value, key) in anchor.payload" :key="key"><div v-if="key !== 'description'"><dt>{{ fieldDisplayLabel(String(key)) }}</dt><dd>{{ Array.isArray(value) ? value.join(' · ') : value }}</dd></div></template></dl></article></div>
         <form v-if="blueprintCandidate" class="blueprint-feedback" @submit.prevent="reviseBlueprint">
           <header><div><strong>反馈给故事建筑师</strong><small>故事建筑师会读取当前候选与项目事实，答复会进入创作搭档；随后生成新候选并使本版过期。</small></div></header>
           <div><label>反馈范围<select v-model="blueprintFeedbackCategory"><option>世界观</option><option>人物</option><option>叙事弧线</option><option>人物弧线</option><option>关键事件</option><option>伏笔网络</option><option>整套蓝图</option></select></label><label>修订要求<textarea v-model="blueprintFeedback" rows="3" required placeholder="例如：世界规则过于通用，需要体现硅基人格、记忆复制与所有权冲突" /></label></div>
@@ -183,7 +188,7 @@ watch(() => script.state?.story_map.episodes, (episodes) => {
     <section v-else-if="layout.studioView === 'storymap'" class="studio-stage planning-workspace">
       <header class="planning-header"><div><p class="eyebrow">StoryMap · 故事建筑师</p><h2>{{ storyMapVision }}</h2><p>从蓝图规划分集、场次与 Story Beat；确认影响后才进入逐场写作。</p></div><span class="candidate-state">蓝图 v{{ script.state.blueprint?.version }}</span></header>
       <nav class="blueprint-tabs"><button v-for="item in ([['worldview','世界观'],['character','人物'],['arc','叙事弧线'],['character_arc','人物弧线'],['event','关键事件'],['foreshadow','伏笔网络']] as const)" :key="item[0]" :class="{ active: tab === item[0] }" @click="tab = item[0]">{{ item[1] }}</button></nav>
-      <div class="anchor-grid"><article v-for="anchor in script.state.blueprint?.anchors.filter((item) => item.kind === tab)" :key="anchor.id"><h3>{{ anchor.name }}</h3></article></div>
+      <div class="anchor-grid"><article v-for="anchor in script.state.blueprint?.anchors.filter((item) => scriptBlueprintCategory(item.kind) === tab)" :key="anchor.id"><h3>{{ anchor.name }}</h3></article></div>
       <ScriptStoryMapEditor v-if="editingStructure" :episodes="visibleEpisodes" @save="saveStoryMapDraft" @cancel="editingStructure = false" />
       <template v-else-if="visibleEpisodes.length">
         <section class="storymap-candidate"><div class="storymap-heading"><div><p class="eyebrow">{{ storyMapCandidate ? '结构候选' : '已采纳结构' }}</p><h3>Episode → Scene → Story Beat</h3></div><span>版本 {{ storyMapCandidate?.base_version ?? script.state.story_map.version }}</span></div><article v-for="episode in visibleEpisodes" :key="episode.id" class="storymap-group"><header><strong>第 {{ episode.ordinal }} 集 · {{ episode.title }}</strong><small>{{ episode.scenes.length }} 场</small></header><div v-for="scene in episode.scenes" :key="scene.id" class="storymap-unit"><span>{{ episode.ordinal }}-{{ scene.ordinal }}</span><div><strong>{{ scene.title }}</strong><p v-for="beat in scene.beats ?? []" :key="beat.id">{{ beat.objective }}</p></div><small>{{ scene.duration_seconds_target }} 秒</small></div></article></section>
@@ -197,7 +202,11 @@ watch(() => script.state?.story_map.episodes, (episodes) => {
     <ScriptDeliveryPanel :project-id="projectId" />
     <section class="studio-stage writing-stage" :class="{ 'sidecar-hidden': layout.writerSidecarHidden }" @mouseup="captureSelection">
       <aside class="script-outline"><p class="eyebrow">Script StoryMap</p><article v-for="episode in script.state.story_map.episodes" :key="episode.id"><h3>第 {{ episode.ordinal }} 集 · {{ episode.title }}</h3><button v-for="scene in episode.scenes" :key="scene.id" class="scene-row" :class="{ adopted: adoptedSceneIds.has(scene.id), active: focusedUnitId === scene.id }" :disabled="Boolean(script.busy)" @click="selectScene(scene.id)"><span>{{ scene.ordinal }}</span><strong>{{ scene.title }}</strong><small>{{ adoptedSceneIds.has(scene.id) ? '已采纳' : `${scene.duration_seconds_target} 秒` }}</small></button></article></aside>
-      <div class="script-editor"><article v-if="focusedDocument" :key="focusedDocument.id" class="screenplay-page" :class="`format-${script.state.script_format}`"><p v-for="block in focusedDocument.blocks" :key="block.para_id" :class="[`screenplay-${block.type}`, severityByElement[block.para_id] && `finding-mark severity-${severityByElement[block.para_id]}`]" :data-element-id="block.para_id">{{ block.text }}</p></article><div v-else class="writer-empty"><p class="eyebrow">主笔</p><h2>{{ writerReadyVision }}</h2><p>正文会以 slugline / action / character / dialogue / transition 结构化段落持久化。</p><button class="primary" @click="script.generateAndAdoptScene(projectId, focusedUnitId)">生成并采纳当前场</button></div></div>
+      <div class="script-editor">
+        <div v-if="focusedCandidate" class="chapter-candidate-toolbar"><div><strong>场次候选稿 · 修订 {{ focusedCandidate.revision_number }}</strong><small>候选只读。确认后才成为本场正文并进入后续场次上下文。</small></div><div><button class="secondary" @click="script.generateSceneCandidate(projectId, focusedUnitId, '基于当前候选重新创作，强化动作、冲突与视听节奏')">生成新版候选</button><button class="primary" @click="script.adoptSceneCandidate(projectId, focusedUnitId, focusedCandidate.id)">确认采用</button></div></div>
+        <article v-if="visibleDocument" :key="visibleDocument.id" class="screenplay-page" :class="`format-${script.state.script_format}`"><p v-for="block in visibleDocument.blocks" :key="block.para_id" :class="[`screenplay-${block.type}`, severityByElement[block.para_id] && `finding-mark severity-${severityByElement[block.para_id]}`]" :data-element-id="block.para_id">{{ block.text }}</p></article>
+        <div v-else class="writer-empty"><p class="eyebrow">主笔</p><h2>{{ focusedScene?.title ?? writerReadyVision }}</h2><p>先生成场次候选；候选完成后只读预览，明确确认后才成为正文。</p><button class="primary" :disabled="Boolean(script.busy)" @click="script.generateSceneCandidate(projectId, focusedUnitId)">{{ script.busy ? '生成中…' : '生成当前场候选稿' }}</button></div>
+      </div>
       <button v-if="layout.writerSidecarHidden" class="sidecar-restore" aria-label="显示上下文与审读面板" @click="layout.setWriterSidecarHidden(false)">显示上下文 / 审读</button>
       <aside v-else class="writer-sidecar">
         <nav class="sidecar-tabs" aria-label="写作辅助"><button :class="{ active: sideTab === 'context' }" @click="sideTab = 'context'">上下文</button><button :class="{ active: sideTab === 'review' }" @click="sideTab = 'review'">审读</button><button class="sidecar-hide" aria-label="隐藏上下文与审读面板" @click="layout.setWriterSidecarHidden(true)">隐藏</button></nav>

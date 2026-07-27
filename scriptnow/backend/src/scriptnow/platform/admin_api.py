@@ -43,6 +43,7 @@ from scriptnow.platform.models import (
     TokenAccountModel,
     TokenUsageModel,
     ToolGroupModel,
+    UsageReservationModel,
     UserModel,
 )
 from scriptnow.platform.skills import (
@@ -77,6 +78,9 @@ class AdminSkillDetailResponse(BaseModel):
     admission_status: str
     admission_baseline: str | None
     admission_cases: list[str]
+    quality_status: str
+    benchmark_suite: str | None
+    benchmark_report: str | None
 
 
 class AdminSkillUpdateRequest(BaseModel):
@@ -171,6 +175,10 @@ class AdminUsageRunResponse(BaseModel):
     model_key: str
     input_tokens: int
     output_tokens: int
+    reserved_tokens: int
+    budget_variance_tokens: int
+    budget_utilization: float
+    budget_status: str
     estimated_cost: float
     currency: str
     input_price_per_million: float
@@ -430,6 +438,9 @@ def create_admin_router(database: Database, auth: AuthService, settings: Setting
                     "admission_status": item.admission_status,
                     "admission_baseline": item.admission_baseline,
                     "admission_cases": list(item.admission_cases),
+                    "quality_status": item.quality_status,
+                    "benchmark_suite": item.benchmark_suite,
+                    "benchmark_report": item.benchmark_report,
                 }
                 for item in catalog
             ],
@@ -465,6 +476,9 @@ def create_admin_router(database: Database, auth: AuthService, settings: Setting
             admission_status=descriptor.admission_status,
             admission_baseline=descriptor.admission_baseline,
             admission_cases=list(descriptor.admission_cases),
+            quality_status=descriptor.quality_status,
+            benchmark_suite=descriptor.benchmark_suite,
+            benchmark_report=descriptor.benchmark_report,
         )
 
     @router.put("/skills/{skill_name}", response_model=AdminSkillDetailResponse)
@@ -488,9 +502,13 @@ def create_admin_router(database: Database, auth: AuthService, settings: Setting
         except SkillCatalogError as error:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(error)) from error
         await audit.record(
-            tenant_id=str(context.tenant_id), actor_id=str(context.user_id),
-            action="skill.update", resource_type="skill", resource_id=skill_name,
-            outcome="succeeded", correlation_id=descriptor.digest,
+            tenant_id=str(context.tenant_id),
+            actor_id=str(context.user_id),
+            action="skill.update",
+            resource_type="skill",
+            resource_id=skill_name,
+            outcome="succeeded",
+            correlation_id=descriptor.digest,
             details={"domain": descriptor.domain, "digest": descriptor.digest},
         )
         return AdminSkillDetailResponse(
@@ -510,6 +528,9 @@ def create_admin_router(database: Database, auth: AuthService, settings: Setting
             admission_status=descriptor.admission_status,
             admission_baseline=descriptor.admission_baseline,
             admission_cases=list(descriptor.admission_cases),
+            quality_status=descriptor.quality_status,
+            benchmark_suite=descriptor.benchmark_suite,
+            benchmark_report=descriptor.benchmark_report,
         )
 
     @router.get("/overview", response_model=AdminOverviewResponse)
@@ -777,19 +798,30 @@ def create_admin_router(database: Database, auth: AuthService, settings: Setting
             discovered = await supply.discover_models(provider_id)
         except (ProviderDiscoveryError, CredentialError) as error:
             await audit.record(
-                tenant_id=str(context.tenant_id), actor_id=str(context.user_id),
-                action="provider.models.discover", resource_type="provider",
-                resource_id=provider_id, outcome="failed", correlation_id=provider_id,
+                tenant_id=str(context.tenant_id),
+                actor_id=str(context.user_id),
+                action="provider.models.discover",
+                resource_type="provider",
+                resource_id=provider_id,
+                outcome="failed",
+                correlation_id=provider_id,
                 details={"error": str(error)},
             )
             raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(error)) from error
         await audit.record(
-            tenant_id=str(context.tenant_id), actor_id=str(context.user_id),
-            action="provider.models.discover", resource_type="provider",
-            resource_id=provider_id, outcome="succeeded", correlation_id=provider_id,
+            tenant_id=str(context.tenant_id),
+            actor_id=str(context.user_id),
+            action="provider.models.discover",
+            resource_type="provider",
+            resource_id=provider_id,
+            outcome="succeeded",
+            correlation_id=provider_id,
             details={"model_count": len(discovered)},
         )
-        return [AdminDiscoveredModelResponse(key=item.key, display_name=item.display_name) for item in discovered]
+        return [
+            AdminDiscoveredModelResponse(key=item.key, display_name=item.display_name)
+            for item in discovered
+        ]
 
     @router.delete("/providers/{provider_id}", status_code=status.HTTP_204_NO_CONTENT)
     async def delete_provider(
@@ -814,16 +846,16 @@ def create_admin_router(database: Database, auth: AuthService, settings: Setting
             image_model_ids = list(
                 (
                     await session.scalars(
-                        select(ImageModelModel.id).where(
-                            ImageModelModel.provider_id == provider_id
-                        )
+                        select(ImageModelModel.id).where(ImageModelModel.provider_id == provider_id)
                     )
                 ).all()
             )
             if model_ids:
                 template_refs = int(
                     await session.scalar(
-                        select(func.count()).select_from(AgentTemplateVersionModel).where(
+                        select(func.count())
+                        .select_from(AgentTemplateVersionModel)
+                        .where(
                             or_(
                                 AgentTemplateVersionModel.default_model_id.in_(model_ids),
                                 AgentTemplateVersionModel.fallback_model_id.in_(model_ids),
@@ -834,9 +866,9 @@ def create_admin_router(database: Database, auth: AuthService, settings: Setting
                 )
                 project_refs = int(
                     await session.scalar(
-                        select(func.count()).select_from(TenantAgentConfigModel).where(
-                            TenantAgentConfigModel.model_id.in_(model_ids)
-                        )
+                        select(func.count())
+                        .select_from(TenantAgentConfigModel)
+                        .where(TenantAgentConfigModel.model_id.in_(model_ids))
                     )
                     or 0
                 )
@@ -855,9 +887,13 @@ def create_admin_router(database: Database, auth: AuthService, settings: Setting
             provider_name = provider.name
             await session.delete(provider)
         await audit.record(
-            tenant_id=str(context.tenant_id), actor_id=str(context.user_id),
-            action="provider.delete", resource_type="provider", resource_id=provider_id,
-            outcome="succeeded", correlation_id=provider_id,
+            tenant_id=str(context.tenant_id),
+            actor_id=str(context.user_id),
+            action="provider.delete",
+            resource_type="provider",
+            resource_id=provider_id,
+            outcome="succeeded",
+            correlation_id=provider_id,
             details={
                 "name": provider_name,
                 "deleted_models": len(model_ids),
@@ -1127,9 +1163,7 @@ def create_admin_router(database: Database, auth: AuthService, settings: Setting
                     "created_at": snapshot.created_at.isoformat(),
                     "plan": {
                         **plan,
-                        "creative_profile": dict(snapshot.snapshot).get(
-                            "creative_profile", {}
-                        ),
+                        "creative_profile": dict(snapshot.snapshot).get("creative_profile", {}),
                     },
                 }
                 for snapshot, _, project in skill_plan_rows
@@ -1732,6 +1766,10 @@ def create_admin_router(database: Database, auth: AuthService, settings: Setting
                     func.max(TokenUsageModel.model_key).label("model_key"),
                     func.sum(TokenUsageModel.input_tokens).label("input_tokens"),
                     func.sum(TokenUsageModel.output_tokens).label("output_tokens"),
+                    func.max(
+                        UsageReservationModel.monthly_reserved
+                        + UsageReservationModel.credits_reserved
+                    ).label("reserved_tokens"),
                     func.sum(TokenUsageModel.cost_estimate).label("estimated_cost"),
                     func.max(TokenUsageModel.currency).label("currency"),
                     func.max(TokenUsageModel.input_price_per_million).label(
@@ -1743,6 +1781,10 @@ def create_admin_router(database: Database, auth: AuthService, settings: Setting
                     func.max(TokenUsageModel.created_at).label("created_at"),
                 )
                 .join(ProjectRunModel, ProjectRunModel.id == TokenUsageModel.run_id)
+                .join(
+                    UsageReservationModel,
+                    UsageReservationModel.id == TokenUsageModel.reservation_id,
+                )
                 .join(ProjectModel, ProjectModel.id == TokenUsageModel.project_id)
                 .join(TenantModel, TenantModel.id == TokenUsageModel.tenant_id)
                 .group_by(
@@ -1765,6 +1807,16 @@ def create_admin_router(database: Database, auth: AuthService, settings: Setting
         items = []
         for row in rows:
             studio = settings.agent_studio_url.rstrip("/") if settings.agent_studio_url else None
+            actual_tokens = int(row.input_tokens) + int(row.output_tokens)
+            reserved_tokens = int(row.reserved_tokens)
+            budget_variance_tokens = actual_tokens - reserved_tokens
+            budget_status = (
+                "unmeasured"
+                if reserved_tokens <= 0
+                else "soft_exceeded"
+                if budget_variance_tokens > 0
+                else "within_range"
+            )
             items.append(
                 AdminUsageRunResponse(
                     run_id=row.run_id,
@@ -1777,6 +1829,12 @@ def create_admin_router(database: Database, auth: AuthService, settings: Setting
                     model_key=row.model_key,
                     input_tokens=int(row.input_tokens),
                     output_tokens=int(row.output_tokens),
+                    reserved_tokens=reserved_tokens,
+                    budget_variance_tokens=budget_variance_tokens,
+                    budget_utilization=actual_tokens / reserved_tokens
+                    if reserved_tokens > 0
+                    else 0,
+                    budget_status=budget_status,
                     estimated_cost=float(row.estimated_cost),
                     currency=row.currency,
                     input_price_per_million=float(row.input_price_per_million),

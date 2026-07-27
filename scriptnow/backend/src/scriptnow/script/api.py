@@ -1,5 +1,4 @@
 from typing import Annotated, Literal
-from uuid import uuid4
 
 from fastapi import APIRouter, Cookie, Header, HTTPException, Response, status
 from pydantic import BaseModel, ConfigDict, Field
@@ -223,11 +222,27 @@ def create_script_router(database: Database, auth: AuthService, settings: Settin
         )
         if adopted_core is None:
             raise HTTPException(status.HTTP_409_CONFLICT, "请先采纳一个创意方向")
+        active_candidate = next(
+            (
+                item
+                for item in current.blueprint_candidates
+                if item["status"] == "active"
+            ),
+            None,
+        )
+        base_anchors = (
+            list(active_candidate["anchors"])
+            if active_candidate is not None
+            else list(current.blueprint["anchors"])
+            if current.blueprint is not None
+            else []
+        )
         try:
             draft = await generator.blueprint(
                 tenant_id=str(context.tenant_id),
                 project=project,
                 story_core=adopted_core,
+                existing_anchors=base_anchors,
                 feedback=body.feedback,
             )
         except ScriptGenerationError as error:
@@ -363,14 +378,39 @@ def create_script_router(database: Database, auth: AuthService, settings: Settin
         csrf_token: Annotated[str | None, Header(alias="X-CSRF-Token")] = None,
     ) -> AdoptResponse:
         context = await action_context(access_token, csrf_token)
-        unique = uuid4().hex[:8]
-        blocks = (
-            ScriptBlock(para_id=f"{unique}-1", type="slugline", text="内景 核心地点 夜"),
-            ScriptBlock(para_id=f"{unique}-2", type="action", text="核心人物进入现场。"),
-            ScriptBlock(para_id=f"{unique}-3", type="character", text="核心人物"),
-            ScriptBlock(para_id=f"{unique}-4", type="dialogue", text="事情从这里开始。"),
-        )
         try:
+            project = await _script_project(database, str(context.tenant_id), project_id)
+            context_pack = await service.context_pack(
+                tenant_id=str(context.tenant_id),
+                project_id=project_id,
+                scene_id=scene_id,
+            )
+            async with database.session() as session:
+                story_map = (
+                    await session.scalars(
+                        select(ScriptStoryMapModel).where(
+                            ScriptStoryMapModel.project_id == project_id
+                        )
+                    )
+                ).one()
+            scene = next(
+                (
+                    scene
+                    for episode in story_map.episodes
+                    for scene in episode.get("scenes", [])
+                    if scene.get("id") == scene_id
+                ),
+                None,
+            )
+            if scene is None:
+                raise ScriptConflict("scene is outside the adopted StoryMap")
+            blocks = await generator.scene_document(
+                tenant_id=str(context.tenant_id),
+                project=project,
+                scene=scene,
+                context=context_pack,
+                feedback=body.feedback,
+            )
             revision = await service.propose_document(
                 tenant_id=str(context.tenant_id),
                 project_id=project_id,
@@ -379,6 +419,8 @@ def create_script_router(database: Database, auth: AuthService, settings: Settin
                 idempotency_key=body.idempotency_key,
             )
             return AdoptResponse(id=revision.id, status=str(revision.status))
+        except ScriptGenerationError as error:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(error)) from error
         except (ScriptConflict, ScriptDomainError) as error:
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
 

@@ -1,0 +1,211 @@
+{
+  "version": "novel-genre-benchmark-v2",
+  "anchors": [
+    {
+      "key": "genre_promise",
+      "label": "题材承诺",
+      "description": "核心冲突、情绪回报和题材独特性是否在文本中成立，而不是只出现标签。",
+      "weight": 16
+    },
+    {
+      "key": "character_agency",
+      "label": "人物能动性",
+      "description": "主要人物是否以欲望、判断、选择和代价推动事件。",
+      "weight": 14
+    },
+    {
+      "key": "causal_progression",
+      "label": "因果推进",
+      "description": "场景变化是否由行动与反应产生，并留下可继续发展的新局面。",
+      "weight": 14
+    },
+    {
+      "key": "emotional_escalation",
+      "label": "情绪递进",
+      "description": "压力、期待和关系变化是否层层升级而非机械重复。",
+      "weight": 12
+    },
+    {
+      "key": "information_design",
+      "label": "信息设计",
+      "description": "信息差、揭示、误判和悬念是否服务人物与因果。",
+      "weight": 10
+    },
+    {
+      "key": "world_consequence",
+      "label": "设定后果",
+      "description": "世界规则或类型装置是否真正改变选择、资源和代价。",
+      "weight": 10
+    },
+    {
+      "key": "voice_fit",
+      "label": "叙述声音",
+      "description": "语言、视角、语态和文本肌理是否匹配项目语言与人物。",
+      "weight": 10
+    },
+    {
+      "key": "serial_propulsion",
+      "label": "连续阅读动力",
+      "description": "结尾是否来自本章变化并产生下一步需要，而不是生硬截断。",
+      "weight": 8
+    },
+    {
+      "key": "originality_boundary",
+      "label": "原创与边界",
+      "description": "是否吸收类型机制而没有复制参考作品的独特表达或情节组合。",
+      "weight": 6
+    }
+  ],
+  "cases": [
+    {
+      "key": "cn-cultivation-choice",
+      "title": "修仙升级中的选择代价",
+      "language": "zh-CN",
+      "platform": "fanqie",
+      "genres": ["xianxia", "cultivation", "progression"],
+      "role": "writer",
+      "stage": "writing",
+      "brief": "主角获得一次越阶机会，但使用它会永久暴露师门秘密。写出行动、诱惑、判断和不可逆后果，不能只罗列境界。",
+      "anchor_keys": ["genre_promise", "character_agency", "causal_progression", "world_consequence", "serial_propulsion", "originality_boundary"]
+    },
+    {
+      "key": "cn-commercial-direction",
+      "title": "商业情绪题材的差异化方向",
+      "language": "zh-CN",
+      "platform": "fanqie",
+      "genres": ["melodramatic-romance", "workplace-romance"],
+      "role": "director",
+      "stage": "ideation",
+      "brief": "为同一段职场婚姻背叛素材提出三个真正不同的故事方向。每个方向必须说明人物欲望、情绪引擎、信息差、不可逆选择和结局代价，不能只替换标题或身份。",
+      "anchor_keys": ["genre_promise", "character_agency", "emotional_escalation", "information_design", "serial_propulsion", "originality_boundary"]
+    },
+    {
+      "key": "cn-urban-system",
+      "title": "都市系统能力的现实反作用",
+      "language": "zh-CN",
+      "platform": "fanqie",
+      "genres": ["urban-power", "system-progression"],
+      "role": "writer",
+      "stage": "writing",
+      "brief": "系统奖励能解决眼前困境，却使主角与同事的信任出现裂缝。重点验证能力、日常关系和社会后果是否互相改变。",
+      "anchor_keys": ["genre_promise", "character_agency", "causal_progression", "world_consequence", "voice_fit", "serial_propulsion"]
+    },
+    {
+      "key": "cn-betrayal-regret",
+      "title": "背叛与追悔的情绪递进",
+      "language": "zh-CN",
+      "platform": "fanqie",
+      "genres": ["betrayal-romance", "regret-romance", "contemporary-romance"],
+      "role": "writer",
+      "stage": "writing",
+      "brief": "女主发现伴侣长期隐瞒关键关系。用第一人称直接进入冲突，通过证据、误判和选择升级情绪，不靠反复羞辱制造强度。",
+      "anchor_keys": ["genre_promise", "character_agency", "emotional_escalation", "information_design", "voice_fit", "serial_propulsion", "originality_boundary"]
+    },
+    {
+      "key": "cn-rules-horror",
+      "title": "规则怪谈中的可验证规则",
+      "language": "zh-CN",
+      "platform": "fanqie",
+      "genres": ["rules-horror", "suspense-concept"],
+      "role": "architect",
+      "stage": "planning",
+      "brief": "设计一个规则表面保护住客、实际筛选替代者的空间。规则必须可观察、可误解、有代价，并支持后续反证。",
+      "anchor_keys": ["genre_promise", "causal_progression", "information_design", "world_consequence", "serial_propulsion", "originality_boundary"]
+    },
+    {
+      "key": "cn-era-family",
+      "title": "年代家庭关系与生存选择",
+      "language": "zh-CN",
+      "platform": "fanqie",
+      "genres": ["era-fiction", "family-saga", "rebirth-romance"],
+      "role": "architect",
+      "stage": "planning",
+      "brief": "重生者知道家庭即将遭遇一次资源危机，但提前行动会暴露她不可能知道的信息。让时代约束、家庭权力和人物选择形成因果。",
+      "anchor_keys": ["genre_promise", "character_agency", "causal_progression", "emotional_escalation", "information_design", "world_consequence"]
+    },
+    {
+      "key": "cn-history-intrigue",
+      "title": "历史权谋的信息与制度后果",
+      "language": "zh-CN",
+      "platform": "fanqie",
+      "genres": ["historical-fiction", "political-intrigue"],
+      "role": "architect",
+      "stage": "planning",
+      "brief": "一个低阶官员发现军粮账目矛盾。规划其如何在制度限制中取证、结盟和承担后果，避免用现代全知视角解决问题。",
+      "anchor_keys": ["genre_promise", "character_agency", "causal_progression", "information_design", "world_consequence", "originality_boundary"]
+    },
+    {
+      "key": "cn-livestream-profession",
+      "title": "直播职业线的公开风险",
+      "language": "zh-CN",
+      "platform": "fanqie",
+      "genres": ["livestream", "workplace"],
+      "role": "writer",
+      "stage": "writing",
+      "brief": "主播在直播中必须处理团队失误，保护同事会损失个人信誉。要求公开信息、后台关系和即时选择同步推进。",
+      "anchor_keys": ["genre_promise", "character_agency", "causal_progression", "information_design", "voice_fit", "serial_propulsion"]
+    },
+    {
+      "key": "en-werewolf-rejection",
+      "title": "Werewolf rejection without shortcut romance",
+      "language": "en-US",
+      "platform": "webnovel",
+      "genres": ["werewolf-romance", "paranormal-romance"],
+      "role": "writer",
+      "stage": "writing",
+      "brief": "Open on a mate-bond rejection that protects the heroine from an immediate threat but violates her right to choose. The bond must create pressure and information, not automatic love.",
+      "anchor_keys": ["genre_promise", "character_agency", "causal_progression", "emotional_escalation", "world_consequence", "voice_fit", "serial_propulsion"]
+    },
+    {
+      "key": "en-billionaire-betrayal",
+      "title": "Commercial romance with asymmetric power",
+      "language": "en-US",
+      "platform": "goodnovel",
+      "genres": ["billionaire-romance", "betrayal-romance"],
+      "role": "writer",
+      "stage": "writing",
+      "brief": "A spouse discovers the marriage contract concealed a financial betrayal. Build attraction and anger through concrete leverage, incomplete information, and a choice that changes their power balance.",
+      "anchor_keys": ["genre_promise", "character_agency", "causal_progression", "emotional_escalation", "information_design", "voice_fit", "serial_propulsion"]
+    },
+    {
+      "key": "en-mystery-evidence",
+      "title": "Mystery evidence and fair inference",
+      "language": "en-US",
+      "platform": "wattpad",
+      "genres": ["mystery", "thriller"],
+      "role": "architect",
+      "stage": "planning",
+      "brief": "Plan a reveal in which a harmless receipt becomes evidence only after a witness changes one detail. The reader must be able to reconstruct the inference without receiving the answer early.",
+      "anchor_keys": ["genre_promise", "causal_progression", "information_design", "serial_propulsion", "originality_boundary"]
+    },
+    {
+      "key": "en-speculative-intimacy",
+      "title": "Speculative rule changes intimacy",
+      "language": "en-US",
+      "platform": "wattpad",
+      "genres": ["science-fiction", "romance"],
+      "role": "writer",
+      "stage": "writing",
+      "brief": "Two people share memories through a device that cannot distinguish consent from access. Write a scene where the rule changes trust and action rather than serving as decoration.",
+      "anchor_keys": ["genre_promise", "character_agency", "causal_progression", "emotional_escalation", "world_consequence", "voice_fit", "originality_boundary"]
+    },
+    {
+      "key": "cross-genre-review",
+      "title": "跨类型审读不套用单一公式",
+      "language": "zh-CN",
+      "platform": "fanqie",
+      "genres": ["romance", "mystery"],
+      "role": "reviewer",
+      "stage": "review",
+      "brief": "审读一章同时承担关系破裂和线索揭示的文本。分别判断两类承诺是否推进，并区分事实冲突、结构缺口与可接受的风格选择。",
+      "anchor_keys": ["genre_promise", "character_agency", "causal_progression", "emotional_escalation", "information_design", "originality_boundary"]
+    }
+  ],
+  "gates": {
+    "minimum_candidate_score": 72,
+    "minimum_lift": 5,
+    "maximum_regressed_anchors": 1,
+    "maximum_cost_multiplier": 1.35,
+    "maximum_blocking_failures": 0
+  }
+}

@@ -14,6 +14,7 @@ from scriptnow.script.domain import (
     BlueprintDraft,
     CandidateStatus,
     RevisionStatus,
+    ScriptBlueprintCandidateModel,
     ScriptStoryCoreCandidateModel,
     StoryCoreDetails,
     StoryCoreDraft,
@@ -223,6 +224,73 @@ async def test_blueprint_anchor_and_story_map_candidate_impact_version_conflict(
         )
 
 
+@pytest.mark.asyncio
+async def test_blueprint_revision_replaces_active_candidate_and_records_feedback(
+    script_data,
+) -> None:
+    service, database, tenant, _, project = script_data
+    cores = await service.generate_story_cores(
+        tenant_id=tenant.id, project_id=project.id, drafts=core_drafts()
+    )
+    await service.adopt_story_core(
+        tenant_id=tenant.id, project_id=project.id, candidate_id=cores[0].id
+    )
+    first = await service.propose_blueprint(
+        tenant_id=tenant.id,
+        project_id=project.id,
+        draft=BlueprintDraft(
+            anchors=(
+                BlueprintAnchorDraft(
+                    id="character:lin",
+                    kind="character",
+                    name="Lin",
+                    payload={"arc": "trust"},
+                ),
+            )
+        ),
+        idempotency_key="blueprint-first",
+    )
+    revised = await service.propose_blueprint(
+        tenant_id=tenant.id,
+        project_id=project.id,
+        draft=BlueprintDraft(
+            anchors=(
+                BlueprintAnchorDraft(
+                    id="character:lin",
+                    kind="character",
+                    name="Lin",
+                    payload={"arc": "acceptance"},
+                ),
+                BlueprintAnchorDraft(
+                    id="arc:main",
+                    kind="arc",
+                    name="The cost of remembering",
+                ),
+            )
+        ),
+        idempotency_key="blueprint-revised",
+        revision_feedback="Add a complete dramatic arc.",
+    )
+
+    async with database.session() as session:
+        persisted_first = await session.get(ScriptBlueprintCandidateModel, first.id)
+        persisted_revised = await session.get(ScriptBlueprintCandidateModel, revised.id)
+        assert persisted_first is not None
+        assert persisted_first.status == CandidateStatus.EXPIRED
+        assert persisted_revised is not None
+        assert persisted_revised.status == CandidateStatus.ACTIVE
+        event = (
+            await session.scalars(
+                select(ProjectEventModel).where(
+                    ProjectEventModel.event_key
+                    == f"script:blueprint:propose:{revised.id}"
+                )
+            )
+        ).one()
+        assert event.payload["action"] == "blueprint.revise"
+        assert event.payload["feedback"] == "Add a complete dramatic arc."
+
+
 def document_blocks(action: str = "Lin opens the letter.") -> tuple[ScriptBlock, ...]:
     return (
         ScriptBlock(para_id="p1", type="slugline", text="内景 灯塔 夜"),
@@ -289,9 +357,9 @@ async def test_writer_candidate_adoption_stale_base_format_and_context_pack(scri
     )
     assert {item["id"] for item in pack["anchors"]} == {
         "character:lin",
-        "event:blackout",
         "foreshadow:stamp",
     }
+    assert all(item["id"] != "event:blackout" for item in pack["anchors"])
     assert pack["adopted_scenes"][0]["revision_id"] == second.id
     async with service.database.session() as session:
         decisions = (

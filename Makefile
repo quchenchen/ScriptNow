@@ -13,12 +13,14 @@ setup:  ## 安装后端与前端依赖
 
 dev:  ## 同时启动后端、创作端与管理端
 	@echo "后端 :8000 · 创作端 :5174 · 管理端 :5173"
+	@cd $(BACKEND_DIR) && .venv/bin/alembic upgrade head
 	@(cd $(BACKEND_DIR) && .venv/bin/python -m uvicorn scriptnow.app:app --reload --port 8000) & \
 	 (cd $(FRONTEND_DIR) && npm run dev:creator) & \
 	 (cd $(FRONTEND_DIR) && npm run dev:admin) & \
 	 wait
 
 backend:  ## 只启动后端
+	cd $(BACKEND_DIR) && .venv/bin/alembic upgrade head
 	cd $(BACKEND_DIR) && .venv/bin/python -m uvicorn scriptnow.app:app --reload --port 8000
 
 creator:  ## 只启动创作端

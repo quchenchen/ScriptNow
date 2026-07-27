@@ -81,7 +81,9 @@ class NovelChapterGenerator:
         self.runtime = AgentRuntime(database, settings)
         self.runs = RunCoordinator(database)
         self.events = PersistentRunEventLog(database)
-        self.billing = BillingService(database, enforce_limits=settings.environment == "production")
+        self.billing = BillingService(
+            database, enforce_limits=settings.enforce_agent_budget
+        )
 
     async def generate(
         self,

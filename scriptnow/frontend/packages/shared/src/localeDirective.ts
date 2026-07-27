@@ -1,11 +1,13 @@
 import type { App, DirectiveBinding, ObjectDirective } from 'vue'
 
 import type { Locale } from './i18n'
-import { translateSourceMessage } from './sourceMessages'
+import { translateExactSourceMessage } from './sourceMessages'
 
 const attributes = ['aria-label', 'placeholder', 'title']
 const authoredText = new WeakMap<Node, string>()
 const authoredAttributes = new WeakMap<Element, Map<string, string>>()
+const renderedText = new WeakMap<Node, string>()
+const renderedAttributes = new WeakMap<Element, Map<string, string>>()
 const containsHan = (value: string) => /\p{Script=Han}/u.test(value)
 const protectedContent = [
   '[data-i18n-skip]',
@@ -21,7 +23,7 @@ const protectedContent = [
 ].join(',')
 
 function translate(value: string, locale: Locale): string {
-  if (locale === 'en-US') return translateSourceMessage(value)
+  if (locale === 'en-US') return translateExactSourceMessage(value)
   return value
 }
 
@@ -29,10 +31,15 @@ function localizeNode(node: Node, locale: Locale) {
   const owner = node instanceof Element ? node : node.parentElement
   if (owner?.closest(protectedContent)) return
   if (node.nodeType === Node.TEXT_NODE && node.textContent?.trim()) {
-    if (containsHan(node.textContent)) authoredText.set(node, node.textContent)
+    const current = node.textContent
+    if (current !== renderedText.get(node)) {
+      if (containsHan(current)) authoredText.set(node, current)
+      else authoredText.delete(node)
+    }
     const source = authoredText.get(node)
-    const translated = locale === 'zh-CN' && source ? source : translate(source ?? node.textContent, locale)
-    if (translated !== node.textContent) node.textContent = translated
+    const translated = locale === 'zh-CN' && source ? source : translate(source ?? current, locale)
+    renderedText.set(node, translated)
+    if (translated !== current) node.textContent = translated
     return
   }
   if (!(node instanceof Element)) return
@@ -44,9 +51,18 @@ function localizeNode(node: Node, locale: Locale) {
       sources = new Map()
       authoredAttributes.set(node, sources)
     }
-    if (containsHan(value)) sources.set(attribute, value)
+    let rendered = renderedAttributes.get(node)
+    if (!rendered) {
+      rendered = new Map()
+      renderedAttributes.set(node, rendered)
+    }
+    if (value !== rendered.get(attribute)) {
+      if (containsHan(value)) sources.set(attribute, value)
+      else sources.delete(attribute)
+    }
     const source = sources.get(attribute)
     const translated = locale === 'zh-CN' && source ? source : translate(source ?? value, locale)
+    rendered.set(attribute, translated)
     if (translated !== value) node.setAttribute(attribute, translated)
   }
   for (const child of node.childNodes) localizeNode(child, locale)

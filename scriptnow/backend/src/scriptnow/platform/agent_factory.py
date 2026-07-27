@@ -54,6 +54,7 @@ class AgentFactory:
         selected_model_id: str | None = None,
         stage_override: str | None = None,
         explicit_skill_keys: tuple[str, ...] = (),
+        skills_enabled: bool = True,
     ) -> RuntimeConfig:
         async with self.database.session() as session:
             existing = (
@@ -181,7 +182,7 @@ class AgentFactory:
                     stage=stage,
                     explicit_skill_keys=explicit_skill_keys,
                 )
-                if creative_profile is not None
+                if creative_profile is not None and skills_enabled
                 else None
             )
             selected_skills = (
@@ -254,6 +255,82 @@ class AgentFactory:
             session.add(record)
             await session.flush()
             return RuntimeConfig(record.id, fingerprint, dict(values))
+
+    async def preview_for_tenant(
+        self,
+        *,
+        tenant_id: str,
+        role_key: str,
+        medium: str,
+        direction: dict[str, object],
+        stage: str,
+    ) -> RuntimeConfig:
+        """Resolve an auditable, non-persistent config for pre-project creative assistance."""
+        if medium not in {"novel", "script"}:
+            raise RuntimeConfigError("creative preview only supports novel or script")
+        async with self.database.session() as session:
+            tenant = await session.get(TenantModel, tenant_id)
+            if tenant is None:
+                raise RuntimeConfigError("tenant does not exist")
+            tenant_tier = (
+                await session.scalars(select(TierModel).where(TierModel.code == tenant.tier))
+            ).one_or_none()
+            template = (
+                await session.scalars(
+                    select(AgentTemplateVersionModel)
+                    .where(
+                        AgentTemplateVersionModel.role_key == role_key,
+                        AgentTemplateVersionModel.published.is_(True),
+                    )
+                    .order_by(AgentTemplateVersionModel.version.desc())
+                )
+            ).first()
+            if tenant_tier is None or template is None:
+                raise RuntimeConfigError("runtime configuration is incomplete")
+            model = await session.get(LanguageModelModel, template.default_model_id)
+            provider = await session.get(ProviderModel, model.provider_id) if model else None
+            minimum = await session.get(TierModel, model.min_tier_id) if model else None
+            if (
+                model is None
+                or not model.enabled
+                or provider is None
+                or provider.status != ProviderStatus.CONNECTED
+                or minimum is None
+                or tenant_tier.rank < minimum.rank
+            ):
+                raise RuntimeConfigError("model is not available for tenant")
+            profile = CreativeProfile.from_direction(medium=medium, direction=direction)
+            plan = SkillResolver(self.skill_catalog).resolve(
+                profile=profile,
+                role_key=role_key,
+                stage=stage,
+            )
+            selected_skills = tuple(selection.skill for selection in plan.selections)
+            values: dict[str, object] = {
+                "role_key": role_key,
+                "display_name": role_key,
+                "soul": template.soul,
+                "model_id": model.id,
+                "model_key": model.key,
+                "model_version": model.version,
+                "provider_id": provider.id,
+                "provider_key": provider.key,
+                "agentscope_class": model.agentscope_class,
+                "skill_domain": medium,
+                "skill_keys": [item.name for item in selected_skills],
+                "skill_digests": {item.name: item.digest for item in selected_skills},
+                "creative_profile": profile.as_dict(),
+                "skill_plan": plan.as_dict(),
+                "pricing": {
+                    "input_per_million": str(model.input_price_per_million),
+                    "output_per_million": str(model.output_price_per_million),
+                },
+            }
+            canonical = json.dumps(
+                values, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+            )
+            fingerprint = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+            return RuntimeConfig("preview", fingerprint, values)
 
     @staticmethod
     async def _approved_source_profile(session, tenant_id: str, project: ProjectModel | None):

@@ -1,5 +1,7 @@
+import json
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Annotated
@@ -20,12 +22,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from scriptnow.platform.agent_factory import AgentFactory, RuntimeConfigError
-from scriptnow.platform.agent_runtime import AgentRuntime, AgentRuntimeResult
+from scriptnow.platform.agent_runtime import AgentRuntime, AgentRuntimeError, AgentRuntimeResult
 from scriptnow.platform.audit import AuditService
 from scriptnow.platform.auth import AuthenticationFailed, AuthService, CsrfFailed
 from scriptnow.platform.auth_api import ACCESS_COOKIE
 from scriptnow.platform.billing import BillingError, BillingService, PaymentRequired
 from scriptnow.platform.config import Settings
+from scriptnow.platform.creative_setup import creative_genre_options
 from scriptnow.platform.database import Database
 from scriptnow.platform.models import (
     AgentTemplateVersionModel,
@@ -34,6 +37,7 @@ from scriptnow.platform.models import (
     ProjectModel,
     ProjectRunModel,
     ProjectSource,
+    ProjectWorkflow,
     ProviderModel,
     ProviderStatus,
     RunStatus,
@@ -67,7 +71,32 @@ class CreateProjectRequest(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     medium: ProjectMedium
     source_mode: ProjectSource = ProjectSource.ORIGINAL
+    workflow_kind: ProjectWorkflow | None = None
     direction: dict[str, str] = Field(default_factory=dict)
+
+
+class DeleteProjectRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    confirmation_name: str = Field(min_length=1, max_length=200)
+
+
+class InspirationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    medium: ProjectMedium
+    seed: str = Field(min_length=2, max_length=1000)
+    language: str = Field(default="zh-CN", min_length=2, max_length=20)
+    genres: list[str] = Field(default_factory=list, max_length=12)
+
+
+class InspirationResponse(BaseModel):
+    title: str
+    premise: str
+    tone: str
+    world_setting: str
+    genre_suggestions: list[str]
+    questions: list[str]
+    model_key: str
+    skill_keys: list[str]
 
 
 class ProjectResponse(BaseModel):
@@ -75,6 +104,7 @@ class ProjectResponse(BaseModel):
     name: str
     medium: str
     source_mode: str
+    workflow_kind: str
     direction: dict[str, object]
 
 
@@ -212,7 +242,7 @@ def create_core_router(
     router = APIRouter(tags=["platform"])
     runs = RunCoordinator(database)
     events = PersistentRunEventLog(database)
-    billing = BillingService(database, enforce_limits=settings.environment == "production")
+    billing = BillingService(database, enforce_limits=settings.enforce_agent_budget)
     factory = AgentFactory(database)
     audit = AuditService(database)
     workspace = LocalWorkspaceService(
@@ -338,6 +368,88 @@ def create_core_router(
         except AuthenticationFailed as error:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "authentication required") from error
 
+    @router.get("/creative-options/{medium}")
+    async def get_creative_options(
+        medium: ProjectMedium,
+        access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
+    ) -> dict[str, object]:
+        await read_context(access_token)
+        if str(medium) not in {"novel", "script"}:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "unsupported medium")
+        return {
+            "medium": str(medium),
+            "genres": creative_genre_options(factory.skill_catalog, medium=str(medium)),
+            "catalog_fingerprint": factory.skill_catalog.fingerprint(
+                domain=str(medium), role_key="director"
+            ),
+        }
+
+    @router.post("/creative-inspiration", response_model=InspirationResponse)
+    async def create_inspiration(
+        body: InspirationRequest,
+        access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
+        csrf_token: Annotated[str | None, Header(alias="X-CSRF-Token")] = None,
+    ) -> InspirationResponse:
+        context = await action_context(access_token, csrf_token)
+        if str(body.medium) not in {"novel", "script"}:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "unsupported medium")
+        try:
+            result = await agent_runtime.inspire(
+                tenant_id=str(context.tenant_id),
+                medium=str(body.medium),
+                seed=body.seed.strip(),
+                language=body.language,
+                genres=tuple(body.genres),
+            )
+            raw = result.text.strip()
+            if raw.startswith("```"):
+                raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+            payload = json.loads(raw)
+            if not isinstance(payload, dict):
+                raise ValueError("response is not an object")
+            resolved = await factory.preview_for_tenant(
+                tenant_id=str(context.tenant_id),
+                role_key="director",
+                medium=str(body.medium),
+                direction={"language": body.language, "genres": body.genres},
+                stage="ideation",
+            )
+            response = InspirationResponse(
+                title=str(payload.get("title") or "").strip(),
+                premise=str(payload.get("premise") or "").strip(),
+                tone=str(payload.get("tone") or "").strip(),
+                world_setting=str(payload.get("world_setting") or "").strip(),
+                genre_suggestions=[
+                    str(value).strip()
+                    for value in payload.get("genre_suggestions", [])
+                    if str(value).strip()
+                ],
+                questions=[
+                    str(value).strip()
+                    for value in payload.get("questions", [])[:3]
+                    if str(value).strip()
+                ],
+                model_key=result.model_key,
+                skill_keys=list(resolved.values.get("skill_keys") or []),
+            )
+            if not response.premise:
+                raise ValueError("premise is empty")
+        except (AgentRuntimeError, RuntimeConfigError, ValueError, json.JSONDecodeError) as error:
+            raise HTTPException(
+                status.HTTP_502_BAD_GATEWAY,
+                "这次没有生成完整的创作方向。你的想法仍在，可以重新生成。",
+            ) from error
+        await audit.record(
+            tenant_id=str(context.tenant_id),
+            actor_id=str(context.user_id),
+            action="creative.inspiration",
+            resource_type="creative_preview",
+            resource_id=result.config_fingerprint,
+            outcome="succeeded",
+            correlation_id=result.config_fingerprint,
+        )
+        return response
+
     @router.post("/projects", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
     async def create_project(
         body: CreateProjectRequest,
@@ -346,6 +458,19 @@ def create_core_router(
     ) -> ProjectResponse:
         context = await action_context(access_token, csrf_token)
         direction = body.direction or {}
+        workflow_kind = body.workflow_kind or (
+            ProjectWorkflow.ADAPTATION
+            if body.source_mode == ProjectSource.ADAPTATION
+            else ProjectWorkflow.ORIGINAL
+        )
+        if (
+            workflow_kind == ProjectWorkflow.CROSS_CULTURAL_RECREATION
+            and body.medium != ProjectMedium.NOVEL
+        ):
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "故事归化当前仅支持小说作品",
+            )
         for key in ("volume_one", "volume_two", "chapter_target_words", "target_length"):
             if key in direction and not isinstance(direction[key], str):
                 direction[key] = str(direction[key])
@@ -355,6 +480,7 @@ def create_core_router(
                 name=body.name.strip(),
                 medium=body.medium,
                 source_mode=body.source_mode,
+                workflow_kind=workflow_kind,
                 direction=direction,
             )
             session.add(project)
@@ -366,6 +492,7 @@ def create_core_router(
                 name=project.name,
                 medium=str(project.medium),
                 source_mode=str(project.source_mode),
+                workflow_kind=str(project.workflow_kind),
                 direction=dict(project.direction),
             )
         await audit.record(
@@ -388,7 +515,10 @@ def create_core_router(
             projects = (
                 await session.scalars(
                     select(ProjectModel)
-                    .where(ProjectModel.tenant_id == str(context.tenant_id))
+                    .where(
+                        ProjectModel.tenant_id == str(context.tenant_id),
+                        ProjectModel.deleted_at.is_(None),
+                    )
                     .order_by(ProjectModel.created_at)
                 )
             ).all()
@@ -398,10 +528,54 @@ def create_core_router(
                     name=item.name,
                     medium=str(item.medium),
                     source_mode=str(item.source_mode),
+                    workflow_kind=str(item.workflow_kind),
                     direction=dict(item.direction),
                 )
                 for item in projects
             ]
+
+    @router.delete("/projects/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
+    async def delete_project(
+        project_id: str,
+        body: DeleteProjectRequest,
+        access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
+        csrf_token: Annotated[str | None, Header(alias="X-CSRF-Token")] = None,
+    ) -> None:
+        context = await action_context(access_token, csrf_token)
+        tenant_id = str(context.tenant_id)
+        async with database.session() as session:
+            project = await _tenant_project(session, tenant_id, project_id)
+            if body.confirmation_name != project.name:
+                raise HTTPException(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    "输入的项目名称不一致，未执行删除",
+                )
+            active_run = (
+                await session.scalars(
+                    select(ProjectRunModel.id).where(
+                        ProjectRunModel.project_id == project_id,
+                        ProjectRunModel.status.in_(
+                            (RunStatus.QUEUED, RunStatus.RUNNING, RunStatus.WAITING)
+                        ),
+                    )
+                )
+            ).first()
+            if active_run is not None:
+                raise HTTPException(
+                    status.HTTP_409_CONFLICT,
+                    "项目仍有 Agent 任务在运行，请先取消或等待任务结束",
+                )
+            project.deleted_at = datetime.now(UTC)
+        await audit.record(
+            tenant_id=tenant_id,
+            actor_id=str(context.user_id),
+            action="project.delete",
+            resource_type="project",
+            resource_id=project_id,
+            outcome="succeeded",
+            correlation_id=project_id,
+            details={"mode": "recoverable"},
+        )
 
     @router.get("/account/summary", response_model=AccountSummaryResponse)
     async def account_summary(
@@ -447,9 +621,9 @@ def create_core_router(
         context = await read_context(access_token)
         async with database.session() as session:
             tenant = await session.get(TenantModel, str(context.tenant_id))
-            project = await session.get(ProjectModel, project_id)
-            if tenant is None or project is None or project.tenant_id != tenant.id:
-                raise HTTPException(status.HTTP_404_NOT_FOUND, "project not found")
+            if tenant is None:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "tenant not found")
+            await _tenant_project(session, tenant.id, project_id)
             current_tier = (
                 await session.scalars(select(TierModel).where(TierModel.code == tenant.tier))
             ).one_or_none()
@@ -1346,7 +1520,7 @@ async def _tenant(database: Database, tenant_id: str) -> TenantModel:
 
 async def _tenant_project(session: AsyncSession, tenant_id: str, project_id: str) -> ProjectModel:
     project = await session.get(ProjectModel, project_id)
-    if project is None or project.tenant_id != tenant_id:
+    if project is None or project.tenant_id != tenant_id or project.deleted_at is not None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "project not found")
     return project
 

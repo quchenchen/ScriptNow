@@ -5,6 +5,9 @@ from fastapi import FastAPI
 from scriptnow.dock.api import create_dock_router
 from scriptnow.novel.api import create_novel_router
 from scriptnow.novel.contracts import NOVEL_BLOCK_TYPES
+from scriptnow.novel.cross_cultural_recreation.api import (
+    create_cross_cultural_recreation_router,
+)
 from scriptnow.novel.project import initialize_novel_project
 from scriptnow.platform.admin_api import create_admin_router
 from scriptnow.platform.auth import AuthService
@@ -55,6 +58,11 @@ def create_app(
     )
     app.include_router(create_script_router(resolved_database, auth, resolved_settings))
     app.include_router(create_novel_router(resolved_database, auth, resolved_settings))
+    app.include_router(
+        create_cross_cultural_recreation_router(
+            resolved_database, auth, resolved_settings
+        )
+    )
     app.include_router(create_narrative_graph_router(resolved_database, auth, resolved_settings))
     app.include_router(create_review_router(resolved_database, auth))
     app.include_router(create_dock_router(resolved_database, auth, resolved_settings))

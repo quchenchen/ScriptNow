@@ -289,7 +289,7 @@ async def test_admin_usage_aggregates_price_snapshots_and_trace_links(admin_api)
             idempotency_key="admin-usage-reservation",
             tier="plus",
             period_key="2026-07",
-            monthly_reserved=500,
+            monthly_reserved=200,
             credits_reserved=0,
             actual_tokens=300,
             status="finalized",
@@ -352,6 +352,10 @@ async def test_admin_usage_aggregates_price_snapshots_and_trace_links(admin_api)
     assert item["trace_url"] == "http://studio.test/traces/trace-admin-usage"
     assert item["input_price_per_million"] == 2.0
     assert item["output_price_per_million"] == 8.0
+    assert item["reserved_tokens"] == 200
+    assert item["budget_variance_tokens"] == 100
+    assert item["budget_utilization"] == 1.5
+    assert item["budget_status"] == "soft_exceeded"
     assert item["is_mock"] is False
 
 

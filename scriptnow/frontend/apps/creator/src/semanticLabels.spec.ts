@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { anchorDisplayLabel, categoryDisplayLabel, fieldDisplayLabel } from './semanticLabels'
+import {
+  anchorDisplayLabel,
+  categoryDisplayLabel,
+  fieldDisplayLabel,
+  scriptBlueprintCategory,
+} from './semanticLabels'
 
 describe('creator semantic labels', () => {
   it('turns stable blueprint keys into creator-facing labels', () => {
@@ -14,5 +19,12 @@ describe('creator semantic labels', () => {
   it('keeps unknown extension keys visible instead of dropping information', () => {
     expect(anchorDisplayLabel('custom:signal', 'custom')).toBe('custom')
     expect(fieldDisplayLabel('custom_field')).toBe('custom_field')
+  })
+
+  it('maps historic provider blueprint kinds to the stable script categories', () => {
+    expect(scriptBlueprintCategory('world_rule')).toBe('worldview')
+    expect(scriptBlueprintCategory('relationship')).toBe('character')
+    expect(scriptBlueprintCategory('key-event')).toBe('event')
+    expect(scriptBlueprintCategory('setup')).toBe('foreshadow')
   })
 })

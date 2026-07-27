@@ -1,5 +1,6 @@
 export type Medium = 'script' | 'novel' | 'translation'
 export type SourceMode = 'original' | 'adaptation'
+export type WorkflowKind = 'original' | 'adaptation' | 'cross_cultural_recreation'
 
 export interface Session {
   tenant_id: string
@@ -11,6 +12,7 @@ export interface Project {
   name: string
   medium: Medium
   source_mode: SourceMode
+  workflow_kind: WorkflowKind
   direction: Record<string, string>
 }
 

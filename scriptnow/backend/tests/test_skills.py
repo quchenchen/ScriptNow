@@ -17,12 +17,43 @@ SKILLS_ROOT = Path(__file__).parents[1] / "skills"
 def test_catalog_is_valid_and_keeps_creative_domains_isolated() -> None:
     catalog = SkillCatalog(SKILLS_ROOT)
     all_skills = catalog.scan()
-    assert {item.domain for item in all_skills} == {"platform", "novel", "script"}
+    assert {item.domain for item in all_skills} >= {"platform", "novel", "script"}
     novel = {item.name for item in catalog.for_domain("novel")}
     script = {item.name for item in catalog.for_domain("script")}
     assert "novel-write" in novel and "script-write" not in novel
     assert "script-write" in script and "novel-write" not in script
     assert "project-diagnose" in novel & script
+
+
+def test_editor_skills_can_coexist_without_entering_creative_domains(tmp_path: Path) -> None:
+    documents = {
+        "platform/project-diagnose": (
+            "---\nname: project-diagnose\ndescription: Diagnose\n---\nDiagnose."
+        ),
+        "script/script-write": "---\nname: script-write\ndescription: Write script\n---\nWrite.",
+        "novel/novel-write": "---\nname: novel-write\ndescription: Write novel\n---\nWrite.",
+        "editor/editorial-source-selection": (
+            "---\nname: editorial-source-selection\n"
+            "description: Select editorial sources\n---\nSelect sources."
+        ),
+    }
+    for relative, content in documents.items():
+        path = tmp_path / relative / "SKILL.md"
+        path.parent.mkdir(parents=True)
+        path.write_text(content, encoding="utf-8")
+
+    catalog = SkillCatalog(tmp_path)
+
+    assert {item.name for item in catalog.for_domain("editor")} == {
+        "editorial-source-selection",
+        "project-diagnose",
+    }
+    assert "editorial-source-selection" not in {
+        item.name for item in catalog.for_domain("script")
+    }
+    assert "editorial-source-selection" not in {
+        item.name for item in catalog.for_domain("novel")
+    }
 
 
 @pytest.mark.asyncio
@@ -170,6 +201,52 @@ def test_structure_selection_mounts_the_domain_structure_skill() -> None:
     )
     assert selection.layer == "style_pack"
     assert "结构匹配：eight-sequence" in selection.reasons
+
+
+@pytest.mark.parametrize(
+    ("script_format", "expected", "excluded"),
+    [
+        ("chinese", "script-format-chinese", "script-format-hollywood"),
+        ("hollywood", "script-format-hollywood", "script-format-chinese"),
+    ],
+)
+def test_script_writer_mounts_only_the_selected_delivery_format(
+    script_format: str, expected: str, excluded: str
+) -> None:
+    profile = CreativeProfile.from_direction(
+        medium="script",
+        direction={
+            "language": "zh-CN" if script_format == "chinese" else "en-US",
+            "script_format": script_format,
+        },
+    )
+
+    plan = SkillResolver(SkillCatalog(SKILLS_ROOT)).resolve(
+        profile=profile, role_key="writer", stage="writing"
+    )
+    selected = {item.skill.name for item in plan.selections}
+
+    assert profile.formats == (script_format,)
+    assert profile.as_dict()["formats"] == [script_format]
+    assert {"script-write", expected} <= selected
+    assert excluded not in selected
+    format_selection = next(item for item in plan.selections if item.skill.name == expected)
+    assert format_selection.layer == "style_pack"
+    assert f"格式匹配：{script_format}" in format_selection.reasons
+
+
+def test_script_reviewer_uses_same_locked_format_as_writer() -> None:
+    profile = CreativeProfile.from_direction(
+        medium="script", direction={"script_format": "hollywood"}
+    )
+
+    plan = SkillResolver(SkillCatalog(SKILLS_ROOT)).resolve(
+        profile=profile, role_key="reviewer", stage="review"
+    )
+    selected = {item.skill.name for item in plan.selections}
+
+    assert {"script-review", "script-format-hollywood"} <= selected
+    assert "script-format-chinese" not in selected
 
 
 def test_gothic_werewolf_project_mounts_voice_specific_writer_and_reviewer() -> None:
@@ -358,6 +435,93 @@ def test_novel_optional_skills_require_executable_admission_baseline() -> None:
         assert any("positive" in case or "explicit" in case for case in skill.admission_cases)
         assert any("negative" in case for case in skill.admission_cases)
         assert any("regression" in case for case in skill.admission_cases)
+
+
+def test_script_skills_require_executable_admission_baseline() -> None:
+    catalog = SkillCatalog(SKILLS_ROOT)
+    routed = [skill for skill in catalog.for_domain("script") if skill.roles]
+
+    assert {skill.name for skill in routed} == {
+        "script-develop",
+        "script-format-chinese",
+        "script-format-hollywood",
+        "script-review",
+        "script-storymap",
+        "script-structure-planning",
+        "script-write",
+    }
+    for skill in routed:
+        assert skill.admission_status == "admitted", skill.name
+        assert skill.admission_baseline == "script-skill-baseline-v1", skill.name
+        assert len(skill.admission_cases) == 3, skill.name
+        assert "positive" in skill.admission_cases[0], skill.name
+        assert "negative" in skill.admission_cases[1], skill.name
+        assert skill.admission_cases[2].endswith("regression"), skill.name
+        assert skill.stages, skill.name
+
+
+def test_unadmitted_script_skill_cannot_be_auto_or_explicitly_mounted(
+    tmp_path: Path,
+) -> None:
+    documents = {
+        "platform/project-diagnose": (
+            "---\nname: project-diagnose\ndescription: Diagnose\n---\nDiagnose."
+        ),
+        "script/script-write": (
+            "---\nname: script-write\ndescription: Write\n"
+            "metadata:\n  scriptnow:\n    roles: [writer]\n    stages: [writing]\n"
+            "---\nWrite."
+        ),
+        "script/candidate-format": (
+            "---\nname: candidate-format\ndescription: Candidate\n"
+            "metadata:\n  scriptnow:\n    roles: [writer]\n    stages: [writing]\n"
+            "    formats: [chinese]\n---\nCandidate."
+        ),
+    }
+    for relative, content in documents.items():
+        directory = tmp_path / relative
+        directory.mkdir(parents=True)
+        (directory / "SKILL.md").write_text(content, encoding="utf-8")
+    (tmp_path / "admission.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "domains": {
+                    "script": {
+                        "script-write": {
+                            "status": "admitted",
+                            "baseline": "test-v1",
+                            "cases": ["positive", "negative", "regression"],
+                        },
+                        "candidate-format": {
+                            "status": "incubating",
+                            "baseline": "test-v1",
+                            "cases": [],
+                        },
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    resolver = SkillResolver(SkillCatalog(tmp_path))
+    profile = CreativeProfile.from_direction(
+        medium="script", direction={"script_format": "chinese"}
+    )
+
+    automatic = resolver.resolve(profile=profile, role_key="writer", stage="writing")
+    assert "candidate-format" not in {item.skill.name for item in automatic.selections}
+    with pytest.raises(SkillCatalogError, match="has not passed admission"):
+        resolver.resolve(
+            profile=profile,
+            role_key="writer",
+            stage="writing",
+            explicit_skill_keys=("candidate-format",),
+        )
+    with pytest.raises(SkillCatalogError, match="unadmitted skills"):
+        resolver.catalog.loaders_for_plan(
+            domain="script", skill_keys=["candidate-format"]
+        )
 
 
 def test_foundational_novel_review_skill_has_an_admission_record() -> None:

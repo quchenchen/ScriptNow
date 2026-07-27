@@ -1,10 +1,12 @@
 ---
 name: script-structure-planning
-description: Apply the screenplay structure selected in CreativeProfile with filmable causality, short-form compression, and explicit migration impacts.
-roles: [architect]
-stages: [planning]
-structures: [hero-journey, three-act, five-act, save-the-cat, eight-sequence, harmon-circle, freytag, custom]
-selection_priority: 70
+description: Use when a screenplay project selects or migrates a recognized narrative structure and needs its dramatic functions mapped to filmable beats without forcing a template or overwriting accepted material.
+metadata:
+  scriptnow:
+    roles: [architect]
+    stages: [planning]
+    structures: [hero-journey, three-act, five-act, save-the-cat, eight-sequence, harmon-circle, freytag, custom]
+    selection_priority: 70
 ---
 
 # Apply a screenplay structure

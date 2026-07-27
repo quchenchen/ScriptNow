@@ -57,6 +57,53 @@ describe('whole-application interface localization', () => {
     expect(root.textContent).toBe('人物关系与创作语言')
   })
 
+  it('does not translate catalogue fragments inside author-authored text', () => {
+    const root = document.createElement('div')
+    root.textContent = '回声诊所·剧本全流程验收：让复制人格继续活下去，不可删除全部记录。'
+    document.body.append(root)
+    mounted.push(root)
+
+    const app = createApp({ render: () => null })
+    const directive = installLocaleDirective(app)
+    directive?.mounted?.(root, { value: 'en-US' } as never, null as never, null as never)
+
+    expect(root.textContent).toBe('回声诊所·剧本全流程验收：让复制人格继续活下去，不可删除全部记录。')
+  })
+
+  it('restores authored Chinese after an incomplete English source translation', async () => {
+    const root = document.createElement('div')
+    root.textContent = '灵感搭档暂时没有形成完整候选，请保留原始想法后重试。'
+    document.body.append(root)
+    mounted.push(root)
+
+    const app = createApp({ render: () => null })
+    const directive = installLocaleDirective(app)
+    directive?.mounted?.(root, { value: 'en-US' } as never, null as never, null as never)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(root.textContent).not.toBe('灵感搭档暂时没有形成完整候选，请保留原始想法后重试。')
+
+    directive?.updated?.(root, { value: 'zh-CN' } as never, null as never, null as never)
+    expect(root.textContent).toBe('灵感搭档暂时没有形成完整候选，请保留原始想法后重试。')
+  })
+
+  it('does not overwrite symbolic i18n output with a cached Chinese source fragment', async () => {
+    const root = document.createElement('div')
+    root.textContent = '项目仪表盘'
+    document.body.append(root)
+    mounted.push(root)
+
+    const app = createApp({ render: () => null })
+    const directive = installLocaleDirective(app)
+    directive?.mounted?.(root, { value: 'zh-CN' } as never, null as never, null as never)
+
+    root.textContent = 'Project dashboard'
+    directive?.updated?.(root, { value: 'en-US' } as never, null as never, null as never)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(root.textContent).toBe('Project dashboard')
+  })
+
   it('keeps a substantial shared source catalogue for dense workflow surfaces', () => {
     expect(Object.keys(sourceMessages).length).toBeGreaterThan(350)
     expect(sourceMessages['故事时间线']).toBe('Story timeline')

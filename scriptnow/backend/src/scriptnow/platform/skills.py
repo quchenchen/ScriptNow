@@ -12,7 +12,11 @@ import frontmatter
 from agentscope.skill import LocalSkillLoader
 
 SKILL_NAME = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
-ALLOWED_DOMAINS = frozenset({"platform", "novel", "script"})
+# Product domains stay isolated at resolution time.  Editor skills support
+# translation/localisation workflows and may coexist in the shared catalog,
+# but are never mounted into novel or script agents unless that domain is
+# requested explicitly.
+ALLOWED_DOMAINS = frozenset({"platform", "novel", "script", "editor"})
 TAG_ALIASES = {
     "奇幻": "fantasy",
     "爱情": "romance",
@@ -68,6 +72,35 @@ TAG_ALIASES = {
     "犯罪": "crime",
     "恐怖": "horror",
     "科幻": "science-fiction",
+    "克苏鲁": "cosmic-horror",
+    "历史古代": "historical-fiction",
+    "历史脑洞": "historical-imagination",
+    "古言": "historical-romance",
+    "多子多福": "family-progression",
+    "女频悬疑": "female-led-mystery",
+    "年代": "era-fiction",
+    "幻想言情": "fantasy-romance",
+    "悬疑灵异": "supernatural-mystery",
+    "悬疑脑洞": "suspense-concept",
+    "抗战谍战": "resistance-espionage",
+    "替身文": "substitute-romance",
+    "民国言情": "republican-romance",
+    "游戏体育": "gaming-sports",
+    "狗血言情": "melodramatic-romance",
+    "现实题材": "realist",
+    "现言脑洞": "contemporary-romance-concept",
+    "电竞": "esports",
+    "直播文": "livestream",
+    "知乎短篇": "zhihu-short",
+    "种田": "farming",
+    "系统流": "system-progression",
+    "职场婚恋": "workplace-romance",
+    "西幻": "western-fantasy",
+    "豪门总裁": "billionaire-romance",
+    "都市异能": "urban-power",
+    "青春甜宠": "youth-sweet-romance",
+    "高武": "high-martial-arts",
+    "黑暗题材": "dark-fiction",
 }
 ROLE_SKILLS: dict[str, tuple[str, ...]] = {
     "director": ("novel-ideate", "script-develop"),
@@ -99,12 +132,16 @@ class SkillDescriptor:
     themes: tuple[str, ...] = ()
     styles: tuple[str, ...] = ()
     structures: tuple[str, ...] = ()
+    formats: tuple[str, ...] = ()
     platforms: tuple[str, ...] = ()
     languages: tuple[str, ...] = ()
     selection_priority: int = 0
     admission_status: str = "legacy"
     admission_baseline: str | None = None
     admission_cases: tuple[str, ...] = ()
+    quality_status: str = "not_measured"
+    benchmark_suite: str | None = None
+    benchmark_report: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,6 +154,7 @@ class CreativeProfile:
     themes: tuple[str, ...]
     styles: tuple[str, ...]
     structures: tuple[str, ...]
+    formats: tuple[str, ...]
     pov: str | None
     audience: str | None
     constraints: tuple[str, ...]
@@ -145,6 +183,7 @@ class CreativeProfile:
             "structures": _direction_tags(
                 direction, "structures", "structure", "narrative_structure"
             ),
+            "formats": _direction_tags(direction, "formats", "format", "script_format"),
             "pov": _optional_text(direction.get("pov")),
             "audience": _optional_text(direction.get("audience")),
             "constraints": _direction_tags(direction, "constraints", "must_keep", "forbidden"),
@@ -164,6 +203,7 @@ class CreativeProfile:
             "themes": list(self.themes),
             "styles": list(self.styles),
             "structures": list(self.structures),
+            "formats": list(self.formats),
             "pov": self.pov,
             "audience": self.audience,
             "constraints": list(self.constraints),
@@ -238,7 +278,7 @@ class SkillResolver:
             if skill.languages and not _language_matches(profile.language, skill.languages):
                 raise SkillCatalogError(f"explicit skill does not support language: {key}")
             if (
-                profile.medium == "novel"
+                self.catalog.admission_enforced_for(profile.medium)
                 and self.catalog.admission_enforced
                 and skill.admission_status != "admitted"
             ):
@@ -253,7 +293,7 @@ class SkillResolver:
             if skill.name in core_names or not skill.roles or role_key not in skill.roles:
                 continue
             if (
-                profile.medium == "novel"
+                self.catalog.admission_enforced_for(profile.medium)
                 and self.catalog.admission_enforced
                 and skill.admission_status != "admitted"
             ):
@@ -322,6 +362,7 @@ def _match_skill(skill: SkillDescriptor, profile: CreativeProfile) -> tuple[int,
         ("主题", set(skill.themes), set(profile.themes), 30),
         ("风格", set(skill.styles), set(profile.styles), 20),
         ("结构", set(skill.structures), set(profile.structures), 30),
+        ("格式", set(skill.formats), set(profile.formats), 60),
     )
     score = 0
     reasons: list[str] = []
@@ -371,6 +412,9 @@ class SkillCatalog:
             raise SkillCatalogError(f"unsupported skill domain: {domain}")
         return tuple(item for item in self.scan() if item.domain in {"platform", domain})
 
+    def admission_enforced_for(self, domain: str) -> bool:
+        return bool(self._admission_registry.get(domain))
+
     def detail(self, name: str) -> tuple[SkillDescriptor, str]:
         descriptor = next((item for item in self.scan() if item.name == name), None)
         if descriptor is None:
@@ -413,12 +457,16 @@ class SkillCatalog:
                 themes=validated.themes,
                 styles=validated.styles,
                 structures=validated.structures,
+                formats=validated.formats,
                 platforms=validated.platforms,
                 languages=validated.languages,
                 selection_priority=validated.selection_priority,
                 admission_status=validated.admission_status,
                 admission_baseline=validated.admission_baseline,
                 admission_cases=validated.admission_cases,
+                quality_status=validated.quality_status,
+                benchmark_suite=validated.benchmark_suite,
+                benchmark_report=validated.benchmark_report,
             )
         finally:
             if temporary_path is not None and temporary_path.exists():
@@ -446,7 +494,7 @@ class SkillCatalog:
         unadmitted = [
             key
             for key in requested
-            if domain == "novel"
+            if self.admission_enforced_for(domain)
             and self.admission_enforced
             and allowed[key].roles
             and allowed[key].admission_status != "admitted"
@@ -538,6 +586,7 @@ class SkillCatalog:
             themes=_tag_values(product_value("themes")),
             styles=_tag_values(product_value("styles")),
             structures=_tag_values(product_value("structures")),
+            formats=_tag_values(product_value("formats")),
             platforms=_tag_values(product_value("platforms")),
             languages=tuple(
                 _normalise_language(item) for item in _tag_values(product_value("languages"))
@@ -548,6 +597,13 @@ class SkillCatalog:
                 str(admission["baseline"]) if admission.get("baseline") else None
             ),
             admission_cases=tuple(str(item) for item in admission.get("cases") or []),
+            quality_status=str(admission.get("quality_status") or "not_measured"),
+            benchmark_suite=(
+                str(admission["benchmark_suite"]) if admission.get("benchmark_suite") else None
+            ),
+            benchmark_report=(
+                str(admission["benchmark_report"]) if admission.get("benchmark_report") else None
+            ),
         )
 
     def _read_admission_registry(self) -> dict[str, dict[str, dict[str, object]]]:

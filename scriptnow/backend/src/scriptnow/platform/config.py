@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -35,6 +36,14 @@ class Settings(BaseSettings):
     agent_runtime_timeout_seconds: float = Field(default=600, ge=0.01, le=3_600)
     agent_runtime_default_max_iters: int = Field(default=12, ge=1, le=100)
     agent_runtime_hard_max_iters: int = Field(default=32, ge=1, le=100)
+    agent_budget_mode: Literal["observe", "enforce"] = "observe"
+    dock_reserved_tokens: int = Field(default=8_192, ge=1)
+    novel_ideation_reserved_tokens: int = Field(default=24_000, ge=1)
+    novel_blueprint_reserved_tokens: int = Field(default=24_000, ge=1)
+    novel_story_map_min_reserved_tokens: int = Field(default=12_000, ge=1)
+    novel_story_map_max_reserved_tokens: int = Field(default=48_000, ge=1)
+    novel_story_map_tokens_per_chapter: int = Field(default=1_200, ge=1)
+    work_package_reserved_tokens: int = Field(default=16_000, ge=1)
     translation_min_reserved_tokens: int = Field(default=4_000, ge=1)
     translation_max_reserved_tokens: int = Field(default=200_000, ge=1)
     translation_token_reserve_ratio: float = Field(default=1.5, ge=0.1, le=10)
@@ -50,6 +59,11 @@ class Settings(BaseSettings):
             raise ValueError("translation token reservation range is invalid")
         if self.novel_writer_min_reserved_tokens > self.novel_writer_max_reserved_tokens:
             raise ValueError("novel writer token reservation range is invalid")
+        if (
+            self.novel_story_map_min_reserved_tokens
+            > self.novel_story_map_max_reserved_tokens
+        ):
+            raise ValueError("novel story map token reservation range is invalid")
         if self.environment == "production":
             if self.access_token_secret == "development-only-change-me":
                 raise ValueError("production access token secret must be configured")
@@ -58,6 +72,10 @@ class Settings(BaseSettings):
             if not self.cookie_secure:
                 raise ValueError("production cookies must be secure")
         return self
+
+    @property
+    def enforce_agent_budget(self) -> bool:
+        return self.agent_budget_mode == "enforce"
 
 
 @lru_cache

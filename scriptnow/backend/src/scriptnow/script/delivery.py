@@ -211,8 +211,8 @@ async def _project(session, tenant_id: str, project_id: str) -> ProjectModel:
 def _ordered_scenes(episodes, scope, by_scene) -> list[ScriptExportScene]:
     selected = set(scope)
     result = []
-    for episode in episodes:
-        for scene in episode.get("scenes", []):
+    for episode_index, episode in enumerate(episodes, 1):
+        for scene_index, scene in enumerate(episode.get("scenes", []), 1):
             scene_id = str(scene["id"])
             if scene_id in selected:
                 revision = by_scene[scene_id]
@@ -221,6 +221,8 @@ def _ordered_scenes(episodes, scope, by_scene) -> list[ScriptExportScene]:
                         episode_title=str(episode["title"]),
                         scene_title=str(scene["title"]),
                         blocks=tuple(ScriptBlock.model_validate(item) for item in revision.blocks),
+                        episode_ordinal=int(episode.get("ordinal") or episode_index),
+                        scene_ordinal=int(scene.get("ordinal") or scene_index),
                     )
                 )
     if len(result) != len(selected):

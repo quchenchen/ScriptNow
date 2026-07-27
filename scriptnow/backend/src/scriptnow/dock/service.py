@@ -36,10 +36,11 @@ class DockError(RuntimeError):
 class DockService:
     def __init__(self, database: Database, settings: Settings) -> None:
         self.database = database
+        self.settings = settings
         self.runs = RunCoordinator(database)
         self.events = PersistentRunEventLog(database)
         self.billing = BillingService(
-            database, enforce_limits=settings.environment == "production"
+            database, enforce_limits=settings.enforce_agent_budget
         )
         self.runtime = AgentRuntime(database, settings)
 
@@ -98,7 +99,7 @@ class DockService:
             run_id=run.id,
             idempotency_key=f"dock:{idempotency_key}",
             tier=tenant.tier,
-            max_tokens=8_192,
+            max_tokens=self.settings.dock_reserved_tokens,
         )
         await self.runs.transition(tenant_id=tenant_id, run_id=run.id, target=RunStatus.RUNNING)
         await self._project_event(

@@ -132,6 +132,36 @@ async def test_snapshot_freezes_domain_skills(
 
 
 @pytest.mark.asyncio
+async def test_snapshot_can_disable_skills_for_contract_repair(
+    factory_data: tuple[AgentFactory, Database, TenantModel, AgentTemplateVersionModel],
+) -> None:
+    factory, database, tenant, _ = factory_data
+    async with database.session() as session:
+        project = ProjectModel(tenant_id=tenant.id, name="Script", medium="script")
+        session.add(project)
+        await session.flush()
+        run = ProjectRunModel(
+            tenant_id=tenant.id,
+            project_id=project.id,
+            idempotency_key=f"contract-repair-{uuid4()}",
+        )
+        session.add(run)
+        await session.flush()
+        run_id = run.id
+
+    snapshot = await factory.snapshot_for_run(
+        tenant_id=tenant.id,
+        run_id=run_id,
+        role_key="writer",
+        skills_enabled=False,
+    )
+
+    assert snapshot.values["skill_domain"] == "script"
+    assert snapshot.values["skill_keys"] == []
+    assert snapshot.values["skill_plan"] is None
+
+
+@pytest.mark.asyncio
 async def test_snapshot_selects_style_skill_from_project_creative_profile(
     factory_data: tuple[AgentFactory, Database, TenantModel, AgentTemplateVersionModel],
 ) -> None:

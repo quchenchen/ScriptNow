@@ -14,3 +14,10 @@ def test_health_exposes_both_isolated_domains() -> None:
             "novel": ["dialogue", "divider", "heading", "prose", "quote"],
         },
     }
+
+
+def test_cross_cultural_recreation_uses_the_shared_api_proxy_contract() -> None:
+    paths = TestClient(create_app()).app.openapi()["paths"]
+
+    assert "/cross-cultural-recreations" in paths
+    assert "/api/cross-cultural-recreations" not in paths

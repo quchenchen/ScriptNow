@@ -173,6 +173,7 @@ class AgentRuntime:
         event_sink: RuntimeEventSink | None = None,
         stage_override: str | None = None,
         explicit_skill_keys: tuple[str, ...] = (),
+        skills_enabled: bool = True,
     ) -> AgentRuntimeResult:
         try:
             return await asyncio.wait_for(
@@ -185,6 +186,7 @@ class AgentRuntime:
                     event_sink=event_sink,
                     stage_override=stage_override,
                     explicit_skill_keys=explicit_skill_keys,
+                    skills_enabled=skills_enabled,
                 ),
                 timeout=self.settings.agent_runtime_timeout_seconds,
             )
@@ -192,6 +194,97 @@ class AgentRuntime:
             raise AgentRuntimeError(
                 f"Agent runtime exceeded {self.settings.agent_runtime_timeout_seconds:g} seconds"
             ) from error
+
+    async def inspire(
+        self,
+        *,
+        tenant_id: str,
+        medium: str,
+        seed: str,
+        language: str,
+        genres: tuple[str, ...] = (),
+    ) -> AgentRuntimeResult:
+        """Expand one creative seed before a project exists, using the admitted skill catalog."""
+        try:
+            snapshot = await self.factory.preview_for_tenant(
+                tenant_id=tenant_id,
+                role_key="director",
+                medium=medium,
+                direction={"language": language, "genres": list(genres)},
+                stage="ideation",
+            )
+        except RuntimeConfigError as error:
+            raise AgentRuntimeError(str(error)) from error
+        values = snapshot.values
+        if values.get("provider_key") == "mock":
+            raise AgentRuntimeError("real model is not configured for this role")
+        provider_id = str(values["provider_id"])
+        try:
+            credential = await self.supply.get_credential_for_runtime(provider_id)
+        except CredentialError as error:
+            raise AgentRuntimeError(str(error)) from error
+        async with self.database.session() as session:
+            provider = await session.get(ProviderModel, provider_id)
+            model_record = await session.get(LanguageModelModel, str(values["model_id"]))
+        if provider is None or model_record is None or not provider.base_url:
+            raise AgentRuntimeError("provider runtime endpoint is incomplete")
+        model = self._openai_model(
+            credential=OpenAICredential(
+                api_key=SecretStr(credential),
+                base_url=provider.base_url,
+            ),
+            model_key=model_record.key,
+            stream=False,
+            thinking=False,
+        )
+        loaders = self.factory.skill_catalog.loaders_for_plan(
+            domain=medium,
+            skill_keys=list(values.get("skill_keys") or []),
+        )
+        agent = Agent(
+            name="inspiration-director",
+            system_prompt=self._system_prompt(
+                "director",
+                str(values.get("soul") or ""),
+                language=language,
+            ),
+            model=model,
+            toolkit=Toolkit(skills_or_loaders=loaders),
+            react_config=ReActConfig(
+                max_iters=min(3, self.settings.agent_runtime_hard_max_iters)
+            ),
+        )
+        prompt = (
+            "你正在协助作者把一句灵感扩展成创建项目前的候选设定。"
+            "必须调用与题材匹配的已加载 Skill。不要替作者做最终决定。\n"
+            "只返回一个 JSON 对象，不要 Markdown，不要代码围栏。字段必须为："
+            "title、premise、tone、world_setting、genre_suggestions、questions。"
+            "genre_suggestions 和 questions 是字符串数组；其余字段是字符串。"
+            "设定要具体、彼此一致、保留可塑性，questions 最多 3 个。\n\n"
+            f"作品形态：{medium}\n创作语言：{language}\n"
+            f"作者已选类型：{json.dumps(genres, ensure_ascii=False)}\n"
+            f"一句话灵感：{seed}"
+        )
+        try:
+            reply = await asyncio.wait_for(
+                agent.reply(Msg(name="creator", role="user", content=[TextBlock(text=prompt)])),
+                timeout=self.settings.agent_runtime_timeout_seconds,
+            )
+        except TimeoutError as error:
+            raise AgentRuntimeError("inspiration generation timed out") from error
+        except Exception as error:
+            raise AgentRuntimeError(f"inspiration generation failed: {error}") from error
+        usage = reply.usage
+        return AgentRuntimeResult(
+            text=self._text_content(reply),
+            runtime="agentscope",
+            model_key=model_record.key,
+            input_tokens=usage.input_tokens if usage else 0,
+            output_tokens=usage.output_tokens if usage else 0,
+            input_price_per_million=Decimal(str(model_record.input_price_per_million)),
+            output_price_per_million=Decimal(str(model_record.output_price_per_million)),
+            config_fingerprint=snapshot.fingerprint,
+        )
 
     async def _generate(
         self,
@@ -204,6 +297,7 @@ class AgentRuntime:
         event_sink: RuntimeEventSink | None = None,
         stage_override: str | None = None,
         explicit_skill_keys: tuple[str, ...] = (),
+        skills_enabled: bool = True,
     ) -> AgentRuntimeResult:
         try:
             snapshot = await self.factory.snapshot_for_run(
@@ -212,6 +306,7 @@ class AgentRuntime:
                 role_key=role,
                 stage_override=stage_override,
                 explicit_skill_keys=explicit_skill_keys,
+                skills_enabled=skills_enabled,
             )
         except RuntimeConfigError as error:
             raise AgentRuntimeError(str(error)) from error

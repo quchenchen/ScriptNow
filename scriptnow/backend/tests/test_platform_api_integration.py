@@ -1,9 +1,12 @@
+from decimal import Decimal
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
 from scriptnow.app import create_app
 from scriptnow.novel.project import NovelPlanModel, NovelStoryMapModel
+from scriptnow.platform.agent_runtime import AgentRuntime, AgentRuntimeResult
 from scriptnow.platform.auth import AuthService
 from scriptnow.platform.config import Settings
 from scriptnow.platform.database import Database
@@ -108,6 +111,13 @@ async def test_login_project_mock_run_sse_billing_and_audit(platform_api) -> Non
     csrf_a = await login(client_a, "a@example.com")
     await login(client_b, "b@example.com")
 
+    options = await client_a.get("/creative-options/novel")
+    assert options.status_code == 200
+    visible_genres = {item["key"]: item for item in options.json()["genres"]}
+    assert visible_genres["werewolf-romance"]["skill_keys"]
+    assert visible_genres["science-fiction"]["label_zh"] == "科幻"
+    assert (await client_a.get("/creative-options/translation")).status_code == 422
+
     project = await client_a.post(
         "/projects",
         headers={"X-CSRF-Token": csrf_a},
@@ -156,6 +166,57 @@ async def test_login_project_mock_run_sse_billing_and_audit(platform_api) -> Non
         assert len(usage) == 1
         assert [item.operation for item in ledger] == ["reserve", "finalize"]
         assert [item.action for item in audits] == ["project.create", "run.mock.complete"]
+
+
+@pytest.mark.asyncio
+async def test_project_deletion_requires_exact_name_and_hides_project(platform_api) -> None:
+    client, other_client, database = platform_api
+    csrf = await login(client, "a@example.com")
+    other_csrf = await login(other_client, "b@example.com")
+    response = await client.post(
+        "/projects",
+        headers={"X-CSRF-Token": csrf},
+        json={"name": "需要谨慎删除的项目", "medium": "novel"},
+    )
+    project_id = response.json()["id"]
+
+    cross_tenant = await other_client.request(
+        "DELETE",
+        f"/projects/{project_id}",
+        headers={"X-CSRF-Token": other_csrf},
+        json={"confirmation_name": "需要谨慎删除的项目"},
+    )
+    assert cross_tenant.status_code == 404
+
+    mismatch = await client.request(
+        "DELETE",
+        f"/projects/{project_id}",
+        headers={"X-CSRF-Token": csrf},
+        json={"confirmation_name": "名称不一致"},
+    )
+    assert mismatch.status_code == 422
+    assert len((await client.get("/projects")).json()) == 1
+
+    deleted = await client.request(
+        "DELETE",
+        f"/projects/{project_id}",
+        headers={"X-CSRF-Token": csrf},
+        json={"confirmation_name": "需要谨慎删除的项目"},
+    )
+    assert deleted.status_code == 204
+    assert (await client.get("/projects")).json() == []
+    assert (await client.get(f"/projects/{project_id}/models")).status_code == 404
+
+    async with database.session() as session:
+        project = await session.get(ProjectModel, project_id)
+        assert project is not None
+        assert project.deleted_at is not None
+        audits = (
+            await session.scalars(
+                select(AuditLogModel).where(AuditLogModel.resource_id == project_id)
+            )
+        ).all()
+        assert [item.action for item in audits] == ["project.create", "project.delete"]
 
 
 @pytest.mark.asyncio
@@ -442,7 +503,7 @@ async def test_all_medium_source_combinations_persist_only_their_domain_skeleton
 @pytest.mark.parametrize("source_mode", ["original", "adaptation"])
 @pytest.mark.asyncio
 async def test_script_api_story_core_blueprint_story_map_writer_full_slice(
-    platform_api, source_mode: str
+    platform_api, source_mode: str, monkeypatch
 ) -> None:
     client, other_client, _ = platform_api
     csrf = await login(client, "a@example.com")
@@ -612,6 +673,26 @@ async def test_script_api_story_core_blueprint_story_map_writer_full_slice(
             headers={"X-CSRF-Token": csrf},
         )
     ).status_code == 200
+
+    async def generated_scene(*_args, **_kwargs) -> AgentRuntimeResult:
+        return AgentRuntimeResult(
+            text=(
+                '{"blocks":['
+                '{"type":"slugline","text":"INT. TEST ROOM - DAY"},'
+                '{"type":"action","text":"The witness opens tomorrow’s letter."},'
+                '{"type":"character","text":"WITNESS"},'
+                '{"type":"dialogue","text":"This changes everything."}'
+                "]}"
+            ),
+            runtime="test",
+            model_key="test-writer",
+            input_tokens=1,
+            output_tokens=1,
+            input_price_per_million=Decimal("0"),
+            output_price_per_million=Decimal("0"),
+        )
+
+    monkeypatch.setattr(AgentRuntime, "generate", generated_scene)
     document_candidate = await client.post(
         f"/script/projects/{project_id}/scenes/scene-1/generate",
         headers={"X-CSRF-Token": csrf},

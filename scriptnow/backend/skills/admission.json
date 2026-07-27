@@ -1,9 +1,14 @@
 {
   "version": 1,
   "baseline": "novel-skill-baseline-v1",
+  "quality_benchmark": "novel-genre-benchmark-v2",
   "domains": {
     "novel": {
+      "novel-cn-commercial-emotion": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["cn-commercial-emotion-positive", "wrong-language-negative", "cn-commercial-emotion-regression"], "quality_status": "baseline_required", "benchmark_suite": "novel-genre-benchmark-v2"},
+      "novel-cn-concept-short": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["cn-concept-short-positive", "wrong-language-negative", "cn-concept-short-regression"], "quality_status": "baseline_required", "benchmark_suite": "novel-genre-benchmark-v2"},
       "novel-cn-fantasy-progression": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["cn-fantasy-positive", "wrong-language-negative", "cn-fantasy-regression"]},
+      "novel-cn-history-society": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["cn-history-society-positive", "wrong-language-negative", "cn-history-society-regression"], "quality_status": "baseline_required", "benchmark_suite": "novel-genre-benchmark-v2"},
+      "novel-cn-profession-live": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["cn-profession-live-positive", "wrong-language-negative", "cn-profession-live-regression"], "quality_status": "baseline_required", "benchmark_suite": "novel-genre-benchmark-v2"},
       "novel-cn-romance-relations": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["cn-romance-positive", "wrong-language-negative", "cn-romance-regression"]},
       "novel-cn-suspense-survival": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["cn-suspense-positive", "wrong-language-negative", "cn-suspense-regression"]},
       "novel-cn-urban-power": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["fanqie-urban-positive", "wrong-language-negative", "fanqie-urban-regression"]},
@@ -25,6 +30,15 @@
       "novel-speculative-intimacy-reviewer": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["speculative-review-positive", "wrong-role-negative", "speculative-review-regression"]},
       "novel-speculative-intimacy-writer": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["speculative-write-positive", "wrong-role-negative", "speculative-write-regression"]},
       "novel-structure-planning": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["novel-structure-positive", "wrong-stage-negative", "novel-structure-regression"]}
+    },
+    "script": {
+      "script-develop": {"status": "admitted", "baseline": "script-skill-baseline-v1", "cases": ["script-development-positive", "wrong-stage-negative", "script-development-regression"]},
+      "script-storymap": {"status": "admitted", "baseline": "script-skill-baseline-v1", "cases": ["script-storymap-positive", "wrong-stage-negative", "script-storymap-regression"]},
+      "script-write": {"status": "admitted", "baseline": "script-skill-baseline-v1", "cases": ["script-writing-positive", "wrong-stage-negative", "script-writing-regression"]},
+      "script-review": {"status": "admitted", "baseline": "script-skill-baseline-v1", "cases": ["script-review-positive", "wrong-stage-negative", "script-review-regression"]},
+      "script-structure-planning": {"status": "admitted", "baseline": "script-skill-baseline-v1", "cases": ["script-structure-positive", "wrong-stage-negative", "script-structure-regression"]},
+      "script-format-chinese": {"status": "admitted", "baseline": "script-skill-baseline-v1", "cases": ["chinese-format-positive", "wrong-format-negative", "chinese-format-regression"]},
+      "script-format-hollywood": {"status": "admitted", "baseline": "script-skill-baseline-v1", "cases": ["hollywood-format-positive", "wrong-format-negative", "hollywood-format-regression"]}
     }
   }
 }

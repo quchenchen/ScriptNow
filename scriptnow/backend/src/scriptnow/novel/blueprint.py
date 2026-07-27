@@ -59,10 +59,11 @@ class _Payload(BaseModel):
 class NovelBlueprintGenerator:
     def __init__(self, database: Database, settings: Settings) -> None:
         self.database = database
+        self.settings = settings
         self.runtime = AgentRuntime(database, settings)
         self.runs = RunCoordinator(database)
         self.billing = BillingService(
-            database, enforce_limits=settings.environment == "production"
+            database, enforce_limits=settings.enforce_agent_budget
         )
 
     async def generate(
@@ -111,7 +112,7 @@ class NovelBlueprintGenerator:
             run_id=run.id,
             idempotency_key=f"novel-blueprint:{idempotency_key}",
             tier=tenant.tier,
-            max_tokens=24_000,
+            max_tokens=self.settings.novel_blueprint_reserved_tokens,
         )
         await self.runs.transition(tenant_id=tenant_id, run_id=run.id, target=RunStatus.RUNNING)
         try:

@@ -155,7 +155,7 @@ class WorkPackageService:
         self.runtime = AgentRuntime(database, settings)
         self.runs = RunCoordinator(database)
         self.billing = BillingService(
-            database, enforce_limits=settings.environment == "production"
+            database, enforce_limits=settings.enforce_agent_budget
         )
 
     async def generate(
@@ -188,7 +188,7 @@ class WorkPackageService:
             run_id=run.id,
             idempotency_key=f"work-package:{idempotency_key}",
             tier=tenant.tier,
-            max_tokens=16_000,
+            max_tokens=self.settings.work_package_reserved_tokens,
         )
         await self.runs.transition(tenant_id=tenant_id, run_id=run.id, target=RunStatus.RUNNING)
         try:

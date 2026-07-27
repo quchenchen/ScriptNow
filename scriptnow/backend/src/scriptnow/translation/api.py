@@ -1,21 +1,36 @@
 """Translation application API — coordinates platform and novel adapters."""
 
+import hashlib
+import json
 from typing import Annotated
+from uuid import uuid4
 
-from fastapi import APIRouter, Cookie, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Cookie, Form, HTTPException, Response, UploadFile
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 
-from scriptnow.novel.domain import NovelDocumentRevisionModel, NovelRevisionStatus
+from scriptnow.novel.contracts import NovelBlock
+from scriptnow.novel.domain import (
+    NovelBlueprintCandidateModel,
+    NovelDocumentRevisionModel,
+    NovelRevisionStatus,
+)
+from scriptnow.novel.export import NovelExportChapter, render_novel_docx
 from scriptnow.platform.auth import AuthService
 from scriptnow.platform.auth_api import ACCESS_COOKIE
 from scriptnow.platform.config import Settings
 from scriptnow.platform.database import Database
-from scriptnow.platform.models import ProjectMedium, ProjectModel
+from scriptnow.platform.models import ProjectMedium, ProjectModel, ProjectSnapshotModel
 from scriptnow.platform.translation import FaithfulTranslationService
+from scriptnow.platform.translation_contracts import TranslationError
 from scriptnow.platform.translation_glossary import (
     create_glossary,
     get_glossary,
+)
+from scriptnow.translation.domain import (
+    TranslationCorrectionModel,
+    TranslationGlossaryTermModel,
+    TranslationSnapshotContentModel,
 )
 
 
@@ -23,6 +38,128 @@ class CreateTranslationRequest(BaseModel):
     source_project_id: str = Field(min_length=36, max_length=36)
     target_language: str = Field(min_length=1, max_length=80)
     translation_mode: str = Field(default="faithful")
+
+
+class CreateTranslationVersionRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+
+
+class GlossaryTermRequest(BaseModel):
+    source_term: str = Field(min_length=1, max_length=240)
+    target_term: str = Field(default="", max_length=240)
+    status: str = Field(default="confirmed", pattern="^(candidate|confirmed)$")
+
+
+class ApplyGlossaryCorrectionsRequest(BaseModel):
+    term_id: str | None = None
+
+
+def _translation_documents(records: list[NovelDocumentRevisionModel]) -> list[dict[str, object]]:
+    return [
+        {
+            "chapter_id": item.chapter_id,
+            "revision_id": item.id,
+            "blocks": item.blocks,
+        }
+        for item in sorted(records, key=lambda value: value.chapter_id)
+    ]
+
+
+def _translation_hash(documents: list[dict[str, object]]) -> str:
+    normalized = [
+        {"chapter_id": item["chapter_id"], "blocks": item["blocks"]}
+        for item in documents
+    ]
+    return hashlib.sha256(
+        json.dumps(normalized, ensure_ascii=False, sort_keys=True).encode()
+    ).hexdigest()
+
+
+async def _persistent_glossary(
+    database: Database, project: ProjectModel
+):
+    direction = project.direction or {}
+    glossary = create_glossary(
+        project.id,
+        str(direction.get("source_language") or "auto"),
+        str(direction.get("target_language") or ""),
+    )
+    async with database.session() as session:
+        records = list(
+            await session.scalars(
+                select(TranslationGlossaryTermModel).where(
+                    TranslationGlossaryTermModel.project_id == project.id,
+                    TranslationGlossaryTermModel.status == "confirmed",
+                    TranslationGlossaryTermModel.target_term != "",
+                )
+            )
+        )
+    for item in records:
+        glossary.add(item.source_term, item.target_term, confirmed=True)
+    return glossary
+
+
+async def _add_chapter_glossary_candidates(
+    database: Database,
+    *,
+    translation_project_id: str,
+    source_project_id: str,
+    chapter: dict[str, object],
+) -> int:
+    """Add blueprint terms actually referenced by a translated chapter."""
+    anchor_ids = {
+        str(anchor_id)
+        for beat in chapter.get("beats", [])
+        if isinstance(beat, dict)
+        for anchor_id in beat.get("anchor_ids", [])
+    }
+    if not anchor_ids:
+        return 0
+    async with database.session() as session:
+        blueprint = (
+            await session.scalars(
+                select(NovelBlueprintCandidateModel).where(
+                    NovelBlueprintCandidateModel.project_id == source_project_id,
+                    NovelBlueprintCandidateModel.status == "adopted",
+                )
+            )
+        ).one_or_none()
+        if blueprint is None:
+            return 0
+        existing = set(
+            await session.scalars(
+                select(TranslationGlossaryTermModel.source_term).where(
+                    TranslationGlossaryTermModel.project_id
+                    == translation_project_id
+                )
+            )
+        )
+        added = 0
+        for anchor in blueprint.draft.get("anchors", []):
+            if not isinstance(anchor, dict) or str(anchor.get("id")) not in anchor_ids:
+                continue
+            name = str(anchor.get("name") or "").strip()
+            kind = str(anchor.get("kind") or "")
+            if (
+                kind not in {"character", "location", "motif", "world"}
+                or not name
+                or len(name) > 80
+                or name in existing
+            ):
+                continue
+            session.add(
+                TranslationGlossaryTermModel(
+                    id=uuid4().hex,
+                    project_id=translation_project_id,
+                    source_term=name,
+                    target_term="",
+                    status="candidate",
+                    source="automatic",
+                )
+            )
+            existing.add(name)
+            added += 1
+        return added
 
 
 def create_translation_router(
@@ -102,10 +239,39 @@ def create_translation_router(
                             )
                         )
                     )
+                    source_revisions = list(
+                        await session.scalars(
+                            select(NovelDocumentRevisionModel).where(
+                                NovelDocumentRevisionModel.project_id == source_id,
+                                NovelDocumentRevisionModel.chapter_id == cid,
+                                NovelDocumentRevisionModel.status == NovelRevisionStatus.ADOPTED,
+                            )
+                        )
+                    )
+                    source_text = None
+                    if source_revisions:
+                        source_text = "\n\n".join(
+                            str(block.get("text", ""))
+                            for block in source_revisions[-1].blocks
+                            if isinstance(block, dict)
+                            and block.get("type") in ("prose", "dialogue")
+                            and block.get("text")
+                        )
                     translated_text = None
+                    translated_title = None
                     status = "pending"
                     if revisions:
                         blocks = revisions[-1].blocks
+                        translated_title = next(
+                            (
+                                str(block.get("text", ""))
+                                for block in blocks
+                                if isinstance(block, dict)
+                                and block.get("type") == "heading"
+                                and block.get("text")
+                            ),
+                            None,
+                        )
                         translated_text = " ".join(
                             str(b.get("text", "")) for b in blocks
                             if isinstance(b, dict) and b.get("type") in ("prose", "dialogue")
@@ -114,6 +280,8 @@ def create_translation_router(
                     chapters.append({
                         "chapter_id": cid,
                         "title": str(ch.get("title", "")),
+                        "source_text": source_text,
+                        "translated_title": translated_title,
                         "translated_text": translated_text,
                         "status": status,
                     })
@@ -177,17 +345,23 @@ def create_translation_router(
             blocks=tuple(source_blocks),
         )
         idem_key = f"trans:{project_id}:{chapter_id}:{uuid.uuid4().hex[:12]}"
-        glossary = get_glossary(project_id)
+        glossary = await _persistent_glossary(database, project)
         glossary_block = glossary.to_prompt_block() if glossary else ""
-        translated = await translator.translate(
-            tenant_id=tid,
-            project_id=project_id,
-            source_language=source_lang,
-            target_language=target_lang,
-            units=(unit,),
-            idempotency_key=idem_key,
-            glossary_block=glossary_block,
-        )
+        try:
+            translated = await translator.translate(
+                tenant_id=tid,
+                project_id=project_id,
+                source_language=source_lang,
+                target_language=target_lang,
+                units=(unit,),
+                idempotency_key=idem_key,
+                glossary_block=glossary_block,
+            )
+        except TranslationError as error:
+            raise HTTPException(
+                422,
+                "本次译文未通过完整性校验，未写入任何内容。请重新翻译本章。",
+            ) from error
         async with database.session() as session:
             rev = NovelDocumentRevisionModel(
                 project_id=project_id,
@@ -200,8 +374,14 @@ def create_translation_router(
             )
             session.add(rev)
             await session.flush()
+        await _add_chapter_glossary_candidates(
+            database,
+            translation_project_id=project_id,
+            source_project_id=str(source_id),
+            chapter=chapter,
+        )
         # Update glossary with extracted terms from translated pair
-        glossary = get_glossary(project_id)
+        glossary = await _persistent_glossary(database, project)
         if glossary:
             source_text = " ".join(
                 str(b.get("text", "")) for b in source_blocks
@@ -212,6 +392,26 @@ def create_translation_router(
                 if isinstance(b, dict) and b.get("type") in ("prose", "dialogue")
             )
             glossary.extract_from_text_pair(source_text, translated_text)
+            async with database.session() as session:
+                existing_terms = set(
+                    await session.scalars(
+                        select(TranslationGlossaryTermModel.source_term).where(
+                            TranslationGlossaryTermModel.project_id == project_id
+                        )
+                    )
+                )
+                for source_term, target_term in glossary.terms.items():
+                    if source_term not in existing_terms:
+                        session.add(
+                            TranslationGlossaryTermModel(
+                                id=uuid4().hex,
+                                project_id=project_id,
+                                source_term=source_term,
+                                target_term=target_term,
+                                status="candidate" if not target_term else "confirmed",
+                                source="automatic",
+                            )
+                        )
         return {
             "chapter_id": chapter_id,
             "status": "completed",
@@ -234,7 +434,9 @@ def create_translation_router(
             return {"status": "no_pending", "message": "all chapters already translated"}
 
         results = []
-        glossary = get_glossary(project_id)
+        async with database.session() as session:
+            project = await session.get(ProjectModel, project_id)
+        glossary = await _persistent_glossary(database, project) if project else None
         for ch in pending:
             cid = ch["chapter_id"]
             try:
@@ -256,6 +458,365 @@ def create_translation_router(
             "glossary_terms": glossary_info.get("term_count", 0),
         }
 
+    @router.post("/projects/{project_id}/imports")
+    async def import_translation_chapter(
+        project_id: str,
+        chapter_id: Annotated[str, Form()],
+        file: UploadFile,
+        access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
+    ):
+        """Import an existing human translation as a new adopted revision."""
+        context = await auth.validate_access(access_token)
+        tid = str(context.tenant_id)
+        raw = await file.read()
+        if not raw or len(raw) > settings.upload_max_file_bytes:
+            raise HTTPException(413, "译文文件为空或超过项目允许的单文件大小")
+        filename = file.filename or "translation.txt"
+        extension = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+        if extension == "txt":
+            text = raw.decode("utf-8", errors="replace")
+        elif extension == "docx":
+            import io
+
+            from docx import Document
+
+            try:
+                document = Document(io.BytesIO(raw))
+                text = "\n\n".join(
+                    paragraph.text.strip()
+                    for paragraph in document.paragraphs
+                    if paragraph.text.strip()
+                )
+            except Exception as error:
+                raise HTTPException(422, "无法读取该 DOCX 译文文件") from error
+        else:
+            raise HTTPException(415, "目前支持导入 UTF-8 TXT 或 DOCX 译文")
+        paragraphs = [value.strip() for value in text.splitlines() if value.strip()]
+        if not paragraphs:
+            raise HTTPException(422, "译文文件中没有可导入的正文")
+
+        async with database.session() as session:
+            project = await session.get(ProjectModel, project_id)
+            if (
+                project is None
+                or project.tenant_id != tid
+                or project.medium != ProjectMedium.TRANSLATION
+            ):
+                raise HTTPException(404, "翻译项目不存在")
+            source_id = str((project.direction or {}).get("source_project_id") or "")
+            from scriptnow.novel.project import NovelStoryMapModel
+
+            story_map = (
+                await session.scalars(
+                    select(NovelStoryMapModel).where(
+                        NovelStoryMapModel.project_id == source_id
+                    )
+                )
+            ).one_or_none()
+            valid_chapter_ids = {
+                str(chapter.get("id"))
+                for volume in (story_map.volumes if story_map else [])
+                for chapter in volume.get("chapters", [])
+            }
+            if chapter_id not in valid_chapter_ids:
+                raise HTTPException(404, "目标章节不在源作品 StoryMap 中")
+            current = (
+                await session.scalars(
+                    select(NovelDocumentRevisionModel).where(
+                        NovelDocumentRevisionModel.project_id == project_id,
+                        NovelDocumentRevisionModel.chapter_id == chapter_id,
+                        NovelDocumentRevisionModel.status == NovelRevisionStatus.ADOPTED,
+                    )
+                )
+            ).one_or_none()
+            revision_number = int(
+                await session.scalar(
+                    select(
+                        func.coalesce(
+                            func.max(NovelDocumentRevisionModel.revision_number), 0
+                        )
+                    ).where(
+                        NovelDocumentRevisionModel.project_id == project_id,
+                        NovelDocumentRevisionModel.chapter_id == chapter_id,
+                    )
+                )
+                or 0
+            ) + 1
+            if current:
+                current.status = NovelRevisionStatus.SUPERSEDED
+            revision = NovelDocumentRevisionModel(
+                project_id=project_id,
+                chapter_id=chapter_id,
+                revision_number=revision_number,
+                base_revision_id=current.id if current else None,
+                source="human_import",
+                blocks=[
+                    {
+                        "block_id": f"import-{revision_number}-{index + 1}",
+                        "type": "prose",
+                        "text": paragraph,
+                    }
+                    for index, paragraph in enumerate(paragraphs)
+                ],
+                status=NovelRevisionStatus.ADOPTED,
+                idempotency_key=f"translation:import:{uuid4().hex}",
+            )
+            session.add(revision)
+            await session.flush()
+            return {
+                "chapter_id": chapter_id,
+                "revision_id": revision.id,
+                "revision_number": revision_number,
+                "paragraph_count": len(paragraphs),
+            }
+
+    @router.get("/projects/{project_id}/export.docx")
+    async def export_translation(
+        project_id: str,
+        access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
+    ):
+        """Export adopted translations in the source StoryMap order."""
+        context = await auth.validate_access(access_token)
+        tid = str(context.tenant_id)
+        async with database.session() as session:
+            project = await session.get(ProjectModel, project_id)
+            if (
+                project is None
+                or project.tenant_id != tid
+                or project.medium != ProjectMedium.TRANSLATION
+            ):
+                raise HTTPException(404, "翻译项目不存在")
+            source_id = str((project.direction or {}).get("source_project_id") or "")
+            from scriptnow.novel.project import NovelStoryMapModel
+
+            story_map = (
+                await session.scalars(
+                    select(NovelStoryMapModel).where(
+                        NovelStoryMapModel.project_id == source_id
+                    )
+                )
+            ).one_or_none()
+            if story_map is None:
+                raise HTTPException(409, "源作品尚未形成可导出的章节结构")
+            revisions = list(
+                await session.scalars(
+                    select(NovelDocumentRevisionModel).where(
+                        NovelDocumentRevisionModel.project_id == project_id,
+                        NovelDocumentRevisionModel.status == NovelRevisionStatus.ADOPTED,
+                    )
+                )
+            )
+            by_chapter = {item.chapter_id: item for item in revisions}
+            chapters: list[NovelExportChapter] = []
+            for volume in story_map.volumes:
+                for chapter in volume.get("chapters", []):
+                    chapter_id = str(chapter.get("id"))
+                    revision = by_chapter.get(chapter_id)
+                    if revision is None:
+                        continue
+                    blocks = tuple(
+                        NovelBlock.model_validate(block) for block in revision.blocks
+                    )
+                    translated_title = next(
+                        (
+                            block.text
+                            for block in blocks
+                            if block.type == "heading" and block.text.strip()
+                        ),
+                        str(chapter.get("title") or ""),
+                    )
+                    chapters.append(
+                        NovelExportChapter(
+                            volume_title=str(volume.get("title") or project.name),
+                            chapter_title=translated_title,
+                            blocks=tuple(
+                                block
+                                for block in blocks
+                                if not (
+                                    block.type == "heading"
+                                    and block.text == translated_title
+                                )
+                            ),
+                        )
+                    )
+        if not chapters:
+            raise HTTPException(409, "请至少完成一章翻译后再导出译文")
+        artifact = render_novel_docx(
+            project_name=project.name, chapters=tuple(chapters)
+        )
+        filename = f"translation-{project.id}.docx"
+        return Response(
+            artifact,
+            media_type=(
+                "application/vnd.openxmlformats-officedocument."
+                "wordprocessingml.document"
+            ),
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    @router.post("/projects/{project_id}/versions")
+    async def create_translation_version(
+        project_id: str,
+        body: CreateTranslationVersionRequest,
+        access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
+    ):
+        context = await auth.validate_access(access_token)
+        tid = str(context.tenant_id)
+        async with database.session() as session:
+            project = await session.get(ProjectModel, project_id)
+            if (
+                project is None
+                or project.tenant_id != tid
+                or project.medium != ProjectMedium.TRANSLATION
+            ):
+                raise HTTPException(404, "翻译项目不存在")
+            revisions = list(
+                await session.scalars(
+                    select(NovelDocumentRevisionModel).where(
+                        NovelDocumentRevisionModel.project_id == project_id,
+                        NovelDocumentRevisionModel.status == NovelRevisionStatus.ADOPTED,
+                    )
+                )
+            )
+            if not revisions:
+                raise HTTPException(409, "请至少完成一章翻译后再保存版本")
+            documents = _translation_documents(revisions)
+            version = int(
+                await session.scalar(
+                    select(func.coalesce(func.max(ProjectSnapshotModel.version), 0))
+                    .where(ProjectSnapshotModel.project_id == project_id)
+                )
+                or 0
+            ) + 1
+            previous = (
+                await session.scalars(
+                    select(ProjectSnapshotModel)
+                    .where(
+                        ProjectSnapshotModel.project_id == project_id,
+                        ProjectSnapshotModel.medium == "translation",
+                    )
+                    .order_by(ProjectSnapshotModel.version.desc())
+                )
+            ).first()
+            snapshot = ProjectSnapshotModel(
+                tenant_id=tid,
+                project_id=project_id,
+                medium="translation",
+                version=version,
+                name=body.name.strip(),
+                scope=[str(item["chapter_id"]) for item in documents],
+                word_count=sum(
+                    len(str(block.get("text", "")))
+                    for item in documents
+                    for block in item["blocks"]
+                    if isinstance(block, dict)
+                ),
+                content_hash=_translation_hash(documents),
+                base_snapshot_id=previous.id if previous else None,
+            )
+            session.add(snapshot)
+            await session.flush()
+            session.add(
+                TranslationSnapshotContentModel(
+                    snapshot_id=snapshot.id, documents=documents
+                )
+            )
+            return {"id": snapshot.id, "version": version, "name": snapshot.name}
+
+    @router.get("/projects/{project_id}/versions")
+    async def list_translation_versions(
+        project_id: str,
+        access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
+    ):
+        context = await auth.validate_access(access_token)
+        tid = str(context.tenant_id)
+        async with database.session() as session:
+            project = await session.get(ProjectModel, project_id)
+            if project is None or project.tenant_id != tid:
+                raise HTTPException(404, "翻译项目不存在")
+            records = list(
+                await session.scalars(
+                    select(ProjectSnapshotModel)
+                    .where(
+                        ProjectSnapshotModel.project_id == project_id,
+                        ProjectSnapshotModel.medium == "translation",
+                    )
+                    .order_by(ProjectSnapshotModel.version.desc())
+                )
+            )
+            return [
+                {
+                    "id": item.id,
+                    "version": item.version,
+                    "name": item.name,
+                    "chapter_count": len(item.scope),
+                    "word_count": item.word_count,
+                    "created_at": item.created_at,
+                }
+                for item in records
+            ]
+
+    @router.post("/projects/{project_id}/versions/{snapshot_id}/restore")
+    async def restore_translation_version(
+        project_id: str,
+        snapshot_id: str,
+        access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
+    ):
+        context = await auth.validate_access(access_token)
+        tid = str(context.tenant_id)
+        async with database.session() as session:
+            project = await session.get(ProjectModel, project_id)
+            snapshot = await session.get(ProjectSnapshotModel, snapshot_id)
+            content = await session.get(TranslationSnapshotContentModel, snapshot_id)
+            if (
+                project is None
+                or project.tenant_id != tid
+                or snapshot is None
+                or snapshot.project_id != project_id
+                or snapshot.medium != "translation"
+                or content is None
+            ):
+                raise HTTPException(404, "译文历史版本不存在")
+            current = list(
+                await session.scalars(
+                    select(NovelDocumentRevisionModel).where(
+                        NovelDocumentRevisionModel.project_id == project_id,
+                        NovelDocumentRevisionModel.status == NovelRevisionStatus.ADOPTED,
+                    )
+                )
+            )
+            for item in current:
+                item.status = NovelRevisionStatus.SUPERSEDED
+            for document in content.documents:
+                chapter_id = str(document["chapter_id"])
+                number = int(
+                    await session.scalar(
+                        select(
+                            func.coalesce(
+                                func.max(NovelDocumentRevisionModel.revision_number), 0
+                            )
+                        ).where(
+                            NovelDocumentRevisionModel.project_id == project_id,
+                            NovelDocumentRevisionModel.chapter_id == chapter_id,
+                        )
+                    )
+                    or 0
+                ) + 1
+                session.add(
+                    NovelDocumentRevisionModel(
+                        project_id=project_id,
+                        chapter_id=chapter_id,
+                        blocks=document["blocks"],
+                        status=NovelRevisionStatus.ADOPTED,
+                        source="translation_snapshot",
+                        revision_number=number,
+                        idempotency_key=(
+                            f"translation:restore:{snapshot_id}:{chapter_id}:{uuid4().hex[:8]}"
+                        ),
+                    )
+                )
+            return {"status": "restored", "version": snapshot.version}
+
     @router.get("/projects/{project_id}/glossary")
     async def get_glossary_endpoint(
         project_id: str,
@@ -267,25 +828,284 @@ def create_translation_router(
             project = await session.get(ProjectModel, project_id)
             if project is None or project.tenant_id != tid:
                 raise HTTPException(404, "project not found")
-        glossary = get_glossary(project_id)
-        if glossary is None:
-            return {"terms": {}}
-        return glossary.to_dict()
+            records = list(
+                await session.scalars(
+                    select(TranslationGlossaryTermModel)
+                    .where(TranslationGlossaryTermModel.project_id == project_id)
+                    .order_by(
+                        TranslationGlossaryTermModel.status.desc(),
+                        TranslationGlossaryTermModel.source_term,
+                    )
+                )
+            )
+            pending_counts = dict(
+                (
+                    await session.execute(
+                        select(
+                            TranslationCorrectionModel.term_id,
+                            func.count(TranslationCorrectionModel.id),
+                        )
+                        .where(
+                            TranslationCorrectionModel.project_id == project_id,
+                            TranslationCorrectionModel.status == "pending",
+                        )
+                        .group_by(TranslationCorrectionModel.term_id)
+                    )
+                ).all()
+            )
+        return {
+            "source_language": str((project.direction or {}).get("source_language") or ""),
+            "target_language": str((project.direction or {}).get("target_language") or ""),
+            "entries": [
+                {
+                    "id": item.id,
+                    "source_term": item.source_term,
+                    "target_term": item.target_term,
+                    "status": item.status,
+                    "source": item.source,
+                    "pending_corrections": int(pending_counts.get(item.id, 0)),
+                }
+                for item in records
+            ],
+            "terms": {
+                item.source_term: item.target_term
+                for item in records
+                if item.status == "confirmed" and item.target_term
+            },
+        }
 
-    @router.put("/projects/{project_id}/glossary")
+    @router.put("/projects/{project_id}/glossary/{term_id}")
     async def update_glossary_endpoint(
         project_id: str,
-        body: dict,
+        term_id: str,
+        body: GlossaryTermRequest,
         access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
     ):
         context = await auth.validate_access(access_token)
-        str(context.tenant_id)
-        glossary = get_glossary(project_id)
-        if glossary is None:
-            raise HTTPException(404, "glossary not found")
-        if "terms" in body:
-            glossary.add_batch(body["terms"])
-        return glossary.to_dict()
+        tid = str(context.tenant_id)
+        async with database.session() as session:
+            project = await session.get(ProjectModel, project_id)
+            if project is None or project.tenant_id != tid:
+                raise HTTPException(404, "翻译项目不存在")
+            term = await session.get(TranslationGlossaryTermModel, term_id)
+            if term is None or term.project_id != project_id:
+                raise HTTPException(404, "术语不存在")
+            conflict = (
+                await session.scalars(
+                    select(TranslationGlossaryTermModel).where(
+                        TranslationGlossaryTermModel.project_id == project_id,
+                        TranslationGlossaryTermModel.source_term == body.source_term.strip(),
+                        TranslationGlossaryTermModel.id != term_id,
+                    )
+                )
+            ).one_or_none()
+            if conflict:
+                raise HTTPException(409, "源术语已经存在")
+            previous_target = term.target_term
+            required_target = body.target_term.strip()
+            if (
+                previous_target
+                and required_target
+                and previous_target != required_target
+            ):
+                revisions = list(
+                    await session.scalars(
+                        select(NovelDocumentRevisionModel).where(
+                            NovelDocumentRevisionModel.project_id == project_id,
+                            NovelDocumentRevisionModel.status
+                            == NovelRevisionStatus.ADOPTED,
+                        )
+                    )
+                )
+                pending_items = list(
+                    await session.scalars(
+                        select(TranslationCorrectionModel).where(
+                            TranslationCorrectionModel.term_id == term_id,
+                            TranslationCorrectionModel.status == "pending",
+                        )
+                    )
+                )
+                pending_by_chapter = {
+                    item.chapter_id: item for item in pending_items
+                }
+                for revision in revisions:
+                    revision_text = "\n".join(
+                        str(block.get("text", ""))
+                        for block in revision.blocks
+                        if isinstance(block, dict)
+                    )
+                    pending = pending_by_chapter.get(revision.chapter_id)
+                    if pending is not None:
+                        pending.required_target = required_target
+                    elif previous_target in revision_text:
+                        session.add(
+                            TranslationCorrectionModel(
+                                id=uuid4().hex,
+                                project_id=project_id,
+                                term_id=term_id,
+                                chapter_id=revision.chapter_id,
+                                previous_target=previous_target,
+                                required_target=required_target,
+                                status="pending",
+                            )
+                        )
+            term.source_term = body.source_term.strip()
+            term.target_term = required_target
+            term.status = body.status
+            term.source = "manual"
+            return {"id": term.id, "status": term.status}
+
+    @router.post("/projects/{project_id}/glossary/corrections/apply")
+    async def apply_glossary_corrections(
+        project_id: str,
+        body: ApplyGlossaryCorrectionsRequest,
+        access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
+    ):
+        """Apply queued terminology changes as new chapter revisions."""
+        context = await auth.validate_access(access_token)
+        tid = str(context.tenant_id)
+        async with database.session() as session:
+            project = await session.get(ProjectModel, project_id)
+            if project is None or project.tenant_id != tid:
+                raise HTTPException(404, "翻译项目不存在")
+            query = select(TranslationCorrectionModel).where(
+                TranslationCorrectionModel.project_id == project_id,
+                TranslationCorrectionModel.status == "pending",
+            )
+            if body.term_id:
+                query = query.where(
+                    TranslationCorrectionModel.term_id == body.term_id
+                )
+            corrections = list(await session.scalars(query))
+            by_chapter: dict[str, list[TranslationCorrectionModel]] = {}
+            for correction in corrections:
+                by_chapter.setdefault(correction.chapter_id, []).append(correction)
+
+            updated_chapters = 0
+            applied_replacements = 0
+            for chapter_id, chapter_corrections in by_chapter.items():
+                current = (
+                    await session.scalars(
+                        select(NovelDocumentRevisionModel).where(
+                            NovelDocumentRevisionModel.project_id == project_id,
+                            NovelDocumentRevisionModel.chapter_id == chapter_id,
+                            NovelDocumentRevisionModel.status
+                            == NovelRevisionStatus.ADOPTED,
+                        )
+                    )
+                ).one_or_none()
+                if current is None:
+                    continue
+                blocks = [dict(block) for block in current.blocks]
+                changed = False
+                for correction in chapter_corrections:
+                    replacement_used = False
+                    for block in blocks:
+                        text = str(block.get("text", ""))
+                        if correction.previous_target in text:
+                            block["text"] = text.replace(
+                                correction.previous_target,
+                                correction.required_target,
+                            )
+                            replacement_used = True
+                            changed = True
+                    if replacement_used:
+                        applied_replacements += 1
+                    correction.status = "resolved"
+                if not changed:
+                    continue
+                revision_number = int(
+                    await session.scalar(
+                        select(
+                            func.coalesce(
+                                func.max(
+                                    NovelDocumentRevisionModel.revision_number
+                                ),
+                                0,
+                            )
+                        ).where(
+                            NovelDocumentRevisionModel.project_id == project_id,
+                            NovelDocumentRevisionModel.chapter_id == chapter_id,
+                        )
+                    )
+                    or 0
+                ) + 1
+                current.status = NovelRevisionStatus.SUPERSEDED
+                session.add(
+                    NovelDocumentRevisionModel(
+                        project_id=project_id,
+                        chapter_id=chapter_id,
+                        blocks=blocks,
+                        status=NovelRevisionStatus.ADOPTED,
+                        source="glossary_correction",
+                        revision_number=revision_number,
+                        base_revision_id=current.id,
+                        idempotency_key=(
+                            f"translation:correction:{chapter_id}:{uuid4().hex}"
+                        ),
+                    )
+                )
+                updated_chapters += 1
+            return {
+                "updated_chapters": updated_chapters,
+                "applied_replacements": applied_replacements,
+            }
+
+    @router.post("/projects/{project_id}/glossary")
+    async def create_glossary_term(
+        project_id: str,
+        body: GlossaryTermRequest,
+        access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
+    ):
+        context = await auth.validate_access(access_token)
+        tid = str(context.tenant_id)
+        async with database.session() as session:
+            project = await session.get(ProjectModel, project_id)
+            if project is None or project.tenant_id != tid:
+                raise HTTPException(404, "翻译项目不存在")
+            existing = (
+                await session.scalars(
+                    select(TranslationGlossaryTermModel).where(
+                        TranslationGlossaryTermModel.project_id == project_id,
+                        TranslationGlossaryTermModel.source_term == body.source_term.strip(),
+                    )
+                )
+            ).one_or_none()
+            if existing:
+                existing.target_term = body.target_term.strip()
+                existing.status = body.status
+                existing.source = "manual"
+                return {"id": existing.id, "status": existing.status}
+            term = TranslationGlossaryTermModel(
+                id=uuid4().hex,
+                project_id=project_id,
+                source_term=body.source_term.strip(),
+                target_term=body.target_term.strip(),
+                status=body.status,
+                source="manual",
+            )
+            session.add(term)
+            return {"id": term.id, "status": term.status}
+
+    @router.delete("/projects/{project_id}/glossary/{term_id}", status_code=204)
+    async def delete_glossary_term(
+        project_id: str,
+        term_id: str,
+        access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
+    ):
+        context = await auth.validate_access(access_token)
+        tid = str(context.tenant_id)
+        async with database.session() as session:
+            project = await session.get(ProjectModel, project_id)
+            term = await session.get(TranslationGlossaryTermModel, term_id)
+            if (
+                project is None
+                or project.tenant_id != tid
+                or term is None
+                or term.project_id != project_id
+            ):
+                raise HTTPException(404, "术语不存在")
+            await session.delete(term)
 
     @router.post("/documents")
     async def upload_and_translate(

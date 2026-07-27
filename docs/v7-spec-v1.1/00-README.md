@@ -33,6 +33,9 @@ V7 的唯一规格基线是本目录。需要核对历史决策时，先按
 - `06-DYNAMIC-CREATIVE-PLANNING.md`：结构 Skill 映射、短篇覆盖规划与创作中动态增补机制。
 - `07-NARRATIVE-GRAPH-TAXONOMY.md`：小说素材图谱的稳定节点、关系类型与国际化规范。
 - `08-I18N-THEME-GOVERNANCE.md`：界面语言、作品语言、素材语言边界，以及日夜主题与文案迁移规范。
+- `09-WEBNOVEL-WRITER-FUSION-PLAN.md`：外部长篇网文系统审计、机制取舍、融合架构与分阶段验收规划。
+- `10-NOVEL-GENRE-SKILL-QUALITY.md`：37 类题材覆盖地图、质量锚点、成对基准评测与 Skill 准入规则。
+- `12-CHAPTER-PIPELINE.md`：章节生产单元、状态机、上下文快照、审读、人工修订与采纳边界。
 - `adr/`：V7 独立 ADR 编号空间，不覆盖根目录历史 ADR。
 - `references/AGENTSCOPE-2.0.4-VERIFICATION.md`：API 表面验证；其中未实测项必须在 P0 tracer bullet 中完成。
 

@@ -30,17 +30,34 @@ def test_production_rejects_development_secrets_and_insecure_cookies() -> None:
 
 def test_runtime_token_reservation_policies_are_configurable_and_ordered() -> None:
     settings = Settings(
+        agent_budget_mode="observe",
+        novel_ideation_reserved_tokens=7_500,
         novel_writer_min_reserved_tokens=1_200,
         novel_writer_max_reserved_tokens=9_000,
         novel_writer_token_reserve_ratio=2.25,
+        novel_story_map_min_reserved_tokens=2_000,
+        novel_story_map_max_reserved_tokens=11_000,
+        novel_story_map_tokens_per_chapter=650,
     )
 
+    assert settings.enforce_agent_budget is False
+    assert settings.novel_ideation_reserved_tokens == 7_500
     assert settings.novel_writer_min_reserved_tokens == 1_200
     assert settings.novel_writer_max_reserved_tokens == 9_000
     assert settings.novel_writer_token_reserve_ratio == 2.25
+    assert settings.novel_story_map_tokens_per_chapter == 650
+
+    enforcing = Settings(agent_budget_mode="enforce")
+    assert enforcing.enforce_agent_budget is True
 
     with pytest.raises(ValidationError, match="novel writer token reservation range"):
         Settings(
             novel_writer_min_reserved_tokens=9_001,
             novel_writer_max_reserved_tokens=9_000,
+        )
+
+    with pytest.raises(ValidationError, match="novel story map token reservation range"):
+        Settings(
+            novel_story_map_min_reserved_tokens=11_001,
+            novel_story_map_max_reserved_tokens=11_000,
         )
