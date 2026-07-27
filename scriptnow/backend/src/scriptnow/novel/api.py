@@ -42,6 +42,7 @@ from scriptnow.novel.story_map_generator import (
     NovelStoryMapGenerator,
 )
 from scriptnow.novel.writer import NovelChapterGenerator, NovelWriterError
+from scriptnow.platform.active_runs import ActiveRunRegistry
 from scriptnow.platform.auth import AuthenticationFailed, AuthService, CsrfFailed
 from scriptnow.platform.auth_api import ACCESS_COOKIE
 from scriptnow.platform.config import Settings
@@ -143,7 +144,12 @@ class RollbackRequest(BaseModel):
     idempotency_key: str = Field(min_length=1, max_length=120)
 
 
-def create_novel_router(database: Database, auth: AuthService, settings: Settings) -> APIRouter:
+def create_novel_router(
+    database: Database,
+    auth: AuthService,
+    settings: Settings,
+    active_runs: ActiveRunRegistry,
+) -> APIRouter:
     router = APIRouter(prefix="/novel")
 
     async def _background_generate_chapter(
@@ -471,11 +477,18 @@ def create_novel_router(database: Database, auth: AuthService, settings: Setting
                 project_id=project_id,
                 idempotency_key=body.idempotency_key,
             )
-            asyncio.create_task(_background_generate_chapter(
-                auth_context.tenant_id, project_id, chapter_id,
-                body.idempotency_key, body.feedback, body.source_revision_id,
-                run.id,
-            ))
+            task = asyncio.create_task(
+                _background_generate_chapter(
+                    auth_context.tenant_id,
+                    project_id,
+                    chapter_id,
+                    body.idempotency_key,
+                    body.feedback,
+                    body.source_revision_id,
+                    run.id,
+                )
+            )
+            active_runs.track(run.id, task)
             return AdoptResponse(id=run.id, status="queued")
         try:
             async with database.session() as session:

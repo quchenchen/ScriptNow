@@ -36,6 +36,8 @@ V7 的唯一规格基线是本目录。需要核对历史决策时，先按
 - `09-WEBNOVEL-WRITER-FUSION-PLAN.md`：外部长篇网文系统审计、机制取舍、融合架构与分阶段验收规划。
 - `10-NOVEL-GENRE-SKILL-QUALITY.md`：37 类题材覆盖地图、质量锚点、成对基准评测与 Skill 准入规则。
 - `12-CHAPTER-PIPELINE.md`：章节生产单元、状态机、上下文快照、审读、人工修订与采纳边界。
+- `13-CREATIVE-FLOW-TECHNICAL-AUDIT.md`：四类创作流程的时延、失败模式与技术审计。
+- `14-AGENTSCOPE-ALIGNED-IMPLEMENTATION-PLAN.md`：AgentScope 对齐矩阵、分阶段实施任务和退出门槛。
 - `adr/`：V7 独立 ADR 编号空间，不覆盖根目录历史 ADR。
 - `references/AGENTSCOPE-2.0.4-VERIFICATION.md`：API 表面验证；其中未实测项必须在 P0 tracer bullet 中完成。
 

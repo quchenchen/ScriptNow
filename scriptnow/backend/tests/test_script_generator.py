@@ -1,8 +1,16 @@
 from types import SimpleNamespace
 
 import pytest
+from pydantic import ValidationError
 
-from scriptnow.script.generator import ScriptCreativeGenerator, normalize_blueprint_kind
+from scriptnow.platform.models import RunStatus
+from scriptnow.script.generator import (
+    ScriptCreativeGenerator,
+    _anchor_aliases,
+    _validate_story_map_contract,
+    _validate_story_map_payload,
+    normalize_blueprint_kind,
+)
 
 
 @pytest.mark.asyncio
@@ -11,7 +19,8 @@ async def test_story_cores_accepts_one_complete_narrative_engine(monkeypatch):
     candidates = [
         {
             "title": f"方向 {index}",
-            "concept": "一个具体而完整的剧本方向，包含人物选择、持续升级的阻力、关系变化以及不可逆的终局代价。" * 2,
+            "concept": "一个具体而完整的剧本方向，包含人物选择、持续升级的阻力、关系变化以及不可逆的终局代价。"
+            * 2,
             "angles": ["欲望", "阻力", "关系变化", "终局代价", "最终选择"],
             "narrative_engine": ["每次追查都会揭开真相，同时让主角失去一条退路。"],
             "viewpoint_anchor": ["跟随主角限知视角"],
@@ -21,8 +30,8 @@ async def test_story_cores_accepts_one_complete_narrative_engine(monkeypatch):
         for index in range(1, 4)
     ]
 
-    async def fake_json(*_args, **_kwargs):
-        return {"candidates": candidates}
+    async def fake_json(*_args, validator, **_kwargs):
+        return validator({"candidates": candidates})
 
     monkeypatch.setattr(generator, "_json", fake_json)
     project = SimpleNamespace(
@@ -38,9 +47,7 @@ async def test_story_cores_accepts_one_complete_narrative_engine(monkeypatch):
     )
 
     assert len(result) == 3
-    assert result[0].details.narrative_engine == (
-        "每次追查都会揭开真相，同时让主角失去一条退路。",
-    )
+    assert result[0].details.narrative_engine == ("每次追查都会揭开真相，同时让主角失去一条退路。",)
 
 
 @pytest.mark.asyncio
@@ -48,28 +55,30 @@ async def test_blueprint_revision_includes_current_candidate_as_revision_base(mo
     generator = ScriptCreativeGenerator.__new__(ScriptCreativeGenerator)
     captured: dict[str, object] = {}
 
-    async def fake_json(_tenant_id, _project_id, _role, prompt, context):
+    async def fake_json(_tenant_id, _project_id, _role, prompt, context, *, validator):
         captured["prompt"] = prompt
         captured["context"] = context
-        return {
-            "anchors": [
-                {
-                    "id": "event:inciting",
-                    "kind": "event",
-                    "name": "The patient returns",
-                    "payload": {"description": "The sealed memory speaks."},
-                },
-                *[
-                {
-                    "id": f"event:{index}",
-                    "kind": "event",
-                    "name": f"Event {index}",
-                    "payload": {"description": f"Beat {index}"},
-                }
-                for index in range(7)
-                ],
-            ]
-        }
+        return validator(
+            {
+                "anchors": [
+                    {
+                        "id": "event:inciting",
+                        "kind": "event",
+                        "name": "The patient returns",
+                        "payload": {"description": "The sealed memory speaks."},
+                    },
+                    *[
+                        {
+                            "id": f"event:{index}",
+                            "kind": "event",
+                            "name": f"Event {index}",
+                            "payload": {"description": f"Beat {index}"},
+                        }
+                        for index in range(7)
+                    ],
+                ]
+            }
+        )
 
     monkeypatch.setattr(generator, "_json", fake_json)
     project = SimpleNamespace(
@@ -114,41 +123,46 @@ async def test_blueprint_revision_retries_contract_or_cross_project_contaminatio
         context,
         *,
         skills_enabled=True,
+        validator,
     ):
         attempts.append((prompt, context))
         if len(attempts) == 2:
             assert skills_enabled is False
         if len(attempts) == 1:
-            return {
+            return validator(
+                {
+                    "anchors": [
+                        {
+                            "id": f"unrelated:{index}",
+                            "kind": "event",
+                            "label": f"Other project {index}",
+                            "payload": {"description": "contaminated"},
+                        }
+                        for index in range(8)
+                    ]
+                }
+            )
+        return validator(
+            {
                 "anchors": [
                     {
-                        "id": f"unrelated:{index}",
+                        "id": "event:inciting",
                         "kind": "event",
-                        "label": f"Other project {index}",
-                        "payload": {"description": "contaminated"},
-                    }
-                    for index in range(8)
+                        "name": "The patient returns",
+                        "payload": {"description": "The sealed memory speaks."},
+                    },
+                    *[
+                        {
+                            "id": f"event:{index}",
+                            "kind": "event",
+                            "name": f"Event {index}",
+                            "payload": {"description": f"Beat {index}"},
+                        }
+                        for index in range(7)
+                    ],
                 ]
             }
-        return {
-            "anchors": [
-                {
-                    "id": "event:inciting",
-                    "kind": "event",
-                    "name": "The patient returns",
-                    "payload": {"description": "The sealed memory speaks."},
-                },
-                *[
-                    {
-                        "id": f"event:{index}",
-                        "kind": "event",
-                        "name": f"Event {index}",
-                        "payload": {"description": f"Beat {index}"},
-                    }
-                    for index in range(7)
-                ],
-            ]
-        }
+        )
 
     monkeypatch.setattr(generator, "_json", fake_json)
     project = SimpleNamespace(
@@ -238,19 +252,221 @@ def test_blueprint_revision_accepts_rebuilt_ids_when_semantic_anchors_remain():
     assert len(payload.anchors) == 8
 
 
+def test_story_map_accepts_semantically_equivalent_provider_envelope():
+    payload = _validate_story_map_payload(
+        {
+            "storymap": {
+                "episodes": [
+                    {
+                        "title": "证言室",
+                        "scenes": [
+                            {
+                                "title": "证人归来",
+                                "beats": [
+                                    {
+                                        "objective": "证人交出能够改变调查方向的原始记录",
+                                        "anchor_ids": ["event:witness-returns"],
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                ]
+            }
+        }
+    )
+
+    assert payload.episodes[0].title == "证言室"
+
+
+def test_story_map_accepts_nested_provider_result_envelope():
+    payload = _validate_story_map_payload(
+        {
+            "result": {
+                "story_map": {
+                    "episodes": [
+                        {
+                            "title": "证言室",
+                            "scenes": [
+                                {
+                                    "title": "证人归来",
+                                    "beats": [
+                                        {
+                                            "objective": "证人交出能够改变调查方向的原始记录",
+                                            "anchor_ids": ["event:witness-returns"],
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ]
+                }
+            }
+        }
+    )
+
+    assert payload.episodes[0].scenes[0].title == "证人归来"
+
+
+def test_story_map_contract_rejects_unknown_blueprint_anchor():
+    with pytest.raises(ValueError, match="unknown blueprint anchor ids"):
+        _validate_story_map_contract(
+            {
+                "episodes": [
+                    {
+                        "title": "证言室",
+                        "scenes": [
+                            {
+                                "title": "证人归来",
+                                "beats": [
+                                    {
+                                        "objective": "证人交出能够改变调查方向的原始记录",
+                                        "anchor_ids": ["discovery_footage"],
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                ]
+            },
+            episode_count=1,
+            scenes_per_episode=1,
+            anchor_ids={"event:witness-returns"},
+        )
+
+
+def test_story_map_normalizes_only_unambiguous_provider_anchor_aliases():
+    aliases = _anchor_aliases(
+        [
+            {
+                "id": "event:footage_discovery",
+                "kind": "event",
+                "name": "发现停电前影像",
+                "payload": {},
+            },
+            {
+                "id": "event:first_confrontation",
+                "kind": "event",
+                "name": "第一次对峙",
+                "payload": {},
+            },
+        ]
+    )
+
+    payload = _validate_story_map_contract(
+        {
+            "episodes": [
+                {
+                    "title": "证言室",
+                    "scenes": [
+                        {
+                            "title": "证人归来",
+                            "beats": [
+                                {
+                                    "objective": "医生从离线终端调出关键监控影像",
+                                    "anchor_ids": ["discovery_footage"],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        },
+        episode_count=1,
+        scenes_per_episode=1,
+        anchor_ids={"event:footage_discovery", "event:first_confrontation"},
+        anchor_aliases=aliases,
+    )
+
+    assert payload.episodes[0].scenes[0].beats[0].anchor_ids == ("event:footage_discovery",)
+
+
+@pytest.mark.asyncio
+async def test_story_map_retries_invalid_contract_without_exposing_validation_details(
+    monkeypatch,
+):
+    generator = ScriptCreativeGenerator.__new__(ScriptCreativeGenerator)
+    attempts: list[tuple[str, dict[str, object], bool]] = []
+
+    async def fake_json(
+        _tenant_id,
+        _project_id,
+        _role,
+        prompt,
+        context,
+        *,
+        skills_enabled=True,
+        validator,
+    ):
+        attempts.append((prompt, context, skills_enabled))
+        if len(attempts) == 1:
+            return validator({"meta": {"title": "invalid"}})
+        return validator(
+            {
+                "episodes": [
+                    {
+                        "title": "证言室",
+                        "scenes": [
+                            {
+                                "title": "证人归来",
+                                "beats": [
+                                    {
+                                        "objective": "证人交出能够改变调查方向的原始记录",
+                                        "anchor_ids": ["A01"],
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                ]
+            }
+        )
+
+    monkeypatch.setattr(generator, "_json", fake_json)
+    project = SimpleNamespace(
+        id="project-id",
+        direction={"volume_one": 1, "volume_two": 1, "volume_three": 3},
+    )
+
+    episodes = await generator.story_map(
+        tenant_id="tenant-id",
+        project=project,
+        story_core={"title": "证言室"},
+        anchors=[
+            {
+                "id": "event:witness-returns",
+                "kind": "event",
+                "name": "证人归来",
+                "payload": {"description": "证人带回原始记录。"},
+            }
+        ],
+        feedback=None,
+    )
+
+    assert len(attempts) == 2
+    assert attempts[1][1]["contract_retry"] is True
+    assert attempts[1][2] is False
+    assert "具体拒绝原因" in attempts[1][0]
+    assert '"ref": "A01"' in attempts[1][0]
+    assert episodes[0].scenes[0].beats[0].anchor_ids == ("event:witness-returns",)
+    assert episodes[0].title == "证言室"
+
+
 @pytest.mark.asyncio
 async def test_scene_document_returns_structured_candidate_without_adopting(monkeypatch):
     generator = ScriptCreativeGenerator.__new__(ScriptCreativeGenerator)
 
-    async def fake_json(*_args, **_kwargs):
-        return {
-            "blocks": [
-                {"type": "slugline", "text": "内景 记忆诊所 夜"},
-                {"type": "action", "text": "冷蓝终端逐层亮起。"},
-                {"type": "character", "text": "林深"},
-                {"type": "dialogue", "text": "把最深的一层打开。"},
-            ]
-        }
+    async def fake_json(*_args, validator, **_kwargs):
+        return validator(
+            {
+                "blocks": [
+                    {"type": "slugline", "text": "内景 记忆诊所 夜"},
+                    {"type": "action", "text": "冷蓝终端逐层亮起。"},
+                    {"type": "character", "text": "林深"},
+                    {"type": "dialogue", "text": "把最深的一层打开。"},
+                ]
+            }
+        )
 
     monkeypatch.setattr(generator, "_json", fake_json)
     project = SimpleNamespace(
@@ -277,3 +493,38 @@ async def test_scene_document_returns_structured_candidate_without_adopting(monk
         "dialogue",
     ]
     assert blocks[0].text == "内景 记忆诊所 夜"
+
+
+@pytest.mark.asyncio
+async def test_json_marks_run_failed_until_domain_contract_validates():
+    generator = ScriptCreativeGenerator.__new__(ScriptCreativeGenerator)
+    transitions: list[tuple[RunStatus, str | None]] = []
+
+    class FakeRuns:
+        async def enqueue(self, **_kwargs):
+            return SimpleNamespace(id="run-id")
+
+        async def transition(self, *, target, error_code=None, **_kwargs):
+            transitions.append((target, error_code))
+
+    class FakeRuntime:
+        async def generate(self, **_kwargs):
+            return SimpleNamespace(text='{"episodes":[]}')
+
+    generator.runs = FakeRuns()
+    generator.runtime = FakeRuntime()
+
+    with pytest.raises(ValidationError):
+        await generator._json(
+            "tenant-id",
+            "project-id",
+            "architect",
+            "prompt",
+            {},
+            validator=_validate_story_map_payload,
+        )
+
+    assert transitions == [
+        (RunStatus.RUNNING, None),
+        (RunStatus.FAILED, "script_contract_invalid"),
+    ]

@@ -5,6 +5,7 @@ from sqlalchemy import and_, func, or_, select
 
 from scriptnow.novel.domain import NovelDocumentRevisionModel
 from scriptnow.novel.project import NovelPlanModel, NovelStoryMapModel
+from scriptnow.platform.active_runs import ActiveRunRegistry
 from scriptnow.platform.agent_runtime import AgentRuntime, AgentRuntimeError, AgentRuntimeResult
 from scriptnow.platform.billing import BillingService
 from scriptnow.platform.config import Settings
@@ -34,9 +35,15 @@ class DockError(RuntimeError):
 
 
 class DockService:
-    def __init__(self, database: Database, settings: Settings) -> None:
+    def __init__(
+        self,
+        database: Database,
+        settings: Settings,
+        active_runs: ActiveRunRegistry,
+    ) -> None:
         self.database = database
         self.settings = settings
+        self.active_runs = active_runs
         self.runs = RunCoordinator(database)
         self.events = PersistentRunEventLog(database)
         self.billing = BillingService(
@@ -382,6 +389,7 @@ class DockService:
             ).one_or_none()
         if reservation:
             await self.billing.release(reservation.id)
+        self.active_runs.cancel(run_id)
         cancelled = await self.runs.transition(
             tenant_id=tenant_id, run_id=run_id, target=RunStatus.CANCELLED
         )

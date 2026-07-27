@@ -9,6 +9,7 @@ from scriptnow.novel.cross_cultural_recreation.api import (
     create_cross_cultural_recreation_router,
 )
 from scriptnow.novel.project import initialize_novel_project
+from scriptnow.platform.active_runs import ActiveRunRegistry
 from scriptnow.platform.admin_api import create_admin_router
 from scriptnow.platform.auth import AuthService
 from scriptnow.platform.auth_api import create_auth_router
@@ -32,17 +33,20 @@ def create_app(
     resolved_settings = settings or get_settings()
     resolved_database = database or Database.create(resolved_settings.database_url)
     owns_database = database is None
+    active_runs = ActiveRunRegistry()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         del app
         yield
+        await active_runs.cancel_all()
         if owns_database:
             await resolved_database.dispose()
 
     app = FastAPI(title="ScriptNow", version="0.1.0", lifespan=lifespan)
     app.state.database = resolved_database
     app.state.settings = resolved_settings
+    app.state.active_runs = active_runs
     auth = AuthService(resolved_database, resolved_settings)
     app.include_router(create_auth_router(auth, resolved_settings))
     app.include_router(create_admin_router(resolved_database, auth, resolved_settings))
@@ -57,7 +61,9 @@ def create_app(
         create_core_router(resolved_database, auth, resolved_settings, initialize_project)
     )
     app.include_router(create_script_router(resolved_database, auth, resolved_settings))
-    app.include_router(create_novel_router(resolved_database, auth, resolved_settings))
+    app.include_router(
+        create_novel_router(resolved_database, auth, resolved_settings, active_runs)
+    )
     app.include_router(
         create_cross_cultural_recreation_router(
             resolved_database, auth, resolved_settings
@@ -65,7 +71,9 @@ def create_app(
     )
     app.include_router(create_narrative_graph_router(resolved_database, auth, resolved_settings))
     app.include_router(create_review_router(resolved_database, auth))
-    app.include_router(create_dock_router(resolved_database, auth, resolved_settings))
+    app.include_router(
+        create_dock_router(resolved_database, auth, resolved_settings, active_runs)
+    )
     app.include_router(create_work_package_router(resolved_database, auth, resolved_settings))
     app.include_router(create_translation_router(resolved_database, auth, resolved_settings))
 

@@ -5,6 +5,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from scriptnow.dock.service import DockError, DockService
+from scriptnow.platform.active_runs import ActiveRunRegistry
 from scriptnow.platform.auth import AuthenticationFailed, AuthService, CsrfFailed
 from scriptnow.platform.auth_api import ACCESS_COOKIE
 from scriptnow.platform.billing import BillingError, PaymentRequired
@@ -30,9 +31,14 @@ class ConfirmRequest(BaseModel):
     idempotency_key: str = Field(min_length=1, max_length=120)
 
 
-def create_dock_router(database: Database, auth: AuthService, settings: Settings) -> APIRouter:
+def create_dock_router(
+    database: Database,
+    auth: AuthService,
+    settings: Settings,
+    active_runs: ActiveRunRegistry,
+) -> APIRouter:
     router = APIRouter(tags=["dock"])
-    dock = DockService(database, settings)
+    dock = DockService(database, settings, active_runs)
     run_events = PersistentRunEventLog(database)
 
     async def context(access: str | None, csrf: str | None = None, *, write=False):

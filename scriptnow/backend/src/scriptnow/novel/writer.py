@@ -294,6 +294,29 @@ class NovelChapterGenerator:
                 },
             )
             return blocks
+        except asyncio.CancelledError:
+            with suppress(Exception):
+                await self.billing.release(reservation.id)
+            with suppress(Exception):
+                await self.runs.transition(
+                    tenant_id=tenant_id,
+                    run_id=run.id,
+                    target=RunStatus.CANCELLED,
+                )
+            with suppress(Exception):
+                await self._event(
+                    tenant_id=tenant_id,
+                    run_id=run.id,
+                    key="writer-cancelled",
+                    type=RunEventType.TERMINAL,
+                    payload={
+                        "block": "system",
+                        "phase": "end",
+                        "title": "章节候选稿生成已取消",
+                        "runtime": "agentscope",
+                    },
+                )
+            raise
         except Exception as error:
             logger.exception("novel chapter generation failed", extra={"run_id": run.id, "chapter_id": chapter_id})
             with suppress(Exception):

@@ -1,8 +1,9 @@
 import json
 import logging
 import re
+from collections.abc import Callable
 from contextlib import suppress
-from typing import Literal
+from typing import Literal, TypeVar
 from uuid import uuid4
 
 from json_repair import loads as repair_json
@@ -24,6 +25,8 @@ from scriptnow.script.format_profiles import generation_instructions, scene_craf
 from scriptnow.script.story_map import Episode, Scene, ScriptStoryBeat
 
 logger = logging.getLogger(__name__)
+
+ValidatedPayload = TypeVar("ValidatedPayload")
 
 SCRIPT_BLUEPRINT_KINDS = frozenset(
     {"worldview", "character", "arc", "character_arc", "event", "foreshadow"}
@@ -113,9 +116,98 @@ class _Episode(BaseModel):
 
 
 class _StoryMapPayload(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    # Provider metadata beside the domain payload is harmless. Nested StoryMap
+    # objects remain strict so malformed episodes, scenes and beats still fail.
+    model_config = ConfigDict(extra="ignore")
 
     episodes: tuple[_Episode, ...] = Field(min_length=1)
+
+
+def _anchor_reference_signature(value: str) -> str:
+    """Build an order-independent signature for a provider-formatted anchor ref."""
+
+    tokens = re.findall(r"[^\W_]+", value.casefold().replace(":", "_"))
+    tokens = [
+        token
+        for token in tokens
+        if token not in SCRIPT_BLUEPRINT_KINDS and token not in SCRIPT_BLUEPRINT_KIND_ALIASES
+    ]
+    return "|".join(sorted(tokens))
+
+
+def _anchor_aliases(anchors: list[dict[str, object]]) -> dict[str, str]:
+    """Return only aliases that resolve to exactly one canonical blueprint id."""
+
+    candidates: dict[str, set[str]] = {}
+    for anchor in anchors:
+        anchor_id = str(anchor["id"])
+        values = (anchor_id, str(anchor.get("name") or ""))
+        for value in values:
+            signature = _anchor_reference_signature(value)
+            if signature:
+                candidates.setdefault(signature, set()).add(anchor_id)
+    return {
+        signature: next(iter(anchor_ids))
+        for signature, anchor_ids in candidates.items()
+        if len(anchor_ids) == 1
+    }
+
+
+def _validate_story_map_payload(value: object) -> _StoryMapPayload:
+    """Accept a provider envelope while keeping the domain payload strict."""
+
+    for _ in range(2):
+        if not isinstance(value, dict) or "episodes" in value:
+            break
+        wrapped = next(
+            (
+                nested
+                for key, nested in value.items()
+                if re.sub(r"[^a-z]", "", str(key).casefold()) in {"storymap", "result", "data"}
+                and isinstance(nested, dict)
+            ),
+            None,
+        )
+        if wrapped is None:
+            break
+        value = wrapped
+    return _StoryMapPayload.model_validate(value)
+
+
+def _validate_story_map_contract(
+    value: object,
+    *,
+    episode_count: int,
+    scenes_per_episode: int,
+    anchor_ids: set[str],
+    anchor_aliases: dict[str, str] | None = None,
+) -> _StoryMapPayload:
+    """Validate structure, user-selected bounds, and blueprint references."""
+
+    payload = _validate_story_map_payload(value)
+    if len(payload.episodes) != episode_count:
+        raise ValueError("episode count does not match the project setting")
+    for episode in payload.episodes:
+        if len(episode.scenes) != scenes_per_episode:
+            raise ValueError("scene count does not match the project setting")
+        for scene in episode.scenes:
+            for beat in scene.beats:
+                canonical_ids: list[str] = []
+                unknown: set[str] = set()
+                for anchor_id in beat.anchor_ids:
+                    if anchor_id in anchor_ids:
+                        canonical_ids.append(anchor_id)
+                        continue
+                    signature = _anchor_reference_signature(anchor_id)
+                    canonical = (anchor_aliases or {}).get(signature)
+                    if canonical:
+                        canonical_ids.append(canonical)
+                    else:
+                        unknown.add(anchor_id)
+                if unknown:
+                    raise ValueError("unknown blueprint anchor ids: " + ", ".join(sorted(unknown)))
+                beat.anchor_ids = tuple(dict.fromkeys(canonical_ids))
+    return payload
 
 
 class _ScriptBlockPayload(BaseModel):
@@ -143,9 +235,7 @@ def _validate_scene_document_payload(value: object) -> _SceneDocumentPayload:
     elif isinstance(value, dict) and isinstance(value.get("content"), list):
         blocks = list(value["content"])
         if value.get("slugline") and (
-            not blocks
-            or not isinstance(blocks[0], dict)
-            or blocks[0].get("type") != "slugline"
+            not blocks or not isinstance(blocks[0], dict) or blocks[0].get("type") != "slugline"
         ):
             blocks.insert(0, {"type": "slugline", "text": value["slugline"]})
         value = {"blocks": blocks}
@@ -200,9 +290,7 @@ def _restore_embedded_scene_blocks(
                             raise ValueError("collapsed block tail is incomplete")
                         text = text[:-2]
                     recovered.append(
-                        _ScriptBlockPayload.model_validate(
-                            {"type": block_type, "text": text}
-                        )
+                        _ScriptBlockPayload.model_validate({"type": block_type, "text": text})
                     )
             except (ValidationError, TypeError, ValueError):
                 restored.append(block)
@@ -239,10 +327,13 @@ class ScriptCreativeGenerator:
 数组必须恰好三个，且不是同一故事换标题。每个字段都必须提供完整、非空的字符串数组；narrative_engine 可用一条完整机制或多条互补机制表达。
 """.strip()
         try:
-            payload = _CorePayload.model_validate(
-                await self._json(
-                    tenant_id, project.id, "director", prompt, dict(project.direction)
-                )
+            payload = await self._json(
+                tenant_id,
+                project.id,
+                "director",
+                prompt,
+                dict(project.direction),
+                validator=_CorePayload.model_validate,
             )
         except ValidationError as error:
             logger.warning("invalid script StoryCore payload: %s", error)
@@ -303,11 +394,16 @@ kind 只能使用以下六个稳定值：worldview、character、arc、character
             "existing_blueprint_anchors": existing_anchors or [],
         }
         try:
-            payload = self._validate_blueprint_payload(
-                await self._json(
-                    tenant_id, project.id, "architect", prompt, context
+            payload = await self._json(
+                tenant_id,
+                project.id,
+                "architect",
+                prompt,
+                context,
+                validator=lambda value: self._validate_blueprint_payload(
+                    value,
+                    existing_anchors=existing_anchors,
                 ),
-                existing_anchors=existing_anchors,
             )
         except (ValidationError, ValueError) as first_error:
             logger.warning("invalid script blueprint payload, retrying once: %s", first_error)
@@ -320,20 +416,21 @@ kind 只能使用以下六个稳定值：worldview、character、arc、character
 字段名只能是 id、kind、name、payload，绝不能使用 label。
 """.strip()
             try:
-                payload = self._validate_blueprint_payload(
-                    await self._json(
-                        tenant_id,
-                        project.id,
-                        "architect",
-                        correction_prompt,
-                        {
-                            **context,
-                            "contract_retry": True,
-                            "rejected_reason": str(first_error),
-                        },
-                        skills_enabled=False,
+                payload = await self._json(
+                    tenant_id,
+                    project.id,
+                    "architect",
+                    correction_prompt,
+                    {
+                        **context,
+                        "contract_retry": True,
+                        "rejected_reason": str(first_error),
+                    },
+                    skills_enabled=False,
+                    validator=lambda value: self._validate_blueprint_payload(
+                        value,
+                        existing_anchors=existing_anchors,
                     ),
-                    existing_anchors=existing_anchors,
                 )
             except (ValidationError, ValueError) as error:
                 logger.warning("invalid script blueprint payload after retry: %s", error)
@@ -344,9 +441,7 @@ kind 只能使用以下六个稳定值：worldview、character、arc、character
             raise
         except Exception as error:
             logger.exception("unexpected script blueprint generation failure")
-            raise ScriptGenerationError(
-                "故事建筑师暂时无法完成蓝图生成，请稍后重试。"
-            ) from error
+            raise ScriptGenerationError("故事建筑师暂时无法完成蓝图生成，请稍后重试。") from error
         return BlueprintDraft(
             anchors=tuple(
                 BlueprintAnchorDraft(
@@ -374,9 +469,7 @@ kind 只能使用以下六个稳定值：worldview、character、arc、character
             }
             revised_ids = {item.id for item in payload.anchors}
             if previous_ids and previous_ids.isdisjoint(revised_ids):
-                previous_terms = ScriptCreativeGenerator._blueprint_affinity_terms(
-                    existing_anchors
-                )
+                previous_terms = ScriptCreativeGenerator._blueprint_affinity_terms(existing_anchors)
                 revised_text = json.dumps(
                     [item.model_dump(mode="json") for item in payload.anchors],
                     ensure_ascii=False,
@@ -420,52 +513,101 @@ kind 只能使用以下六个稳定值：worldview、character、arc、character
         scene_minutes = self._positive(direction, "volume_three")
         duration_seconds = scene_minutes * 60
         anchor_ids = {str(item["id"]) for item in anchors}
+        anchor_aliases = _anchor_aliases(anchors)
+        anchor_refs = {
+            f"A{index:02d}": str(anchor["id"]) for index, anchor in enumerate(anchors, 1)
+        }
+        anchor_aliases.update(
+            {
+                _anchor_reference_signature(reference): anchor_id
+                for reference, anchor_id in anchor_refs.items()
+            }
+        )
+        anchor_catalog = [
+            {
+                "ref": reference,
+                "kind": anchor.get("kind"),
+                "name": anchor.get("name"),
+                "summary": anchor.get("payload"),
+            }
+            for reference, anchor in zip(anchor_refs, anchors, strict=True)
+        ]
         prompt = f"""
 你是剧本结构师。创建 StoryMap。故事语义由你完成，但必须严格服从用户在前端确定的体量。
 必须生成 {episode_count} 个篇章，每篇恰好 {scenes_per_episode} 场；每场目标时长由系统采用用户设定的 {scene_minutes} 分钟。
-每个 beat 只能引用给定蓝图锚点，不得虚构 anchor id。
+每个 beat 只能引用给定蓝图锚点，不得虚构引用。
+anchor_ids 字段只能填写锚点目录中的短引用 ref（例如 A01），不要填写名称或内部 id。
 
 项目参数：{json.dumps(direction, ensure_ascii=False)}
 已采纳方向：{json.dumps(story_core, ensure_ascii=False)}
-蓝图锚点：{json.dumps(anchors, ensure_ascii=False)}
+蓝图锚点目录：{json.dumps(anchor_catalog, ensure_ascii=False)}
 修订反馈：{feedback or "无"}
 
 只返回 JSON：
-{{"episodes":[{{"title":"...","scenes":[{{"title":"...","beats":[{{"objective":"具体行动与变化","anchor_ids":["..."]}}]}}]}}]}}
+{{"episodes":[{{"title":"...","scenes":[{{"title":"...","beats":[{{"objective":"具体行动与变化","anchor_ids":["A01"]}}]}}]}}]}}
 """.strip()
+        context = {
+            "direction": direction,
+            "story_core": story_core,
+            "blueprint_anchors": anchors,
+        }
         try:
-            payload = _StoryMapPayload.model_validate(
-                await self._json(
+            payload = await self._json(
+                tenant_id,
+                project.id,
+                "architect",
+                prompt,
+                context,
+                validator=lambda value: _validate_story_map_contract(
+                    value,
+                    episode_count=episode_count,
+                    scenes_per_episode=scenes_per_episode,
+                    anchor_ids=anchor_ids,
+                    anchor_aliases=anchor_aliases,
+                ),
+            )
+        except (ValidationError, ValueError) as first_error:
+            logger.warning("invalid script StoryMap payload, retrying once: %s", first_error)
+            correction_prompt = f"""
+{prompt}
+
+上一次输出未通过 StoryMap 结构校验。请重新返回当前项目的完整 StoryMap。
+具体拒绝原因：{first_error}
+顶层只能包含 episodes；不得增加 storymap、meta、result 或 data 包装层。
+episodes 内必须完整包含每一篇的 scenes，以及每场的 beats。
+篇章数与每篇场数必须服从项目参数；所有 anchor_ids 必须逐字复制锚点目录中的 A01、A02 等短引用。
+""".strip()
+            try:
+                payload = await self._json(
                     tenant_id,
                     project.id,
                     "architect",
-                    prompt,
+                    correction_prompt,
                     {
-                        "direction": direction,
-                        "story_core": story_core,
-                        "blueprint_anchors": anchors,
+                        **context,
+                        "contract_retry": True,
+                        "rejected_reason": str(first_error),
                     },
+                    skills_enabled=False,
+                    validator=lambda value: _validate_story_map_contract(
+                        value,
+                        episode_count=episode_count,
+                        scenes_per_episode=scenes_per_episode,
+                        anchor_ids=anchor_ids,
+                        anchor_aliases=anchor_aliases,
+                    ),
                 )
-            )
-        except ValidationError as error:
-            raise ScriptGenerationError(
-                f"故事建筑师返回的 StoryMap 结构不完整：{error}"
-            ) from error
-        if len(payload.episodes) != episode_count:
-            raise ScriptGenerationError("Agent 返回的篇章数量与用户设定不一致")
+            except (ScriptGenerationError, ValidationError, ValueError) as error:
+                logger.warning("invalid script StoryMap payload after retry: %s", error)
+                raise ScriptGenerationError(
+                    "故事建筑师未能形成完整的 StoryMap，请保留当前蓝图后重试。"
+                ) from error
         episodes: list[Episode] = []
         for episode_index, episode in enumerate(payload.episodes, 1):
-            if len(episode.scenes) != scenes_per_episode:
-                raise ScriptGenerationError("Agent 返回的每篇场数与用户设定不一致")
             scenes: list[Scene] = []
             for scene_index, scene in enumerate(episode.scenes, 1):
                 beats: list[ScriptStoryBeat] = []
                 for beat_index, beat in enumerate(scene.beats, 1):
-                    unknown = set(beat.anchor_ids) - anchor_ids
-                    if unknown:
-                        raise ScriptGenerationError(
-                            f"Agent 引用了未知蓝图锚点：{', '.join(sorted(unknown))}"
-                        )
                     beats.append(
                         ScriptStoryBeat(
                             id=f"beat-{episode_index}-{scene_index}-{beat_index}",
@@ -526,14 +668,13 @@ kind 只能使用以下六个稳定值：worldview、character、arc、character
 type 只能是 slugline、action、character、dialogue、transition。
 """.strip()
         try:
-            payload = _validate_scene_document_payload(
-                await self._json(
-                    tenant_id,
-                    project.id,
-                    "writer",
-                    prompt,
-                    {"direction": direction, "scene": scene, "context": context},
-                )
+            payload = await self._json(
+                tenant_id,
+                project.id,
+                "writer",
+                prompt,
+                {"direction": direction, "scene": scene, "context": context},
+                validator=_validate_scene_document_payload,
             )
         except ValidationError as error:
             logger.warning("invalid script scene payload: %s", error)
@@ -558,15 +699,14 @@ type 只能是 slugline、action、character、dialogue、transition。
         context: dict[str, object],
         *,
         skills_enabled: bool = True,
-    ) -> object:
+        validator: Callable[[object], ValidatedPayload],
+    ) -> ValidatedPayload:
         run = await self.runs.enqueue(
             tenant_id=tenant_id,
             project_id=project_id,
             idempotency_key=f"script-agent:{uuid4()}",
         )
-        await self.runs.transition(
-            tenant_id=tenant_id, run_id=run.id, target=RunStatus.RUNNING
-        )
+        await self.runs.transition(tenant_id=tenant_id, run_id=run.id, target=RunStatus.RUNNING)
         try:
             result = await self.runtime.generate(
                 tenant_id=tenant_id,
@@ -580,11 +720,21 @@ type 只能是 slugline、action、character、dialogue、transition。
                 payload = json.loads(result.text)
             except json.JSONDecodeError:
                 payload = repair_json(result.text)
+            validated = validator(payload)
             await self.runs.transition(
                 tenant_id=tenant_id, run_id=run.id, target=RunStatus.SUCCEEDED
             )
-            return payload
-        except (AgentRuntimeError, ValidationError, ValueError, TypeError) as error:
+            return validated
+        except (ValidationError, ValueError, TypeError):
+            with suppress(Exception):
+                await self.runs.transition(
+                    tenant_id=tenant_id,
+                    run_id=run.id,
+                    target=RunStatus.FAILED,
+                    error_code="script_contract_invalid",
+                )
+            raise
+        except AgentRuntimeError as error:
             with suppress(Exception):
                 await self.runs.transition(
                     tenant_id=tenant_id,

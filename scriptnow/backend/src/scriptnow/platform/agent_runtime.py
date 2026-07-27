@@ -401,12 +401,11 @@ class AgentRuntime:
                             },
                         )
                     )
-                    planning_reply = await self._run_planning_phase(
+                    planning_text = await self._run_planning_phase(
                         agent=agent,
                         prompt=prompt,
                         event_sink=event_sink,
                     )
-                    planning_text = self._text_content(planning_reply)
                     if not planning_text:
                         raise RuntimeError("Agent planning completed without a writing brief.")
                     await event_sink(
@@ -582,9 +581,9 @@ class AgentRuntime:
         agent: Agent,
         prompt: str,
         event_sink: RuntimeEventSink,
-    ) -> Msg:
-        """Run the skill/tool phase and bridge only auditable product events."""
-        final_reply: Msg | None = None
+    ) -> str:
+        """Run planning through AgentScope's public stream and return visible brief text."""
+        visible_text: list[str] = []
         request = Msg(
             name="creator",
             role="user",
@@ -600,24 +599,33 @@ class AgentRuntime:
                 )
             ],
         )
-        async for event in agent._reply(request):
-            if isinstance(event, TextBlockDeltaEvent | ThinkingBlockDeltaEvent):
+        async for event in agent.reply_stream(request):
+            if isinstance(event, TextBlockDeltaEvent):
+                if not event.delta:
+                    continue
+                visible_text.append(event.delta)
+                await event_sink(
+                    ThinkingBlockDeltaEvent(
+                        reply_id=event.reply_id,
+                        block_id=event.block_id,
+                        delta=event.delta,
+                        metadata={**event.metadata, "phase": "planning"},
+                    )
+                )
+            elif isinstance(event, ThinkingBlockDeltaEvent):
                 if event.delta:
                     await event_sink(
-                        ThinkingBlockDeltaEvent(
-                            reply_id=event.reply_id,
-                            block_id=event.block_id,
-                            delta=event.delta,
-                            metadata={**event.metadata, "phase": "planning"},
+                        event.model_copy(
+                            update={"metadata": {**event.metadata, "phase": "planning"}}
                         )
                     )
             elif isinstance(event, ToolCallStartEvent | ToolCallEndEvent | ToolResultEndEvent):
-                await event_sink(event)
-            elif isinstance(event, Msg):
-                final_reply = event
-        if final_reply is None:
-            raise RuntimeError("Agent planning did not produce a final reply.")
-        return final_reply
+                await event_sink(
+                    event.model_copy(
+                        update={"metadata": {**event.metadata, "phase": "planning"}}
+                    )
+                )
+        return "".join(visible_text).strip()
 
     async def _mcp_clients(self, tool_keys: list[object]) -> list[MCPClient]:
         requested: dict[str, set[str]] = {}
