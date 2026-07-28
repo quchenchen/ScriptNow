@@ -1,0 +1,14 @@
+{
+  "schema_version": "creative-flow-golden/v1",
+  "id": "faithful-translation-v1",
+  "domain": "translation",
+  "workflow": "faithful",
+  "description": "忠实翻译的章节对照、术语确认、历史与独立导出黄金路径。",
+  "stages": [
+    {"id": "source_import", "required_artifacts": ["translation_source"]},
+    {"id": "chapter_translate", "required_artifacts": ["translation_revision"], "decision_required": true},
+    {"id": "glossary_review", "required_artifacts": ["translation_glossary"], "decision_required": true},
+    {"id": "history_snapshot", "required_artifacts": ["translation_snapshot"]},
+    {"id": "export", "required_artifacts": ["translation_export_manifest"]}
+  ]
+}

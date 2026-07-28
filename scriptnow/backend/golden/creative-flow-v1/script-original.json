@@ -1,0 +1,16 @@
+{
+  "schema_version": "creative-flow-golden/v1",
+  "id": "script-original-v1",
+  "domain": "script",
+  "workflow": "original",
+  "description": "原创剧本从创意方向到剧本导出的黄金路径。",
+  "stages": [
+    {"id": "ideation", "required_artifacts": ["script_story_core"], "decision_required": true},
+    {"id": "blueprint", "required_artifacts": ["script_blueprint"], "decision_required": true},
+    {"id": "story_map", "required_artifacts": ["script_story_map"], "decision_required": true},
+    {"id": "scene_write", "required_artifacts": ["scene_revision"], "decision_required": true},
+    {"id": "quality_review", "required_artifacts": ["script_quality_report"]},
+    {"id": "packaging", "required_artifacts": ["script_package"]},
+    {"id": "export", "required_artifacts": ["script_export_manifest"]}
+  ]
+}

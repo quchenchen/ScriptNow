@@ -1,0 +1,18 @@
+{
+  "schema_version": "creative-flow-golden/v1",
+  "id": "cross-cultural-recreation-v1",
+  "domain": "recreation",
+  "workflow": "cross_cultural",
+  "description": "故事归化从原作分析到逐包生产和独立导出的黄金路径。",
+  "stages": [
+    {"id": "source_analysis", "required_artifacts": ["recreation_source_analysis"]},
+    {"id": "target_contract", "required_artifacts": ["recreation_target_contract"], "decision_required": true},
+    {"id": "strategy", "required_artifacts": ["recreation_strategy"], "decision_required": true},
+    {"id": "sample", "required_artifacts": ["recreation_sample"], "decision_required": true},
+    {"id": "blueprint", "required_artifacts": ["recreation_blueprint"], "decision_required": true},
+    {"id": "production_unit", "required_artifacts": ["recreation_unit_revision"], "decision_required": true},
+    {"id": "quality_review", "required_artifacts": ["recreation_quality_report"]},
+    {"id": "packaging", "required_artifacts": ["recreation_package"]},
+    {"id": "export", "required_artifacts": ["recreation_export_manifest"]}
+  ]
+}

@@ -1,4 +1,4 @@
-.PHONY: help setup dev backend creator admin test test-backend test-frontend lint lint-backend lint-frontend build clean
+.PHONY: help setup dev backend creator admin test test-backend test-frontend lint lint-backend lint-frontend build clean golden-contracts golden-audit-project
 
 APP_DIR := scriptnow
 BACKEND_DIR := $(APP_DIR)/backend
@@ -36,6 +36,26 @@ test-backend:
 
 test-frontend:
 	cd $(FRONTEND_DIR) && npm test
+
+golden-contracts:  ## 校验四领域黄金场景与统一完成定义
+	cd $(BACKEND_DIR) && .venv/bin/python -m pytest \
+		tests/test_creative_flow_audit.py \
+		tests/test_creative_flow_evidence.py \
+		tests/test_creative_flow_golden_replay.py
+
+golden-audit-project:  ## 只读审计真实项目（SCENARIO=script-original PROJECT_ID=... OUTPUT_DIR=...）
+	@test -n "$(SCENARIO)" || (echo "缺少 SCENARIO" && exit 2)
+	@test -n "$(PROJECT_ID)" || (echo "缺少 PROJECT_ID" && exit 2)
+	@test -n "$(OUTPUT_DIR)" || (echo "缺少 OUTPUT_DIR" && exit 2)
+	mkdir -p "$(OUTPUT_DIR)"
+	cd $(BACKEND_DIR) && .venv/bin/python scripts/collect_creative_flow_evidence.py \
+		--scenario "golden/creative-flow-v1/$(SCENARIO).json" \
+		--project-id "$(PROJECT_ID)" \
+		--output "$(abspath $(OUTPUT_DIR))/$(SCENARIO)-observation.json"
+	cd $(BACKEND_DIR) && .venv/bin/python scripts/audit_creative_flows.py \
+		--scenario "golden/creative-flow-v1/$(SCENARIO).json" \
+		--observation "$(abspath $(OUTPUT_DIR))/$(SCENARIO)-observation.json" \
+		--output "$(abspath $(OUTPUT_DIR))/$(SCENARIO)-audit.json"
 
 lint: lint-backend lint-frontend  ## 运行静态检查
 
