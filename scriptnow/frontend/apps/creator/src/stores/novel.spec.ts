@@ -22,20 +22,36 @@ describe('novel chapter decisions', () => {
 
   it('generates a chapter candidate without silently adopting it', async () => {
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ id: 'revision-1', status: 'candidate' }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        id: 'run-1',
+        run_id: 'run-1',
+        operation_id: 'operation-1',
+        creative_session_id: 'session-1',
+        status: 'queued',
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: 'run-1', status: 'succeeded' }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify(emptyState), { status: 200 }))
     vi.stubGlobal('fetch', fetchMock)
 
     await useNovelStore().generateChapter('project-1', 'chapter-1')
 
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
     expect(String(fetchMock.mock.calls[0][0])).toContain('/chapters/chapter-1/generate')
+    expect(String(fetchMock.mock.calls[0][0])).toContain('background=true')
+    expect(String(fetchMock.mock.calls[1][0])).toContain('/runs/run-1')
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/adopt'))).toBe(false)
   })
 
   it('can revise a specific candidate without overwriting or adopting it', async () => {
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ id: 'revision-4', status: 'candidate' }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        id: 'run-4',
+        run_id: 'run-4',
+        operation_id: 'operation-4',
+        creative_session_id: 'session-1',
+        status: 'queued',
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: 'run-4', status: 'succeeded' }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify(emptyState), { status: 200 }))
     vi.stubGlobal('fetch', fetchMock)
 

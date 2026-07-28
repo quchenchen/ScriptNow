@@ -21,6 +21,7 @@ export interface CreatorModel {
   display_name: string
   provider_name: string
   minimum_tier: string
+  context_window: number
   available: boolean
   reason?: 'disabled' | 'provider_unavailable' | 'upgrade_required'
 }

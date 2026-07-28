@@ -61,6 +61,35 @@ const completedCount = computed(() => chapters.value.filter((chapter) => chapter
 const pendingCount = computed(() => chapters.value.length - completedCount.value)
 const progress = computed(() => chapters.value.length ? Math.round(completedCount.value / chapters.value.length * 100) : 0)
 
+interface TranslationRunResponse {
+  run_id: string
+  status: 'queued' | 'running' | 'waiting' | 'succeeded' | 'failed' | 'cancelled'
+  error_code?: string | null
+}
+
+async function waitForTranslationRun(runId: string) {
+  const deadline = Date.now() + 10 * 60 * 1000
+  while (Date.now() < deadline) {
+    const run = await api<TranslationRunResponse>(
+      `/translation/projects/${props.projectId}/runs/${runId}`,
+    )
+    if (run.status === 'succeeded') return
+    if (run.status === 'failed' || run.status === 'cancelled') {
+      throw new Error(run.error_code || '本章翻译未完成')
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 500))
+  }
+  throw new Error('本章翻译仍在后台运行，请稍后刷新查看')
+}
+
+async function enqueueChapterTranslation(chapter: TranslationChapter) {
+  const run = await api<TranslationRunResponse>(
+    `/translation/projects/${props.projectId}/chapters/${chapter.chapter_id}/translate?background=true`,
+    { method: 'POST' },
+  )
+  await waitForTranslationRun(run.run_id)
+}
+
 async function load() {
   loading.value = true
   error.value = ''
@@ -83,7 +112,7 @@ async function translateChapter(chapter: TranslationChapter) {
   error.value = ''
   notice.value = `正在翻译《${chapter.title}》…`
   try {
-    await api(`/translation/projects/${props.projectId}/chapters/${chapter.chapter_id}/translate`, { method: 'POST' })
+    await enqueueChapterTranslation(chapter)
     notice.value = `《${chapter.title}》翻译完成`
     await load()
   } catch (caught) {
@@ -97,15 +126,16 @@ async function translateChapter(chapter: TranslationChapter) {
 async function translateAll() {
   translatingAll.value = true
   error.value = ''
-  notice.value = `正在按章节顺序翻译 ${pendingCount.value} 章，并同步术语…`
+  const pending = chapters.value.filter((chapter) => chapter.status === 'pending')
+  notice.value = `正在按章节顺序翻译 ${pending.length} 章，并同步术语…`
   try {
-    const result = await api<{ translated: number; failed: number }>(
-      `/translation/projects/${props.projectId}/translate-all`,
-      { method: 'POST' },
-    )
-    notice.value = result.failed
-      ? `已完成 ${result.translated} 章，${result.failed} 章需要重试`
-      : `本次完成 ${result.translated} 章`
+    let translated = 0
+    for (const chapter of pending) {
+      notice.value = `正在翻译第 ${translated + 1} / ${pending.length} 章：《${chapter.title}》`
+      await enqueueChapterTranslation(chapter)
+      translated += 1
+    }
+    notice.value = `本次完成 ${translated} 章`
     await load()
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : '批量翻译失败'

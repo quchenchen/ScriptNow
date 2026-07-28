@@ -65,6 +65,24 @@ interface AdoptResponse {
   status: string
 }
 
+interface SceneRunResponse extends AdoptResponse {
+  run_id: string
+  operation_id: string
+  creative_session_id: string
+}
+
+interface SceneRunState {
+  id: string
+  status: 'queued' | 'running' | 'waiting' | 'succeeded' | 'failed' | 'cancelled'
+  error_code?: string | null
+}
+
+const SCENE_RUN_POLL_INTERVAL_MS = 500
+const SCENE_RUN_TIMEOUT_MS = 10 * 60 * 1000
+
+const wait = (milliseconds: number) =>
+  new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds))
+
 export const useScriptStore = defineStore('script-domain', {
   state: () => ({ state: null as ScriptState | null, busy: '', error: '' }),
   actions: {
@@ -141,9 +159,9 @@ export const useScriptStore = defineStore('script-domain', {
       )
     },
     generateSceneCandidate(projectId: string, sceneId: string, feedback?: string) {
-      return this.perform(projectId, '主笔正在生成场景候选…', () =>
-        api<AdoptResponse>(
-          `/script/projects/${projectId}/scenes/${sceneId}/generate`,
+      return this.perform(projectId, '主笔正在生成场景候选…', async () => {
+        const queued = await api<SceneRunResponse>(
+          `/script/projects/${projectId}/scenes/${sceneId}/generate?background=true`,
           {
             method: 'POST',
             body: JSON.stringify({
@@ -151,8 +169,21 @@ export const useScriptStore = defineStore('script-domain', {
               feedback: feedback || null,
             }),
           },
-        ),
-      )
+        )
+        const deadline = Date.now() + SCENE_RUN_TIMEOUT_MS
+        while (Date.now() < deadline) {
+          const run = await api<SceneRunState>(
+            `/script/projects/${projectId}/runs/${queued.run_id}`,
+          )
+          if (run.status === 'succeeded') return queued
+          if (run.status === 'failed') {
+            throw new Error(`场次候选稿生成失败${run.error_code ? `：${run.error_code}` : ''}`)
+          }
+          if (run.status === 'cancelled') throw new Error('场次候选稿生成已取消')
+          await wait(SCENE_RUN_POLL_INTERVAL_MS)
+        }
+        throw new Error('场次候选稿生成超时，请在创作搭档中检查运行状态')
+      })
     },
     adoptSceneCandidate(projectId: string, sceneId: string, revisionId: string) {
       return this.perform(projectId, '正在确认场景正文…', () =>

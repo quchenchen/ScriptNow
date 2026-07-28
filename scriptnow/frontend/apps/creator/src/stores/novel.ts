@@ -61,6 +61,22 @@ export interface NovelState {
 }
 
 interface CandidateResponse { id: string; status: string }
+interface ChapterRunResponse extends CandidateResponse {
+  run_id: string
+  operation_id: string
+  creative_session_id: string
+}
+interface ChapterRunState {
+  id: string
+  status: 'queued' | 'running' | 'waiting' | 'succeeded' | 'failed' | 'cancelled'
+  error_code?: string | null
+}
+
+const CHAPTER_RUN_POLL_INTERVAL_MS = 500
+const CHAPTER_RUN_TIMEOUT_MS = 10 * 60 * 1000
+
+const wait = (milliseconds: number) =>
+  new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds))
 
 export function selectChapterDocument(documents: NovelState['documents'], chapterId: string) {
   const matching = documents.filter((item) => item.chapter_id === chapterId)
@@ -154,8 +170,8 @@ export const useNovelStore = defineStore('novel-domain', {
       options: { feedback?: string; sourceRevisionId?: string } = {},
     ) {
       return this.perform(projectId, '主笔正在写作章节…', async () => {
-        return api<CandidateResponse>(
-          `/novel/projects/${projectId}/chapters/${chapterId}/generate`,
+        const queued = await api<ChapterRunResponse>(
+          `/novel/projects/${projectId}/chapters/${chapterId}/generate?background=true`,
           {
             method: 'POST',
             body: JSON.stringify({
@@ -165,6 +181,19 @@ export const useNovelStore = defineStore('novel-domain', {
             }),
           },
         )
+        const deadline = Date.now() + CHAPTER_RUN_TIMEOUT_MS
+        while (Date.now() < deadline) {
+          const run = await api<ChapterRunState>(
+            `/novel/projects/${projectId}/runs/${queued.run_id}`,
+          )
+          if (run.status === 'succeeded') return queued
+          if (run.status === 'failed') {
+            throw new Error(`章节候选稿生成失败${run.error_code ? `：${run.error_code}` : ''}`)
+          }
+          if (run.status === 'cancelled') throw new Error('章节候选稿生成已取消')
+          await wait(CHAPTER_RUN_POLL_INTERVAL_MS)
+        }
+        throw new Error('章节候选稿生成超时，请在创作搭档中检查运行状态')
       })
     },
     adoptChapter(projectId: string, chapterId: string, revisionId: string) {

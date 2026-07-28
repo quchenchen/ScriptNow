@@ -58,6 +58,12 @@ type ProductionUnit = {
   feedback?: string | null
 }
 
+type RecreationRun = {
+  run_id: string
+  status: 'queued' | 'running' | 'waiting' | 'succeeded' | 'failed' | 'cancelled'
+  error_code?: string | null
+}
+
 const props = defineProps<{
   projectId: string
   direction: Record<string, string>
@@ -284,16 +290,35 @@ async function run(label: string, action: () => Promise<unknown>) {
   }
 }
 
+async function waitForRecreationRun(runId: string) {
+  const deadline = Date.now() + 10 * 60 * 1000
+  while (Date.now() < deadline) {
+    const result = await api<RecreationRun>(
+      `/cross-cultural-recreations/by-project/${props.projectId}/runs/${runId}`,
+    )
+    if (result.status === 'succeeded') return
+    if (result.status === 'failed' || result.status === 'cancelled') {
+      throw new Error(result.error_code || '本轮归化创作未完成')
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 500))
+  }
+  throw new Error('本轮归化创作仍在后台运行，请稍后刷新查看')
+}
+
 function analyzeSource() {
-  return run('源作品分析', () =>
-    api(`/cross-cultural-recreations/by-project/${props.projectId}/analyze-source`, {
-      method: 'POST',
-      body: JSON.stringify({
-        idempotency_key: crypto.randomUUID(),
-        feedback: feedback.value || null,
-      }),
-    }),
-  )
+  return run('源作品分析', async () => {
+    const result = await api<RecreationRun>(
+      `/cross-cultural-recreations/by-project/${props.projectId}/analyze-source?background=true`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          idempotency_key: crypto.randomUUID(),
+          feedback: feedback.value || null,
+        }),
+      },
+    )
+    await waitForRecreationRun(result.run_id)
+  })
 }
 
 function saveTargetContract() {
@@ -314,15 +339,19 @@ function saveTargetContract() {
 }
 
 function generateStrategies() {
-  return run('归化策略生成', () =>
-    api(`/cross-cultural-recreations/by-project/${props.projectId}/strategies`, {
-      method: 'POST',
-      body: JSON.stringify({
-        idempotency_key: crypto.randomUUID(),
-        feedback: feedback.value || null,
-      }),
-    }),
-  )
+  return run('归化策略生成', async () => {
+    const result = await api<RecreationRun>(
+      `/cross-cultural-recreations/by-project/${props.projectId}/strategies?background=true`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          idempotency_key: crypto.randomUUID(),
+          feedback: feedback.value || null,
+        }),
+      },
+    )
+    await waitForRecreationRun(result.run_id)
+  })
 }
 
 function adopt(artifactId: string) {
@@ -335,33 +364,9 @@ function adopt(artifactId: string) {
 }
 
 function generatePilot() {
-  return run('代表性试写', () =>
-    api(`/cross-cultural-recreations/by-project/${props.projectId}/pilots`, {
-      method: 'POST',
-      body: JSON.stringify({
-        idempotency_key: crypto.randomUUID(),
-        feedback: feedback.value || null,
-      }),
-    }),
-  )
-}
-
-function generateScalePlan() {
-  return run('整书扩展规划', () =>
-    api(`/cross-cultural-recreations/by-project/${props.projectId}/scale-plans`, {
-      method: 'POST',
-      body: JSON.stringify({
-        idempotency_key: crypto.randomUUID(),
-        feedback: feedback.value || null,
-      }),
-    }),
-  )
-}
-
-function generateProductionUnit(workPackageKey: string) {
-  return run(`工作包 ${workPackageKey} 再创作`, () =>
-    api(
-      `/cross-cultural-recreations/by-project/${props.projectId}/work-packages/${encodeURIComponent(workPackageKey)}/drafts`,
+  return run('代表性试写', async () => {
+    const result = await api<RecreationRun>(
+      `/cross-cultural-recreations/by-project/${props.projectId}/pilots?background=true`,
       {
         method: 'POST',
         body: JSON.stringify({
@@ -369,8 +374,41 @@ function generateProductionUnit(workPackageKey: string) {
           feedback: feedback.value || null,
         }),
       },
-    ),
-  )
+    )
+    await waitForRecreationRun(result.run_id)
+  })
+}
+
+function generateScalePlan() {
+  return run('整书扩展规划', async () => {
+    const result = await api<RecreationRun>(
+      `/cross-cultural-recreations/by-project/${props.projectId}/scale-plans?background=true`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          idempotency_key: crypto.randomUUID(),
+          feedback: feedback.value || null,
+        }),
+      },
+    )
+    await waitForRecreationRun(result.run_id)
+  })
+}
+
+function generateProductionUnit(workPackageKey: string) {
+  return run(`工作包 ${workPackageKey} 再创作`, async () => {
+    const result = await api<RecreationRun>(
+      `/cross-cultural-recreations/by-project/${props.projectId}/work-packages/${encodeURIComponent(workPackageKey)}/drafts?background=true`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          idempotency_key: crypto.randomUUID(),
+          feedback: feedback.value || null,
+        }),
+      },
+    )
+    await waitForRecreationRun(result.run_id)
+  })
 }
 
 function adoptProductionUnit(unitId: string) {

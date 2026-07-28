@@ -3,15 +3,18 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 
 import AgentMessage from './AgentMessage.vue'
 import { creativeRoleLabel } from '../creativeRoles'
+import { useAgentTeamStore } from '../stores/agentTeam'
 import { eventBody, isDockVisibleStreamBlock, useDockStore, type DockFilter } from '../stores/dock'
 import { useRuntimeStore } from '../stores/runtime'
 
 const props = defineProps<{ projectId: string }>()
 const dock = useDockStore()
 const runtime = useRuntimeStore()
+const team = useAgentTeamStore()
 const input = ref('')
 const feed = ref<HTMLElement>()
 const showScrollAnchor = ref(false)
+const showRuntimeConfig = ref(false)
 const requiresConfirmation = ref(false)
 let refreshTimer: ReturnType<typeof window.setInterval> | undefined
 let resizeStart: { x: number; y: number; width: number; height: number } | undefined
@@ -22,8 +25,23 @@ const filters: Array<{ key: DockFilter; label: string }> = [
 const activityCountLabel = computed(() => dock.filter === 'focus' ? `${dock.visibleEvents.length} 条重点动态` : `${dock.visibleEvents.length} 条${filters.find((item) => item.key === dock.filter)?.label ?? '动态'}`)
 const operationLabel = computed(() => ({ expand: '扩写', shorten: '缩写', polish: '润色', revise: '修订' })[dock.quote?.operation ?? 'revise'])
 const roleLabel = computed(() => creativeRoleLabel(dock.role))
-const runtimeRole = computed(() => dock.role === 'editor' ? 'reviewer' : dock.role as 'director' | 'architect' | 'writer')
+const runtimeRole = computed(() => dock.role === 'editor' ? 'reviewer' : dock.role as 'director' | 'architect' | 'writer' | 'reviewer')
 const activeRuntime = computed(() => runtime.status?.roles[runtimeRole.value])
+const runtimeMember = computed(() => team.members.find((member) => member.role_key === runtimeRole.value))
+const selectedModel = computed(() => team.models.find((model) => model.id === runtimeMember.value?.model_id))
+const activeModel = computed(() => team.models.find((model) => model.key === activeRuntime.value?.model_key))
+const availableModels = computed(() => team.models.filter((model) => model.available))
+const runtimeModelLabel = computed(() => activeModel.value?.display_name || activeRuntime.value?.model_key || '尚未配置模型')
+const contextLabel = computed(() => {
+  if (!dock.transparency.connected || !dock.transparency.context_limit) return '尚未建立模型上下文'
+  return `上下文约 ${Math.round(dock.transparency.context_percent ?? 0)}%`
+})
+const contextTitle = computed(() => dock.transparency.context_limit
+  ? `${dock.transparency.context_tokens.toLocaleString()} / ${dock.transparency.context_limit.toLocaleString()} Tokens`
+  : '运行模型后显示实际上下文占用')
+const memoryLabel = computed(() => dock.transparency.memory_entries
+  ? `项目记忆 ${dock.transparency.memory_entries} 条`
+  : '尚未沉淀项目记忆')
 
 const activeRunCount = computed(() => (runtime.status?.active_runs || []).filter(r => r.status === 'queued' || r.status === 'running').length)
 const activeRunStatus = computed(() => {
@@ -158,6 +176,13 @@ async function send() {
   requiresConfirmation.value = false
 }
 
+async function saveRuntimeModel() {
+  if (!runtimeMember.value || activeRunCount.value > 0) return
+  await team.save(props.projectId, runtimeMember.value)
+  await runtime.load(props.projectId)
+  showRuntimeConfig.value = false
+}
+
 function onKeydown(event: KeyboardEvent) {
   if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void send() }
 }
@@ -197,6 +222,7 @@ watch(() => [dock.events.length, dock.stream.length], async () => {
 watch(() => props.projectId, (projectId) => {
   void dock.load(projectId).catch(() => undefined)
   void runtime.load(projectId).catch(() => undefined)
+  void team.load(projectId).catch(() => undefined)
 }, { immediate: true })
 const refresh = (force = false) => {
   if (!force && (!dock.feedConnected || document.hidden)) return
@@ -281,8 +307,16 @@ onUnmounted(() => {
       </form>
       <p v-if="dock.error" class="dock-error" role="alert">{{ dock.error }}</p>
       <p v-if="dock.notice" class="dock-notice" role="status">{{ dock.notice }}</p>
+      <section v-if="showRuntimeConfig" class="dock-runtime-config">
+        <header><div><strong>下次运行模型</strong><small>仅调整 {{ roleLabel }}，当前任务的模型快照不会改变。</small></div><button type="button" aria-label="关闭模型设置" @click="showRuntimeConfig = false">×</button></header>
+        <select v-if="runtimeMember" v-model="runtimeMember.model_id" :disabled="activeRunCount > 0 || team.busy === runtimeRole">
+          <option v-for="model in availableModels" :key="model.id" :value="model.id">{{ model.display_name }} · {{ model.provider_name }}</option>
+        </select>
+        <p v-if="activeRunCount > 0">当前有任务运行，完成后可以切换，避免状态与实际调用模型不一致。</p>
+        <footer><RouterLink :to="`/projects/${projectId}/agents`">完整团队配置</RouterLink><button type="button" :disabled="activeRunCount > 0 || team.busy === runtimeRole || selectedModel?.key === activeRuntime?.model_key" @click="saveRuntimeModel">{{ team.busy === runtimeRole ? '保存中…' : '保存' }}</button></footer>
+      </section>
       <footer class="dock-status">
-        <span :title="activeRuntime?.model_key ?? undefined">{{ activeRuntime?.connected ? `${roleLabel} · 模型可用` : dock.stream.length ? '项目事实已读取（未调用模型）' : `${roleLabel} · 模型未连接` }}</span><span>{{ dock.transparency.connected ? `本次上下文 ${dock.transparency.context_tokens} / ${dock.transparency.context_limit}` : '本次上下文尚未建立' }}</span><span>长期记忆 {{ dock.transparency.memory_entries }} 条</span>
+        <button type="button" class="dock-runtime-trigger" :title="activeRuntime?.provider_key ? `${activeRuntime.provider_key} · 点击调整下次运行模型` : '点击配置运行模型'" @click="showRuntimeConfig = !showRuntimeConfig">{{ roleLabel }} · {{ runtimeModelLabel }}</button><span :title="contextTitle">{{ contextLabel }}</span><span :title="dock.transparency.memory_entries ? '已写入该项目与当前角色的长期记忆条目' : '项目事实会进入本次上下文；只有经治理沉淀的内容才计入长期记忆'">{{ memoryLabel }}</span>
       </footer>
     </template>
   </aside>
