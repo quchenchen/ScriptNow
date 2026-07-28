@@ -59,7 +59,12 @@ from scriptnow.script.project import ScriptPlanModel, ScriptStoryMapModel
 
 @pytest.fixture
 async def platform_api(tmp_path):
-    database = Database.create("sqlite+aiosqlite:///:memory:")
+    # Background runs and HTTP polling use independent sessions. A file-backed
+    # SQLite database gives those sessions real transaction isolation; an
+    # in-memory database reuses one connection and can expose partial commits.
+    database = Database.create(
+        f"sqlite+aiosqlite:///{tmp_path / 'platform-api.db'}"
+    )
     await database.create_schema()
     settings = Settings(
         access_token_secret="test-secret-that-is-at-least-24-bytes",
