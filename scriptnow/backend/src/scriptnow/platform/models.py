@@ -75,6 +75,41 @@ class RunStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+class CreativeSessionStatus(StrEnum):
+    ACTIVE = "active"
+    COMPLETED = "completed"
+    ARCHIVED = "archived"
+
+
+class CreativeOperationStatus(StrEnum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    WAITING_FOR_DECISION = "waiting_for_decision"
+    READY = "ready"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class CreativeStageStatus(StrEnum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    VALIDATING = "validating"
+    REPAIRING = "repairing"
+    WAITING_FOR_DECISION = "waiting_for_decision"
+    READY = "ready"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class DecisionRequestStatus(StrEnum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    CANCELLED = "cancelled"
+    EXPIRED = "expired"
+
+
 class ReservationState(StrEnum):
     RESERVED = "reserved"
     FINALIZED = "finalized"
@@ -243,6 +278,7 @@ class LanguageModelModel(Base):
     )
     input_price_per_million: Mapped[float] = mapped_column(Numeric(12, 4), default=0)
     output_price_per_million: Mapped[float] = mapped_column(Numeric(12, 4), default=0)
+    context_window: Mapped[int] = mapped_column(Integer, nullable=False, default=32_768)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     version: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
@@ -547,6 +583,210 @@ class ProjectRunModel(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now
     )
+
+
+class CreativeSessionModel(Base):
+    __tablename__ = "creative_sessions"
+    __table_args__ = (
+        Index("ix_creative_sessions_tenant_project", "tenant_id", "project_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="RESTRICT"), nullable=False
+    )
+    project_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    active_domain: Mapped[str] = mapped_column(String(40), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(32), default=CreativeSessionStatus.ACTIVE, nullable=False
+    )
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+
+class CreativeTurnModel(Base):
+    __tablename__ = "creative_turns"
+    __table_args__ = (Index("ix_creative_turns_session_created", "session_id", "created_at"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    session_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("creative_sessions.id", ondelete="CASCADE"), nullable=False
+    )
+    actor: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
+    input: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class CreativeOperationModel(Base):
+    __tablename__ = "creative_operations"
+    __table_args__ = (
+        UniqueConstraint(
+            "session_id", "idempotency_key", name="uq_creative_operation_idempotency"
+        ),
+        Index("ix_creative_operations_tenant_project", "tenant_id", "project_id"),
+        Index("ix_creative_operations_status_updated", "status", "updated_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="RESTRICT"), nullable=False
+    )
+    project_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    session_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("creative_sessions.id", ondelete="CASCADE"), nullable=False
+    )
+    turn_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("creative_turns.id", ondelete="SET NULL")
+    )
+    run_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("project_runs.id", ondelete="SET NULL"), unique=True
+    )
+    command: Mapped[str] = mapped_column(String(120), nullable=False)
+    domain: Mapped[str] = mapped_column(String(40), nullable=False)
+    stage: Mapped[str] = mapped_column(String(120), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(32), default=CreativeOperationStatus.QUEUED, nullable=False
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(160), nullable=False)
+    policy_snapshot: Mapped[dict[str, object]] = mapped_column(JSON, default=dict, nullable=False)
+    context_manifest_id: Mapped[str | None] = mapped_column(String(120))
+    error_code: Mapped[str | None] = mapped_column(String(120))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+
+class CreativeStageRunModel(Base):
+    __tablename__ = "creative_stage_runs"
+    __table_args__ = (
+        UniqueConstraint(
+            "operation_id", "stage_key", "attempt", name="uq_creative_stage_attempt"
+        ),
+        Index("ix_creative_stage_operation_status", "operation_id", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    operation_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("creative_operations.id", ondelete="CASCADE"), nullable=False
+    )
+    stage_key: Mapped[str] = mapped_column(String(120), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(32), default=CreativeStageStatus.QUEUED, nullable=False
+    )
+    attempt: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    input_digest: Mapped[str | None] = mapped_column(String(64))
+    error_code: Mapped[str | None] = mapped_column(String(120))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+
+class CreativeCheckpointModel(Base):
+    __tablename__ = "creative_checkpoints"
+    __table_args__ = (
+        UniqueConstraint(
+            "operation_id", "checkpoint_key", name="uq_creative_checkpoint_key"
+        ),
+        Index("ix_creative_checkpoint_operation_created", "operation_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    operation_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("creative_operations.id", ondelete="CASCADE"), nullable=False
+    )
+    stage_run_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("creative_stage_runs.id", ondelete="SET NULL")
+    )
+    checkpoint_key: Mapped[str] = mapped_column(String(160), nullable=False)
+    state_format: Mapped[str] = mapped_column(String(80), nullable=False)
+    state_payload: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    resume_metadata: Mapped[dict[str, object]] = mapped_column(JSON, default=dict, nullable=False)
+    is_complete: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class CreativeArtifactRefModel(Base):
+    __tablename__ = "creative_artifact_refs"
+    __table_args__ = (
+        UniqueConstraint(
+            "operation_id",
+            "domain",
+            "artifact_type",
+            "artifact_id",
+            "revision",
+            name="uq_creative_artifact_revision",
+        ),
+        Index("ix_creative_artifact_operation_status", "operation_id", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    operation_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("creative_operations.id", ondelete="CASCADE"), nullable=False
+    )
+    stage_run_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("creative_stage_runs.id", ondelete="SET NULL")
+    )
+    domain: Mapped[str] = mapped_column(String(40), nullable=False)
+    artifact_type: Mapped[str] = mapped_column(String(120), nullable=False)
+    artifact_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    schema_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    input_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    dependency_versions: Mapped[dict[str, object]] = mapped_column(
+        JSON, default=dict, nullable=False
+    )
+    provenance: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class CreativeDecisionRequestModel(Base):
+    __tablename__ = "creative_decision_requests"
+    __table_args__ = (
+        UniqueConstraint(
+            "operation_id", "idempotency_key", name="uq_creative_decision_idempotency"
+        ),
+        Index("ix_creative_decision_operation_status", "operation_id", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    operation_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("creative_operations.id", ondelete="CASCADE"), nullable=False
+    )
+    stage_run_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("creative_stage_runs.id", ondelete="SET NULL")
+    )
+    artifact_ref_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("creative_artifact_refs.id", ondelete="SET NULL")
+    )
+    checkpoint_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("creative_checkpoints.id", ondelete="SET NULL")
+    )
+    kind: Mapped[str] = mapped_column(String(80), nullable=False)
+    prompt: Mapped[str] = mapped_column(String(2000), nullable=False)
+    options: Mapped[list[dict[str, object]]] = mapped_column(JSON, nullable=False)
+    impact: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(32), default=DecisionRequestStatus.PENDING, nullable=False
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(160), nullable=False)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decided_by: Mapped[dict[str, object] | None] = mapped_column(JSON)
+    decision: Mapped[dict[str, object] | None] = mapped_column(JSON)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
 class ProjectEventModel(Base):

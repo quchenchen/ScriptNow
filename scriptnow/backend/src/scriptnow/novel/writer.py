@@ -94,6 +94,7 @@ class NovelChapterGenerator:
         idempotency_key: str,
         feedback: str | None = None,
         source_revision_id: str | None = None,
+        run_id: str | None = None,
     ) -> tuple[NovelBlock, ...]:
         context = await self._context(
             tenant_id=tenant_id,
@@ -109,11 +110,18 @@ class NovelChapterGenerator:
             raise NovelWriterError(
                 f"real writer runtime is unavailable: {writer.get('reason') or 'unknown'}"
             )
-        run = await self.runs.enqueue(
-            tenant_id=tenant_id,
-            project_id=project.id,
-            idempotency_key=f"novel-chapter:{chapter_id}:{idempotency_key}",
+        manages_run = run_id is None
+        run = (
+            await self.runs.enqueue(
+                tenant_id=tenant_id,
+                project_id=project.id,
+                idempotency_key=f"novel-chapter:{chapter_id}:{idempotency_key}",
+            )
+            if manages_run
+            else await self.runs.status(tenant_id=tenant_id, run_id=run_id)
         )
+        if run is None or run.project_id != project.id:
+            raise NovelWriterError("chapter run is outside project scope")
         tenant = context.pop("tenant")
         reservation = await self.billing.reserve(
             tenant_id=tenant_id,
@@ -131,7 +139,12 @@ class NovelChapterGenerator:
                 ),
             ),
         )
-        await self.runs.transition(tenant_id=tenant_id, run_id=run.id, target=RunStatus.RUNNING)
+        if manages_run:
+            await self.runs.transition(
+                tenant_id=tenant_id,
+                run_id=run.id,
+                target=RunStatus.RUNNING,
+            )
         await self._event(
             tenant_id=tenant_id,
             run_id=run.id,
@@ -280,29 +293,35 @@ class NovelChapterGenerator:
                 )
             await self._record_usage(reservation.id, tenant_id, run.id, result)
             await self.billing.finalize(reservation.id)
-            await self.runs.transition(tenant_id=tenant_id, run_id=run.id, target=RunStatus.SUCCEEDED)
-            await self._event(
-                tenant_id=tenant_id,
-                run_id=run.id,
-                key="writer-completed",
-                type=RunEventType.TERMINAL,
-                payload={
-                    "block": "system",
-                    "phase": "end",
-                    "title": "章节候选稿已生成并通过结构校验",
-                    "runtime": result.runtime,
-                },
-            )
+            if manages_run:
+                await self.runs.transition(
+                    tenant_id=tenant_id,
+                    run_id=run.id,
+                    target=RunStatus.SUCCEEDED,
+                )
+                await self._event(
+                    tenant_id=tenant_id,
+                    run_id=run.id,
+                    key="writer-completed",
+                    type=RunEventType.TERMINAL,
+                    payload={
+                        "block": "system",
+                        "phase": "end",
+                        "title": "章节候选稿已生成并通过结构校验",
+                        "runtime": result.runtime,
+                    },
+                )
             return blocks
         except asyncio.CancelledError:
             with suppress(Exception):
                 await self.billing.release(reservation.id)
-            with suppress(Exception):
-                await self.runs.transition(
-                    tenant_id=tenant_id,
-                    run_id=run.id,
-                    target=RunStatus.CANCELLED,
-                )
+            if manages_run:
+                with suppress(Exception):
+                    await self.runs.transition(
+                        tenant_id=tenant_id,
+                        run_id=run.id,
+                        target=RunStatus.CANCELLED,
+                    )
             with suppress(Exception):
                 await self._event(
                     tenant_id=tenant_id,
@@ -321,13 +340,14 @@ class NovelChapterGenerator:
             logger.exception("novel chapter generation failed", extra={"run_id": run.id, "chapter_id": chapter_id})
             with suppress(Exception):
                 await self.billing.release(reservation.id)
-            with suppress(Exception):
-                await self.runs.transition(
-                    tenant_id=tenant_id,
-                    run_id=run.id,
-                    target=RunStatus.FAILED,
-                    error_code="novel_chapter_failed",
-                )
+            if manages_run:
+                with suppress(Exception):
+                    await self.runs.transition(
+                        tenant_id=tenant_id,
+                        run_id=run.id,
+                        target=RunStatus.FAILED,
+                        error_code="novel_chapter_failed",
+                    )
             with suppress(Exception):
                 await self._event(
                     tenant_id=tenant_id,

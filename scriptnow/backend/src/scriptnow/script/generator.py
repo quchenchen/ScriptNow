@@ -642,6 +642,7 @@ episodes 内必须完整包含每一篇的 scenes，以及每场的 beats。
         scene: dict[str, object],
         context: dict[str, object],
         feedback: str | None,
+        run_id: str | None = None,
     ) -> tuple[ScriptBlock, ...]:
         direction = dict(project.direction)
         format_rules = generation_instructions(str(direction.get("script_format") or "chinese"))
@@ -674,6 +675,7 @@ type 只能是 slugline、action、character、dialogue、transition。
                 "writer",
                 prompt,
                 {"direction": direction, "scene": scene, "context": context},
+                run_id=run_id,
                 validator=_validate_scene_document_payload,
             )
         except ValidationError as error:
@@ -699,14 +701,27 @@ type 只能是 slugline、action、character、dialogue、transition。
         context: dict[str, object],
         *,
         skills_enabled: bool = True,
+        run_id: str | None = None,
         validator: Callable[[object], ValidatedPayload],
     ) -> ValidatedPayload:
-        run = await self.runs.enqueue(
-            tenant_id=tenant_id,
-            project_id=project_id,
-            idempotency_key=f"script-agent:{uuid4()}",
+        manages_run = run_id is None
+        run = (
+            await self.runs.enqueue(
+                tenant_id=tenant_id,
+                project_id=project_id,
+                idempotency_key=f"script-agent:{uuid4()}",
+            )
+            if manages_run
+            else await self.runs.status(tenant_id=tenant_id, run_id=run_id)
         )
-        await self.runs.transition(tenant_id=tenant_id, run_id=run.id, target=RunStatus.RUNNING)
+        if run is None or (not manages_run and run.project_id != project_id):
+            raise ScriptGenerationError("剧本生成运行不属于当前项目")
+        if manages_run:
+            await self.runs.transition(
+                tenant_id=tenant_id,
+                run_id=run.id,
+                target=RunStatus.RUNNING,
+            )
         try:
             result = await self.runtime.generate(
                 tenant_id=tenant_id,
@@ -721,27 +736,32 @@ type 只能是 slugline、action、character、dialogue、transition。
             except json.JSONDecodeError:
                 payload = repair_json(result.text)
             validated = validator(payload)
-            await self.runs.transition(
-                tenant_id=tenant_id, run_id=run.id, target=RunStatus.SUCCEEDED
-            )
+            if manages_run:
+                await self.runs.transition(
+                    tenant_id=tenant_id,
+                    run_id=run.id,
+                    target=RunStatus.SUCCEEDED,
+                )
             return validated
         except (ValidationError, ValueError, TypeError):
-            with suppress(Exception):
-                await self.runs.transition(
-                    tenant_id=tenant_id,
-                    run_id=run.id,
-                    target=RunStatus.FAILED,
-                    error_code="script_contract_invalid",
-                )
+            if manages_run:
+                with suppress(Exception):
+                    await self.runs.transition(
+                        tenant_id=tenant_id,
+                        run_id=run.id,
+                        target=RunStatus.FAILED,
+                        error_code="script_contract_invalid",
+                    )
             raise
         except AgentRuntimeError as error:
-            with suppress(Exception):
-                await self.runs.transition(
-                    tenant_id=tenant_id,
-                    run_id=run.id,
-                    target=RunStatus.FAILED,
-                    error_code="script_generation_failed",
-                )
+            if manages_run:
+                with suppress(Exception):
+                    await self.runs.transition(
+                        tenant_id=tenant_id,
+                        run_id=run.id,
+                        target=RunStatus.FAILED,
+                        error_code="script_generation_failed",
+                    )
             raise ScriptGenerationError(f"Agent 返回内容无法形成有效创作候选：{error}") from error
 
     @staticmethod

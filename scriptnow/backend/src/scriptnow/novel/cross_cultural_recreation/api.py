@@ -1,3 +1,8 @@
+import asyncio
+import hashlib
+import json
+from collections.abc import Awaitable, Callable
+from contextlib import suppress
 from typing import Annotated
 
 from fastapi import APIRouter, Cookie, Header, HTTPException, Query, status
@@ -17,12 +22,19 @@ from scriptnow.novel.cross_cultural_recreation.service import (
     CrossCulturalRecreationError,
     CrossCulturalRecreationService,
 )
+from scriptnow.platform.active_runs import ActiveRunRegistry
 from scriptnow.platform.agent_runtime import AgentRuntime
 from scriptnow.platform.auth import AuthenticationFailed, AuthService, CsrfFailed
 from scriptnow.platform.auth_api import ACCESS_COOKIE
 from scriptnow.platform.config import Settings
+from scriptnow.platform.creative_operations import (
+    CreativeOperationStore,
+    coherent_run_status,
+)
 from scriptnow.platform.database import Database
-from scriptnow.platform.models import ProjectModel
+from scriptnow.platform.models import CreativeStageStatus, ProjectModel, RunStatus
+from scriptnow.platform.run_coordinator import RunCoordinator
+from scriptnow.platform.run_events import PersistentRunEventLog, RunEventType
 
 
 class CreateRecreationRequest(BaseModel):
@@ -121,6 +133,7 @@ def create_cross_cultural_recreation_router(
     database: Database,
     auth: AuthService,
     settings: Settings,
+    active_runs: ActiveRunRegistry,
 ) -> APIRouter:
     router = APIRouter(
         prefix="/cross-cultural-recreations",
@@ -128,6 +141,8 @@ def create_cross_cultural_recreation_router(
     )
     service = CrossCulturalRecreationService(database)
     generator = CrossCulturalRecreationGenerator(database, AgentRuntime(database, settings))
+    operations = CreativeOperationStore(database)
+    run_events = PersistentRunEventLog(database)
 
     async def context(
         access_token: str | None,
@@ -188,45 +203,289 @@ def create_cross_cultural_recreation_router(
         except CrossCulturalRecreationError as error:
             raise HTTPException(status.HTTP_404_NOT_FOUND, str(error)) from error
 
+    async def _analyze_source_work(
+        *,
+        tenant_id: str,
+        project_id: str,
+        body: GenerateRequest,
+        run_id: str | None = None,
+    ) -> CrossCulturalArtifactModel:
+        record = await service.get(tenant_id=tenant_id, project_id=project_id)
+        async with database.session() as session:
+            project = await session.get(ProjectModel, project_id)
+        if project is None:
+            raise CrossCulturalRecreationError("项目不存在")
+        payload = await generator.analyze_source(
+            tenant_id=tenant_id,
+            project=project,
+            idempotency_key=body.idempotency_key,
+            target_contract={
+                "target_language": record.target_language,
+                "target_market": record.target_market,
+                "target_audience": record.target_audience,
+                "distribution_context": record.distribution_context,
+            },
+            run_id=run_id,
+        )
+        records = await service.record_artifacts(
+            recreation_id=record.id,
+            kind=RecreationArtifactKind.SOURCE_STORY_MODEL,
+            payloads=(payload,),
+            idempotency_key=body.idempotency_key,
+            feedback=body.feedback,
+            adopt=True,
+        )
+        return records[0]
+
+    async def _background_analyze_source(
+        *,
+        tenant_id: str,
+        project_id: str,
+        body: GenerateRequest,
+        run_id: str,
+        operation_id: str,
+        stage_run_id: str,
+        input_digest: str,
+    ) -> None:
+        coordinator = RunCoordinator(database)
+        try:
+            await coordinator.transition(
+                tenant_id=tenant_id,
+                run_id=run_id,
+                target=RunStatus.RUNNING,
+            )
+            artifact = await _analyze_source_work(
+                tenant_id=tenant_id,
+                project_id=project_id,
+                body=body,
+                run_id=run_id,
+            )
+            artifact_ref_id = await operations.register_artifact(
+                tenant_id=tenant_id,
+                operation_id=operation_id,
+                stage_run_id=stage_run_id,
+                domain="novel_recreation",
+                artifact_type=RecreationArtifactKind.SOURCE_STORY_MODEL.value,
+                artifact_id=artifact.id,
+                revision=artifact.version,
+                status=str(artifact.status),
+                schema_version=1,
+                input_digest=input_digest,
+                dependency_versions={"project_id": project_id},
+                provenance={"source": "agent", "run_id": run_id},
+            )
+            await operations.save_checkpoint(
+                tenant_id=tenant_id,
+                operation_id=operation_id,
+                stage_run_id=stage_run_id,
+                checkpoint_key=f"novel_recreation.source.analyze:{artifact.id}",
+                state_format="json",
+                state_payload=json.dumps(
+                    {
+                        "artifact_id": artifact.id,
+                        "artifact_ref_id": artifact_ref_id,
+                        "artifact_kind": str(artifact.kind),
+                        "version": artifact.version,
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ).encode(),
+                resume_metadata={"next_action": "confirm_target_contract"},
+                is_complete=True,
+            )
+            await operations.finish_stage(
+                tenant_id=tenant_id,
+                operation_id=operation_id,
+                stage_run_id=stage_run_id,
+                status=CreativeStageStatus.READY,
+            )
+            await run_events.append(
+                tenant_id=tenant_id,
+                run_id=run_id,
+                event_key="recreation-source-model-persisted",
+                type=RunEventType.TERMINAL,
+                payload={
+                    "block": "system",
+                    "phase": "end",
+                    "title": "源作品分析已保存",
+                    "artifact_id": artifact.id,
+                    "runtime": "agentscope",
+                },
+                correlation_id=run_id,
+            )
+            await coordinator.transition(
+                tenant_id=tenant_id,
+                run_id=run_id,
+                target=RunStatus.SUCCEEDED,
+            )
+        except asyncio.CancelledError:
+            with suppress(Exception):
+                await coordinator.transition(
+                    tenant_id=tenant_id,
+                    run_id=run_id,
+                    target=RunStatus.CANCELLED,
+                )
+            with suppress(Exception):
+                await operations.finish_stage(
+                    tenant_id=tenant_id,
+                    operation_id=operation_id,
+                    stage_run_id=stage_run_id,
+                    status=CreativeStageStatus.CANCELLED,
+                )
+            raise
+        except Exception as error:
+            with suppress(Exception):
+                current = await coordinator.status(tenant_id=tenant_id, run_id=run_id)
+                if current is not None and current.status in {
+                    RunStatus.QUEUED,
+                    RunStatus.RUNNING,
+                    RunStatus.WAITING,
+                }:
+                    await coordinator.transition(
+                        tenant_id=tenant_id,
+                        run_id=run_id,
+                        target=RunStatus.FAILED,
+                        error_code="recreation_source_analysis_failed",
+                    )
+            with suppress(Exception):
+                await operations.finish_stage(
+                    tenant_id=tenant_id,
+                    operation_id=operation_id,
+                    stage_run_id=stage_run_id,
+                    status=CreativeStageStatus.FAILED,
+                    error={
+                        "code": "recreation_source_analysis_failed",
+                        "message": str(error),
+                    },
+                )
+            with suppress(Exception):
+                await service.record_generation_failure(
+                    tenant_id=tenant_id,
+                    project_id=project_id,
+                    stage="source_analysis",
+                    run_id=run_id,
+                    message=str(error),
+                )
+
     @router.post("/by-project/{project_id}/analyze-source")
     async def analyze_source(
         project_id: str,
         body: GenerateRequest,
+        background: Annotated[bool, Query()] = False,
         access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
         csrf_token: Annotated[str | None, Header(alias="X-CSRF-Token")] = None,
     ) -> dict[str, object]:
         auth_context = await context(access_token, csrf_token, write=True)
         tenant_id = str(auth_context.tenant_id)
         try:
-            record = await service.get(tenant_id=tenant_id, project_id=project_id)
-            async with database.session() as session:
-                project = await session.get(ProjectModel, project_id)
-            if project is None:
-                raise CrossCulturalRecreationError("项目不存在")
-            payload = await generator.analyze_source(
+            if not background:
+                artifact = await _analyze_source_work(
+                    tenant_id=tenant_id,
+                    project_id=project_id,
+                    body=body,
+                )
+                return _artifact(artifact)
+
+            await service.get(tenant_id=tenant_id, project_id=project_id)
+            coordinator = RunCoordinator(database)
+            run = await coordinator.enqueue(
                 tenant_id=tenant_id,
-                project=project,
+                project_id=project_id,
                 idempotency_key=body.idempotency_key,
-                target_contract={
-                    "target_language": record.target_language,
-                    "target_market": record.target_market,
-                    "target_audience": record.target_audience,
-                    "distribution_context": record.distribution_context,
+            )
+            session_id = await operations.get_or_open_session(
+                tenant_id=tenant_id,
+                project_id=project_id,
+                active_domain="novel_recreation",
+            )
+            turn_id = await operations.append_turn(
+                tenant_id=tenant_id,
+                session_id=session_id,
+                actor={"type": "user"},
+                input={
+                    "command": "novel_recreation.source.analyze",
+                    "feedback": body.feedback,
                 },
             )
-            records = await service.record_artifacts(
-                recreation_id=record.id,
-                kind=RecreationArtifactKind.SOURCE_STORY_MODEL,
-                payloads=(payload,),
+            input_digest = hashlib.sha256(
+                json.dumps(
+                    {
+                        "project_id": project_id,
+                        "feedback": body.feedback,
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ).encode()
+            ).hexdigest()
+            operation = await operations.enqueue_operation(
+                tenant_id=tenant_id,
+                session_id=session_id,
+                turn_id=turn_id,
+                run_id=run.id,
+                command="novel_recreation.source.analyze",
+                domain="novel_recreation",
+                stage="source_analysis",
                 idempotency_key=body.idempotency_key,
-                feedback=body.feedback,
-                adopt=True,
+                policy_snapshot={"delivery": "background", "adoption": "automatic"},
             )
-            return _artifact(records[0])
+            stage_run_id = await operations.start_stage(
+                tenant_id=tenant_id,
+                operation_id=operation.id,
+                stage_key="source_analysis",
+                attempt=1,
+                input_digest=input_digest,
+            )
+            task = asyncio.create_task(
+                _background_analyze_source(
+                    tenant_id=tenant_id,
+                    project_id=project_id,
+                    body=body,
+                    run_id=run.id,
+                    operation_id=operation.id,
+                    stage_run_id=stage_run_id,
+                    input_digest=input_digest,
+                )
+            )
+            active_runs.track(run.id, task)
+            return {
+                "status": str(run.status),
+                "run_id": run.id,
+                "operation_id": operation.id,
+                "creative_session_id": session_id,
+            }
         except CrossCulturalRecreationError as error:
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
         except RecreationGenerationError as error:
             raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(error)) from error
+
+    @router.get("/by-project/{project_id}/runs/{run_id}")
+    async def recreation_run(
+        project_id: str,
+        run_id: str,
+        access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
+    ) -> dict[str, object]:
+        auth_context = await context(access_token, write=False)
+        run = await RunCoordinator(database).status(
+            tenant_id=str(auth_context.tenant_id),
+            run_id=run_id,
+        )
+        if run is None or run.project_id != project_id:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "run not found")
+        operation = await operations.operation_for_run(
+            tenant_id=str(auth_context.tenant_id),
+            run_id=run_id,
+        )
+        return {
+            "run_id": run.id,
+            "status": coherent_run_status(
+                run.status, operation.status if operation else None
+            ),
+            "error_code": run.error_code,
+            "operation_id": operation.id if operation else None,
+            "creative_session_id": operation.session_id if operation else None,
+            "operation_status": operation.status if operation else None,
+            "stage": operation.stage if operation else None,
+        }
 
     @router.post("/by-project/{project_id}/target-contract")
     async def save_target_contract(
@@ -249,53 +508,275 @@ def create_cross_cultural_recreation_router(
         except CrossCulturalRecreationError as error:
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
 
+    async def _generate_strategies_work(
+        *,
+        tenant_id: str,
+        project_id: str,
+        body: GenerateRequest,
+        run_id: str | None = None,
+    ) -> tuple[CrossCulturalArtifactModel, ...]:
+        record = await service.get(tenant_id=tenant_id, project_id=project_id)
+        artifacts = await service.artifacts(recreation_id=record.id)
+        adopted = {
+            str(item.kind): dict(item.payload)
+            for item in artifacts
+            if str(item.status) == RecreationArtifactStatus.ADOPTED
+        }
+        source_model = adopted.get(RecreationArtifactKind.SOURCE_STORY_MODEL.value)
+        target_contract = adopted.get(RecreationArtifactKind.TARGET_STORY_CONTRACT.value)
+        if source_model is None or target_contract is None:
+            raise CrossCulturalRecreationError("请先完成源作品分析并确认目标故事契约")
+        async with database.session() as session:
+            project = await session.get(ProjectModel, project_id)
+        if project is None:
+            raise CrossCulturalRecreationError("项目不存在")
+        payloads = await generator.generate_strategies(
+            tenant_id=tenant_id,
+            project=project,
+            idempotency_key=body.idempotency_key,
+            source_model=source_model,
+            target_contract={
+                **target_contract,
+                "target_language": record.target_language,
+                "target_market": record.target_market,
+                "target_audience": record.target_audience,
+                "distribution_context": record.distribution_context,
+            },
+            feedback=body.feedback,
+            run_id=run_id,
+        )
+        return await service.record_artifacts(
+            recreation_id=record.id,
+            kind=RecreationArtifactKind.RECREATION_STRATEGY,
+            payloads=payloads,
+            idempotency_key=body.idempotency_key,
+            feedback=body.feedback,
+        )
+
+    async def _background_generate_strategies(
+        *,
+        tenant_id: str,
+        project_id: str,
+        body: GenerateRequest,
+        run_id: str,
+        operation_id: str,
+        stage_run_id: str,
+        input_digest: str,
+    ) -> None:
+        coordinator = RunCoordinator(database)
+        try:
+            await coordinator.transition(
+                tenant_id=tenant_id,
+                run_id=run_id,
+                target=RunStatus.RUNNING,
+            )
+            artifacts = await _generate_strategies_work(
+                tenant_id=tenant_id,
+                project_id=project_id,
+                body=body,
+                run_id=run_id,
+            )
+            artifact_refs: list[dict[str, object]] = []
+            for artifact in artifacts:
+                artifact_ref_id = await operations.register_artifact(
+                    tenant_id=tenant_id,
+                    operation_id=operation_id,
+                    stage_run_id=stage_run_id,
+                    domain="novel_recreation",
+                    artifact_type=RecreationArtifactKind.RECREATION_STRATEGY.value,
+                    artifact_id=artifact.id,
+                    revision=artifact.version,
+                    status=str(artifact.status),
+                    schema_version=1,
+                    input_digest=input_digest,
+                    dependency_versions={"project_id": project_id},
+                    provenance={"source": "agent", "run_id": run_id},
+                )
+                artifact_refs.append(
+                    {
+                        "artifact_id": artifact.id,
+                        "artifact_ref_id": artifact_ref_id,
+                        "version": artifact.version,
+                    }
+                )
+            await operations.save_checkpoint(
+                tenant_id=tenant_id,
+                operation_id=operation_id,
+                stage_run_id=stage_run_id,
+                checkpoint_key=f"novel_recreation.strategy.generate:{run_id}",
+                state_format="json",
+                state_payload=json.dumps(
+                    {
+                        "artifact_kind": RecreationArtifactKind.RECREATION_STRATEGY.value,
+                        "candidates": artifact_refs,
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ).encode(),
+                resume_metadata={"next_action": "adopt_recreation_strategy"},
+                is_complete=True,
+            )
+            await operations.finish_stage(
+                tenant_id=tenant_id,
+                operation_id=operation_id,
+                stage_run_id=stage_run_id,
+                status=CreativeStageStatus.READY,
+            )
+            await run_events.append(
+                tenant_id=tenant_id,
+                run_id=run_id,
+                event_key="recreation-strategy-candidates-persisted",
+                type=RunEventType.TERMINAL,
+                payload={
+                    "block": "system",
+                    "phase": "end",
+                    "title": "归化策略候选已保存",
+                    "artifact_ids": [item.id for item in artifacts],
+                    "candidate_count": len(artifacts),
+                    "runtime": "agentscope",
+                },
+                correlation_id=run_id,
+            )
+            await coordinator.transition(
+                tenant_id=tenant_id,
+                run_id=run_id,
+                target=RunStatus.SUCCEEDED,
+            )
+        except asyncio.CancelledError:
+            with suppress(Exception):
+                await coordinator.transition(
+                    tenant_id=tenant_id,
+                    run_id=run_id,
+                    target=RunStatus.CANCELLED,
+                )
+            with suppress(Exception):
+                await operations.finish_stage(
+                    tenant_id=tenant_id,
+                    operation_id=operation_id,
+                    stage_run_id=stage_run_id,
+                    status=CreativeStageStatus.CANCELLED,
+                )
+            raise
+        except Exception as error:
+            with suppress(Exception):
+                current = await coordinator.status(tenant_id=tenant_id, run_id=run_id)
+                if current is not None and current.status in {
+                    RunStatus.QUEUED,
+                    RunStatus.RUNNING,
+                    RunStatus.WAITING,
+                }:
+                    await coordinator.transition(
+                        tenant_id=tenant_id,
+                        run_id=run_id,
+                        target=RunStatus.FAILED,
+                        error_code="recreation_strategy_generation_failed",
+                    )
+            with suppress(Exception):
+                await operations.finish_stage(
+                    tenant_id=tenant_id,
+                    operation_id=operation_id,
+                    stage_run_id=stage_run_id,
+                    status=CreativeStageStatus.FAILED,
+                    error={
+                        "code": "recreation_strategy_generation_failed",
+                        "message": str(error),
+                    },
+                )
+            with suppress(Exception):
+                await service.record_generation_failure(
+                    tenant_id=tenant_id,
+                    project_id=project_id,
+                    stage="strategy",
+                    run_id=run_id,
+                    message=str(error),
+                )
+
     @router.post("/by-project/{project_id}/strategies")
     async def generate_strategies(
         project_id: str,
         body: GenerateRequest,
+        background: Annotated[bool, Query()] = False,
         access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
         csrf_token: Annotated[str | None, Header(alias="X-CSRF-Token")] = None,
-    ) -> list[dict[str, object]]:
+    ) -> object:
         auth_context = await context(access_token, csrf_token, write=True)
         tenant_id = str(auth_context.tenant_id)
         try:
-            record = await service.get(tenant_id=tenant_id, project_id=project_id)
-            artifacts = await service.artifacts(recreation_id=record.id)
-            adopted = {
-                str(item.kind): dict(item.payload)
-                for item in artifacts
-                if str(item.status) == RecreationArtifactStatus.ADOPTED
-            }
-            source_model = adopted.get(RecreationArtifactKind.SOURCE_STORY_MODEL.value)
-            target_contract = adopted.get(RecreationArtifactKind.TARGET_STORY_CONTRACT.value)
-            if source_model is None or target_contract is None:
-                raise CrossCulturalRecreationError("请先完成源作品分析并确认目标故事契约")
-            async with database.session() as session:
-                project = await session.get(ProjectModel, project_id)
-            if project is None:
-                raise CrossCulturalRecreationError("项目不存在")
-            payloads = await generator.generate_strategies(
+            if not background:
+                records = await _generate_strategies_work(
+                    tenant_id=tenant_id,
+                    project_id=project_id,
+                    body=body,
+                )
+                return [_artifact(item) for item in records]
+
+            await service.get(tenant_id=tenant_id, project_id=project_id)
+            coordinator = RunCoordinator(database)
+            run = await coordinator.enqueue(
                 tenant_id=tenant_id,
-                project=project,
                 idempotency_key=body.idempotency_key,
-                source_model=source_model,
-                target_contract={
-                    **target_contract,
-                    "target_language": record.target_language,
-                    "target_market": record.target_market,
-                    "target_audience": record.target_audience,
-                    "distribution_context": record.distribution_context,
+                project_id=project_id,
+            )
+            session_id = await operations.get_or_open_session(
+                tenant_id=tenant_id,
+                project_id=project_id,
+                active_domain="novel_recreation",
+            )
+            turn_id = await operations.append_turn(
+                tenant_id=tenant_id,
+                session_id=session_id,
+                actor={"type": "user"},
+                input={
+                    "command": "novel_recreation.strategy.generate",
+                    "feedback": body.feedback,
                 },
-                feedback=body.feedback,
             )
-            records = await service.record_artifacts(
-                recreation_id=record.id,
-                kind=RecreationArtifactKind.RECREATION_STRATEGY,
-                payloads=payloads,
+            input_digest = hashlib.sha256(
+                json.dumps(
+                    {
+                        "project_id": project_id,
+                        "feedback": body.feedback,
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ).encode()
+            ).hexdigest()
+            operation = await operations.enqueue_operation(
+                tenant_id=tenant_id,
+                session_id=session_id,
+                turn_id=turn_id,
+                run_id=run.id,
+                command="novel_recreation.strategy.generate",
+                domain="novel_recreation",
+                stage="strategy",
                 idempotency_key=body.idempotency_key,
-                feedback=body.feedback,
+                policy_snapshot={"delivery": "background", "adoption": "manual"},
             )
-            return [_artifact(item) for item in records]
+            stage_run_id = await operations.start_stage(
+                tenant_id=tenant_id,
+                operation_id=operation.id,
+                stage_key="strategy",
+                attempt=1,
+                input_digest=input_digest,
+            )
+            task = asyncio.create_task(
+                _background_generate_strategies(
+                    tenant_id=tenant_id,
+                    project_id=project_id,
+                    body=body,
+                    run_id=run.id,
+                    operation_id=operation.id,
+                    stage_run_id=stage_run_id,
+                    input_digest=input_digest,
+                )
+            )
+            active_runs.track(run.id, task)
+            return {
+                "status": str(run.status),
+                "run_id": run.id,
+                "operation_id": operation.id,
+                "creative_session_id": session_id,
+            }
         except CrossCulturalRecreationError as error:
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
         except RecreationGenerationError as error:
@@ -319,16 +800,217 @@ def create_cross_cultural_recreation_router(
         except CrossCulturalRecreationError as error:
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
 
-    @router.post("/by-project/{project_id}/pilots")
-    async def generate_pilot(
+    async def _run_artifact_generation(
+        *,
+        tenant_id: str,
+        project_id: str,
+        run_id: str,
+        operation_id: str,
+        stage_run_id: str,
+        input_digest: str,
+        artifact_kind: RecreationArtifactKind,
+        stage: str,
+        failure_code: str,
+        next_action: str,
+        work: Callable[[str], Awaitable[CrossCulturalArtifactModel]],
+    ) -> None:
+        coordinator = RunCoordinator(database)
+        try:
+            await coordinator.transition(
+                tenant_id=tenant_id,
+                run_id=run_id,
+                target=RunStatus.RUNNING,
+            )
+            artifact = await work(run_id)
+            artifact_ref_id = await operations.register_artifact(
+                tenant_id=tenant_id,
+                operation_id=operation_id,
+                stage_run_id=stage_run_id,
+                domain="novel_recreation",
+                artifact_type=artifact_kind.value,
+                artifact_id=artifact.id,
+                revision=artifact.version,
+                status=str(artifact.status),
+                schema_version=1,
+                input_digest=input_digest,
+                dependency_versions={"project_id": project_id},
+                provenance={"source": "agent", "run_id": run_id},
+            )
+            await operations.save_checkpoint(
+                tenant_id=tenant_id,
+                operation_id=operation_id,
+                stage_run_id=stage_run_id,
+                checkpoint_key=f"novel_recreation.{stage}:{artifact.id}",
+                state_format="json",
+                state_payload=json.dumps(
+                    {
+                        "artifact_kind": artifact_kind.value,
+                        "artifact_id": artifact.id,
+                        "artifact_ref_id": artifact_ref_id,
+                        "version": artifact.version,
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ).encode(),
+                resume_metadata={"next_action": next_action},
+                is_complete=True,
+            )
+            await operations.finish_stage(
+                tenant_id=tenant_id,
+                operation_id=operation_id,
+                stage_run_id=stage_run_id,
+                status=CreativeStageStatus.READY,
+            )
+            await run_events.append(
+                tenant_id=tenant_id,
+                run_id=run_id,
+                event_key=f"recreation-{stage}-persisted",
+                type=RunEventType.TERMINAL,
+                payload={
+                    "block": "system",
+                    "phase": "end",
+                    "artifact_id": artifact.id,
+                    "artifact_kind": artifact_kind.value,
+                    "runtime": "agentscope",
+                },
+                correlation_id=run_id,
+            )
+            await coordinator.transition(
+                tenant_id=tenant_id,
+                run_id=run_id,
+                target=RunStatus.SUCCEEDED,
+            )
+        except asyncio.CancelledError:
+            with suppress(Exception):
+                await coordinator.transition(
+                    tenant_id=tenant_id,
+                    run_id=run_id,
+                    target=RunStatus.CANCELLED,
+                )
+            with suppress(Exception):
+                await operations.finish_stage(
+                    tenant_id=tenant_id,
+                    operation_id=operation_id,
+                    stage_run_id=stage_run_id,
+                    status=CreativeStageStatus.CANCELLED,
+                )
+            raise
+        except Exception as error:
+            with suppress(Exception):
+                current = await coordinator.status(tenant_id=tenant_id, run_id=run_id)
+                if current is not None and current.status in {
+                    RunStatus.QUEUED,
+                    RunStatus.RUNNING,
+                    RunStatus.WAITING,
+                }:
+                    await coordinator.transition(
+                        tenant_id=tenant_id,
+                        run_id=run_id,
+                        target=RunStatus.FAILED,
+                        error_code=failure_code,
+                    )
+            with suppress(Exception):
+                await operations.finish_stage(
+                    tenant_id=tenant_id,
+                    operation_id=operation_id,
+                    stage_run_id=stage_run_id,
+                    status=CreativeStageStatus.FAILED,
+                    error={"code": failure_code, "message": str(error)},
+                )
+            with suppress(Exception):
+                await service.record_generation_failure(
+                    tenant_id=tenant_id,
+                    project_id=project_id,
+                    stage=stage,
+                    run_id=run_id,
+                    message=str(error),
+                )
+
+    async def _enqueue_artifact_generation(
+        *,
+        tenant_id: str,
         project_id: str,
         body: GenerateRequest,
-        access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
-        csrf_token: Annotated[str | None, Header(alias="X-CSRF-Token")] = None,
+        command: str,
+        stage: str,
+        artifact_kind: RecreationArtifactKind,
+        failure_code: str,
+        next_action: str,
+        work: Callable[[str], Awaitable[CrossCulturalArtifactModel]],
     ) -> dict[str, object]:
-        auth_context = await context(access_token, csrf_token, write=True)
-        tenant_id = str(auth_context.tenant_id)
-        try:
+        await service.get(tenant_id=tenant_id, project_id=project_id)
+        coordinator = RunCoordinator(database)
+        run = await coordinator.enqueue(
+            tenant_id=tenant_id,
+            idempotency_key=body.idempotency_key,
+            project_id=project_id,
+        )
+        session_id = await operations.get_or_open_session(
+            tenant_id=tenant_id,
+            project_id=project_id,
+            active_domain="novel_recreation",
+        )
+        turn_id = await operations.append_turn(
+            tenant_id=tenant_id,
+            session_id=session_id,
+            actor={"type": "user"},
+            input={"command": command, "feedback": body.feedback},
+        )
+        input_digest = hashlib.sha256(
+            json.dumps(
+                {"project_id": project_id, "feedback": body.feedback, "stage": stage},
+                ensure_ascii=False,
+                sort_keys=True,
+            ).encode()
+        ).hexdigest()
+        operation = await operations.enqueue_operation(
+            tenant_id=tenant_id,
+            session_id=session_id,
+            turn_id=turn_id,
+            run_id=run.id,
+            command=command,
+            domain="novel_recreation",
+            stage=stage,
+            idempotency_key=body.idempotency_key,
+            policy_snapshot={"delivery": "background", "adoption": "manual"},
+        )
+        stage_run_id = await operations.start_stage(
+            tenant_id=tenant_id,
+            operation_id=operation.id,
+            stage_key=stage,
+            attempt=1,
+            input_digest=input_digest,
+        )
+        task = asyncio.create_task(
+            _run_artifact_generation(
+                tenant_id=tenant_id,
+                project_id=project_id,
+                run_id=run.id,
+                operation_id=operation.id,
+                stage_run_id=stage_run_id,
+                input_digest=input_digest,
+                artifact_kind=artifact_kind,
+                stage=stage,
+                failure_code=failure_code,
+                next_action=next_action,
+                work=work,
+            )
+        )
+        active_runs.track(run.id, task)
+        return {
+            "status": str(run.status),
+            "run_id": run.id,
+            "operation_id": operation.id,
+            "creative_session_id": session_id,
+        }
+
+    async def _generate_pilot_work(
+        *,
+        tenant_id: str,
+        project_id: str,
+        body: GenerateRequest,
+        run_id: str | None = None,
+    ) -> CrossCulturalArtifactModel:
             record = await service.get(tenant_id=tenant_id, project_id=project_id)
             artifacts = await service.artifacts(recreation_id=record.id)
             adopted = {
@@ -359,6 +1041,7 @@ def create_cross_cultural_recreation_router(
                 },
                 strategy=strategy,
                 feedback=body.feedback,
+                run_id=run_id,
             )
             records = await service.record_artifacts(
                 recreation_id=record.id,
@@ -367,22 +1050,59 @@ def create_cross_cultural_recreation_router(
                 idempotency_key=body.idempotency_key,
                 feedback=body.feedback,
             )
-            return _artifact(records[0])
+            return records[0]
+
+    @router.post("/by-project/{project_id}/pilots")
+    async def generate_pilot(
+        project_id: str,
+        body: GenerateRequest,
+        background: Annotated[bool, Query()] = False,
+        access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
+        csrf_token: Annotated[str | None, Header(alias="X-CSRF-Token")] = None,
+    ) -> object:
+        auth_context = await context(access_token, csrf_token, write=True)
+        tenant_id = str(auth_context.tenant_id)
+        try:
+            if not background:
+                return _artifact(
+                    await _generate_pilot_work(
+                        tenant_id=tenant_id,
+                        project_id=project_id,
+                        body=body,
+                    )
+                )
+
+            async def work(run_id: str) -> CrossCulturalArtifactModel:
+                return await _generate_pilot_work(
+                    tenant_id=tenant_id,
+                    project_id=project_id,
+                    body=body,
+                    run_id=run_id,
+                )
+
+            return await _enqueue_artifact_generation(
+                tenant_id=tenant_id,
+                project_id=project_id,
+                body=body,
+                command="novel_recreation.pilot.generate",
+                stage="pilot",
+                artifact_kind=RecreationArtifactKind.PILOT,
+                failure_code="recreation_pilot_generation_failed",
+                next_action="adopt_recreation_pilot",
+                work=work,
+            )
         except CrossCulturalRecreationError as error:
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
         except RecreationGenerationError as error:
             raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(error)) from error
 
-    @router.post("/by-project/{project_id}/scale-plans")
-    async def generate_scale_plan(
+    async def _generate_scale_plan_work(
+        *,
+        tenant_id: str,
         project_id: str,
         body: GenerateRequest,
-        access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
-        csrf_token: Annotated[str | None, Header(alias="X-CSRF-Token")] = None,
-    ) -> dict[str, object]:
-        auth_context = await context(access_token, csrf_token, write=True)
-        tenant_id = str(auth_context.tenant_id)
-        try:
+        run_id: str | None = None,
+    ) -> CrossCulturalArtifactModel:
             record = await service.get(tenant_id=tenant_id, project_id=project_id)
             artifacts = await service.artifacts(recreation_id=record.id)
             adopted = {
@@ -417,6 +1137,7 @@ def create_cross_cultural_recreation_router(
                 strategy=strategy,
                 pilot=pilot,
                 feedback=body.feedback,
+                run_id=run_id,
             )
             records = await service.record_artifacts(
                 recreation_id=record.id,
@@ -425,23 +1146,60 @@ def create_cross_cultural_recreation_router(
                 idempotency_key=body.idempotency_key,
                 feedback=body.feedback,
             )
-            return _artifact(records[0])
+            return records[0]
+
+    @router.post("/by-project/{project_id}/scale-plans")
+    async def generate_scale_plan(
+        project_id: str,
+        body: GenerateRequest,
+        background: Annotated[bool, Query()] = False,
+        access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
+        csrf_token: Annotated[str | None, Header(alias="X-CSRF-Token")] = None,
+    ) -> object:
+        auth_context = await context(access_token, csrf_token, write=True)
+        tenant_id = str(auth_context.tenant_id)
+        try:
+            if not background:
+                return _artifact(
+                    await _generate_scale_plan_work(
+                        tenant_id=tenant_id,
+                        project_id=project_id,
+                        body=body,
+                    )
+                )
+
+            async def work(run_id: str) -> CrossCulturalArtifactModel:
+                return await _generate_scale_plan_work(
+                    tenant_id=tenant_id,
+                    project_id=project_id,
+                    body=body,
+                    run_id=run_id,
+                )
+
+            return await _enqueue_artifact_generation(
+                tenant_id=tenant_id,
+                project_id=project_id,
+                body=body,
+                command="novel_recreation.scale_plan.generate",
+                stage="scale_plan",
+                artifact_kind=RecreationArtifactKind.SCALE_PLAN,
+                failure_code="recreation_scale_plan_generation_failed",
+                next_action="adopt_recreation_scale_plan",
+                work=work,
+            )
         except CrossCulturalRecreationError as error:
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
         except RecreationGenerationError as error:
             raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(error)) from error
 
-    @router.post("/by-project/{project_id}/work-packages/{work_package_key}/drafts")
-    async def generate_production_unit(
+    async def _generate_production_unit_work(
+        *,
+        tenant_id: str,
         project_id: str,
         work_package_key: str,
         body: GenerateRequest,
-        access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
-        csrf_token: Annotated[str | None, Header(alias="X-CSRF-Token")] = None,
-    ) -> dict[str, object]:
-        auth_context = await context(access_token, csrf_token, write=True)
-        tenant_id = str(auth_context.tenant_id)
-        try:
+        run_id: str | None = None,
+    ) -> RecreationProductionUnitModel:
             record = await service.get(tenant_id=tenant_id, project_id=project_id)
             artifacts = await service.artifacts(recreation_id=record.id)
             adopted_artifacts = {
@@ -518,7 +1276,7 @@ def create_cross_cultural_recreation_router(
                 feedback=body.feedback,
             )
             if dict(unit.payload):
-                return _production_unit(unit)
+                return unit
             try:
                 payload = await generator.generate_production_unit(
                     tenant_id=tenant_id,
@@ -542,12 +1300,241 @@ def create_cross_cultural_recreation_router(
                     work_package=work_package,
                     adopted_units=adopted_units,
                     feedback=body.feedback,
+                    run_id=run_id,
                 )
                 unit = await service.complete_production_unit(unit_id=unit.id, payload=payload)
-            except RecreationGenerationError as error:
+            except Exception as error:
                 await service.fail_production_unit(unit_id=unit.id, reason=str(error))
                 raise
-            return _production_unit(unit)
+            return unit
+
+    async def _background_generate_production_unit(
+        *,
+        tenant_id: str,
+        project_id: str,
+        work_package_key: str,
+        body: GenerateRequest,
+        run_id: str,
+        operation_id: str,
+        stage_run_id: str,
+        input_digest: str,
+    ) -> None:
+        coordinator = RunCoordinator(database)
+        try:
+            await coordinator.transition(
+                tenant_id=tenant_id,
+                run_id=run_id,
+                target=RunStatus.RUNNING,
+            )
+            unit = await _generate_production_unit_work(
+                tenant_id=tenant_id,
+                project_id=project_id,
+                work_package_key=work_package_key,
+                body=body,
+                run_id=run_id,
+            )
+            artifact_ref_id = await operations.register_artifact(
+                tenant_id=tenant_id,
+                operation_id=operation_id,
+                stage_run_id=stage_run_id,
+                domain="novel_recreation",
+                artifact_type="production_unit",
+                artifact_id=unit.id,
+                revision=unit.version,
+                status=str(unit.status),
+                schema_version=1,
+                input_digest=input_digest,
+                dependency_versions={
+                    "project_id": project_id,
+                    "scale_plan_artifact_id": unit.scale_plan_artifact_id,
+                },
+                provenance={"source": "agent", "run_id": run_id},
+            )
+            await operations.save_checkpoint(
+                tenant_id=tenant_id,
+                operation_id=operation_id,
+                stage_run_id=stage_run_id,
+                checkpoint_key=f"novel_recreation.production:{unit.id}",
+                state_format="json",
+                state_payload=json.dumps(
+                    {
+                        "production_unit_id": unit.id,
+                        "artifact_ref_id": artifact_ref_id,
+                        "work_package_key": unit.work_package_key,
+                        "version": unit.version,
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ).encode(),
+                resume_metadata={"next_action": "review_recreation_production_unit"},
+                is_complete=True,
+            )
+            await operations.finish_stage(
+                tenant_id=tenant_id,
+                operation_id=operation_id,
+                stage_run_id=stage_run_id,
+                status=CreativeStageStatus.READY,
+            )
+            await run_events.append(
+                tenant_id=tenant_id,
+                run_id=run_id,
+                event_key="recreation-production-unit-persisted",
+                type=RunEventType.TERMINAL,
+                payload={
+                    "block": "system",
+                    "phase": "end",
+                    "production_unit_id": unit.id,
+                    "work_package_key": unit.work_package_key,
+                    "runtime": "agentscope",
+                },
+                correlation_id=run_id,
+            )
+            await coordinator.transition(
+                tenant_id=tenant_id,
+                run_id=run_id,
+                target=RunStatus.SUCCEEDED,
+            )
+        except asyncio.CancelledError:
+            with suppress(Exception):
+                await coordinator.transition(
+                    tenant_id=tenant_id,
+                    run_id=run_id,
+                    target=RunStatus.CANCELLED,
+                )
+            with suppress(Exception):
+                await operations.finish_stage(
+                    tenant_id=tenant_id,
+                    operation_id=operation_id,
+                    stage_run_id=stage_run_id,
+                    status=CreativeStageStatus.CANCELLED,
+                )
+            raise
+        except Exception as error:
+            with suppress(Exception):
+                current = await coordinator.status(tenant_id=tenant_id, run_id=run_id)
+                if current is not None and current.status in {
+                    RunStatus.QUEUED,
+                    RunStatus.RUNNING,
+                    RunStatus.WAITING,
+                }:
+                    await coordinator.transition(
+                        tenant_id=tenant_id,
+                        run_id=run_id,
+                        target=RunStatus.FAILED,
+                        error_code="recreation_production_generation_failed",
+                    )
+            with suppress(Exception):
+                await operations.finish_stage(
+                    tenant_id=tenant_id,
+                    operation_id=operation_id,
+                    stage_run_id=stage_run_id,
+                    status=CreativeStageStatus.FAILED,
+                    error={
+                        "code": "recreation_production_generation_failed",
+                        "message": str(error),
+                    },
+                )
+            with suppress(Exception):
+                await service.record_generation_failure(
+                    tenant_id=tenant_id,
+                    project_id=project_id,
+                    stage="production",
+                    run_id=run_id,
+                    message=str(error),
+                )
+
+    @router.post("/by-project/{project_id}/work-packages/{work_package_key}/drafts")
+    async def generate_production_unit(
+        project_id: str,
+        work_package_key: str,
+        body: GenerateRequest,
+        background: Annotated[bool, Query()] = False,
+        access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
+        csrf_token: Annotated[str | None, Header(alias="X-CSRF-Token")] = None,
+    ) -> object:
+        auth_context = await context(access_token, csrf_token, write=True)
+        tenant_id = str(auth_context.tenant_id)
+        try:
+            if not background:
+                return _production_unit(
+                    await _generate_production_unit_work(
+                        tenant_id=tenant_id,
+                        project_id=project_id,
+                        work_package_key=work_package_key,
+                        body=body,
+                    )
+                )
+
+            await service.get(tenant_id=tenant_id, project_id=project_id)
+            coordinator = RunCoordinator(database)
+            run = await coordinator.enqueue(
+                tenant_id=tenant_id,
+                idempotency_key=body.idempotency_key,
+                project_id=project_id,
+            )
+            session_id = await operations.get_or_open_session(
+                tenant_id=tenant_id,
+                project_id=project_id,
+                active_domain="novel_recreation",
+            )
+            turn_id = await operations.append_turn(
+                tenant_id=tenant_id,
+                session_id=session_id,
+                actor={"type": "user"},
+                input={
+                    "command": "novel_recreation.production.generate",
+                    "work_package_key": work_package_key,
+                    "feedback": body.feedback,
+                },
+            )
+            input_digest = hashlib.sha256(
+                json.dumps(
+                    {
+                        "project_id": project_id,
+                        "work_package_key": work_package_key,
+                        "feedback": body.feedback,
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ).encode()
+            ).hexdigest()
+            operation = await operations.enqueue_operation(
+                tenant_id=tenant_id,
+                session_id=session_id,
+                turn_id=turn_id,
+                run_id=run.id,
+                command="novel_recreation.production.generate",
+                domain="novel_recreation",
+                stage="production",
+                idempotency_key=body.idempotency_key,
+                policy_snapshot={"delivery": "background", "adoption": "manual"},
+            )
+            stage_run_id = await operations.start_stage(
+                tenant_id=tenant_id,
+                operation_id=operation.id,
+                stage_key=f"production:{work_package_key}",
+                attempt=1,
+                input_digest=input_digest,
+            )
+            task = asyncio.create_task(
+                _background_generate_production_unit(
+                    tenant_id=tenant_id,
+                    project_id=project_id,
+                    work_package_key=work_package_key,
+                    body=body,
+                    run_id=run.id,
+                    operation_id=operation.id,
+                    stage_run_id=stage_run_id,
+                    input_digest=input_digest,
+                )
+            )
+            active_runs.track(run.id, task)
+            return {
+                "status": str(run.status),
+                "run_id": run.id,
+                "operation_id": operation.id,
+                "creative_session_id": session_id,
+            }
         except CrossCulturalRecreationError as error:
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
         except RecreationGenerationError as error:

@@ -92,3 +92,39 @@ async def test_invalid_and_incomplete_transitions_are_rejected(
     await coordinator.transition(tenant_id=tenant.id, run_id=run.id, target=RunStatus.RUNNING)
     with pytest.raises(RunTransitionError, match="requires a reason"):
         await coordinator.transition(tenant_id=tenant.id, run_id=run.id, target=RunStatus.WAITING)
+
+
+@pytest.mark.asyncio
+async def test_restart_reconciliation_closes_process_local_work_but_preserves_decisions(
+    coordinator_data: tuple[RunCoordinator, Database, TenantModel, ProjectModel],
+) -> None:
+    coordinator, database, tenant, project = coordinator_data
+    queued = await coordinator.enqueue(
+        tenant_id=tenant.id, project_id=project.id, idempotency_key="queued-before-restart"
+    )
+    running = await coordinator.enqueue(
+        tenant_id=tenant.id, project_id=project.id, idempotency_key="running-before-restart"
+    )
+    await coordinator.transition(
+        tenant_id=tenant.id, run_id=running.id, target=RunStatus.RUNNING
+    )
+    waiting = await coordinator.enqueue(
+        tenant_id=tenant.id, project_id=project.id, idempotency_key="waiting-before-restart"
+    )
+    await coordinator.transition(
+        tenant_id=tenant.id, run_id=waiting.id, target=RunStatus.RUNNING
+    )
+    await coordinator.transition(
+        tenant_id=tenant.id,
+        run_id=waiting.id,
+        target=RunStatus.WAITING,
+        waiting_reason="decision_required",
+    )
+
+    restarted = RunCoordinator(database)
+    reconciled = await restarted.reconcile_interrupted()
+
+    assert {run.id for run in reconciled} == {queued.id, running.id}
+    assert all(run.status == RunStatus.FAILED for run in reconciled)
+    assert all(run.error_code == "runtime_interrupted" for run in reconciled)
+    assert [run.id for run in await restarted.recoverable()] == [waiting.id]

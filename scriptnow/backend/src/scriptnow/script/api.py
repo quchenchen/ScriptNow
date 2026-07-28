@@ -1,14 +1,25 @@
+import asyncio
+import hashlib
+import json
+from contextlib import suppress
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Cookie, Header, HTTPException, Response, status
+from fastapi import APIRouter, Cookie, Header, HTTPException, Query, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
+from scriptnow.platform.active_runs import ActiveRunRegistry
 from scriptnow.platform.auth import AuthenticationFailed, AuthService, CsrfFailed
 from scriptnow.platform.auth_api import ACCESS_COOKIE
 from scriptnow.platform.config import Settings
+from scriptnow.platform.creative_operations import (
+    CreativeOperationStore,
+    coherent_run_status,
+)
 from scriptnow.platform.database import Database
-from scriptnow.platform.models import ProjectModel
+from scriptnow.platform.models import CreativeStageStatus, ProjectModel, RunStatus
+from scriptnow.platform.run_coordinator import RunCoordinator
+from scriptnow.platform.run_events import PersistentRunEventLog, RunEventType
 from scriptnow.platform.translation import FaithfulTranslationService
 from scriptnow.script.contracts import ScriptBlock
 from scriptnow.script.delivery import ScriptDeliveryError, ScriptExportService
@@ -58,6 +69,9 @@ class ProposeBlueprintRequest(BaseModel):
 class AdoptResponse(BaseModel):
     id: str
     status: str
+    run_id: str | None = None
+    operation_id: str | None = None
+    creative_session_id: str | None = None
 
 
 class ProposeStoryMapRequest(BaseModel):
@@ -108,7 +122,12 @@ class RollbackRequest(BaseModel):
     idempotency_key: str = Field(min_length=1, max_length=120)
 
 
-def create_script_router(database: Database, auth: AuthService, settings: Settings) -> APIRouter:
+def create_script_router(
+    database: Database,
+    auth: AuthService,
+    settings: Settings,
+    active_runs: ActiveRunRegistry,
+) -> APIRouter:
     router = APIRouter(prefix="/script/projects/{project_id}", tags=["script"])
     service = ScriptService(database)
     exports = ScriptExportService(
@@ -116,6 +135,174 @@ def create_script_router(database: Database, auth: AuthService, settings: Settin
     )
     history = ScriptHistoryService(database)
     generator = ScriptCreativeGenerator(database, settings)
+    operations = CreativeOperationStore(database)
+    run_events = PersistentRunEventLog(database)
+
+    async def background_generate_scene(
+        *,
+        tenant_id: str,
+        project_id: str,
+        scene_id: str,
+        idempotency_key: str,
+        feedback: str | None,
+        run_id: str,
+        operation_id: str,
+        stage_run_id: str,
+        input_digest: str,
+    ) -> None:
+        coordinator = RunCoordinator(database)
+        try:
+            await coordinator.transition(
+                tenant_id=tenant_id,
+                run_id=run_id,
+                target=RunStatus.RUNNING,
+            )
+            project = await _script_project(database, tenant_id, project_id)
+            context_pack = await service.context_pack(
+                tenant_id=tenant_id,
+                project_id=project_id,
+                scene_id=scene_id,
+            )
+            async with database.session() as session:
+                story_map = (
+                    await session.scalars(
+                        select(ScriptStoryMapModel).where(
+                            ScriptStoryMapModel.project_id == project_id
+                        )
+                    )
+                ).one()
+            scene = next(
+                (
+                    item
+                    for episode in story_map.episodes
+                    for item in episode.get("scenes", [])
+                    if item.get("id") == scene_id
+                ),
+                None,
+            )
+            if scene is None:
+                raise ScriptConflict("scene is outside the adopted StoryMap")
+            blocks = await generator.scene_document(
+                tenant_id=tenant_id,
+                project=project,
+                scene=scene,
+                context=context_pack,
+                feedback=feedback,
+                run_id=run_id,
+            )
+            revision = await service.propose_document(
+                tenant_id=tenant_id,
+                project_id=project_id,
+                scene_id=scene_id,
+                blocks=blocks,
+                idempotency_key=idempotency_key,
+            )
+            artifact_ref_id = await operations.register_artifact(
+                tenant_id=tenant_id,
+                operation_id=operation_id,
+                stage_run_id=stage_run_id,
+                domain="script",
+                artifact_type="scene_revision",
+                artifact_id=revision.id,
+                revision=revision.revision_number,
+                status=str(revision.status),
+                schema_version=1,
+                input_digest=input_digest,
+                dependency_versions={"scene_id": scene_id},
+                provenance={
+                    "source": "agent",
+                    "run_id": run_id,
+                    "idempotency_key": idempotency_key,
+                },
+            )
+            await operations.save_checkpoint(
+                tenant_id=tenant_id,
+                operation_id=operation_id,
+                stage_run_id=stage_run_id,
+                checkpoint_key=f"script.scene.generate:{revision.id}",
+                state_format="json",
+                state_payload=json.dumps(
+                    {
+                        "scene_id": scene_id,
+                        "revision_id": revision.id,
+                        "revision_number": revision.revision_number,
+                        "artifact_ref_id": artifact_ref_id,
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ).encode(),
+                resume_metadata={"next_action": "review_candidate"},
+                is_complete=True,
+            )
+            await operations.finish_stage(
+                tenant_id=tenant_id,
+                operation_id=operation_id,
+                stage_run_id=stage_run_id,
+                status=CreativeStageStatus.READY,
+            )
+            await run_events.append(
+                tenant_id=tenant_id,
+                run_id=run_id,
+                event_key="scene-candidate-persisted",
+                type=RunEventType.TERMINAL,
+                payload={
+                    "block": "system",
+                    "phase": "end",
+                    "title": "场次候选稿已保存，可以审阅",
+                    "scene_id": scene_id,
+                    "revision_id": revision.id,
+                    "runtime": "agentscope",
+                },
+                correlation_id=run_id,
+            )
+            await coordinator.transition(
+                tenant_id=tenant_id,
+                run_id=run_id,
+                target=RunStatus.SUCCEEDED,
+            )
+        except asyncio.CancelledError:
+            with suppress(Exception):
+                current = await coordinator.status(tenant_id=tenant_id, run_id=run_id)
+                if current is not None and current.status in {
+                    RunStatus.QUEUED,
+                    RunStatus.RUNNING,
+                    RunStatus.WAITING,
+                }:
+                    await coordinator.transition(
+                        tenant_id=tenant_id,
+                        run_id=run_id,
+                        target=RunStatus.CANCELLED,
+                    )
+            with suppress(Exception):
+                await operations.finish_stage(
+                    tenant_id=tenant_id,
+                    operation_id=operation_id,
+                    stage_run_id=stage_run_id,
+                    status=CreativeStageStatus.CANCELLED,
+                )
+            raise
+        except Exception as error:
+            with suppress(Exception):
+                current = await coordinator.status(tenant_id=tenant_id, run_id=run_id)
+                if current is not None and current.status in {
+                    RunStatus.QUEUED,
+                    RunStatus.RUNNING,
+                    RunStatus.WAITING,
+                }:
+                    await coordinator.transition(
+                        tenant_id=tenant_id,
+                        run_id=run_id,
+                        target=RunStatus.FAILED,
+                        error_code="script_scene_failed",
+                    )
+            with suppress(Exception):
+                await operations.finish_stage(
+                    tenant_id=tenant_id,
+                    operation_id=operation_id,
+                    stage_run_id=stage_run_id,
+                    status=CreativeStageStatus.FAILED,
+                    error={"code": "script_scene_failed", "message": str(error)},
+                )
 
     async def action_context(access_token: str | None, csrf_token: str | None):
         if access_token is None:
@@ -374,10 +561,90 @@ def create_script_router(database: Database, auth: AuthService, settings: Settin
         project_id: str,
         scene_id: str,
         body: GenerateRequest,
+        background: bool = Query(default=False),
         access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
         csrf_token: Annotated[str | None, Header(alias="X-CSRF-Token")] = None,
     ) -> AdoptResponse:
         context = await action_context(access_token, csrf_token)
+        if background:
+            tenant_id = str(context.tenant_id)
+            project = await _script_project(database, tenant_id, project_id)
+            run_key = f"script-scene:{project_id}:{scene_id}:{body.idempotency_key}"
+            coordinator = RunCoordinator(database)
+            run = await coordinator.enqueue(
+                tenant_id=tenant_id,
+                project_id=project_id,
+                idempotency_key=run_key,
+            )
+            creative_session_id = await operations.get_or_open_session(
+                tenant_id=tenant_id,
+                project_id=project_id,
+                active_domain="script",
+            )
+            turn_id = await operations.append_turn(
+                tenant_id=tenant_id,
+                session_id=creative_session_id,
+                actor={"type": "user"},
+                input={
+                    "command": "script.scene.generate",
+                    "scene_id": scene_id,
+                    "feedback": body.feedback,
+                },
+            )
+            operation = await operations.enqueue_operation(
+                tenant_id=tenant_id,
+                session_id=creative_session_id,
+                turn_id=turn_id,
+                run_id=run.id,
+                command="script.scene.generate",
+                domain="script",
+                stage="generate",
+                idempotency_key=run_key,
+                policy_snapshot={
+                    "project_medium": project.medium,
+                    "project_direction": dict(project.direction or {}),
+                },
+            )
+            input_digest = hashlib.sha256(
+                json.dumps(
+                    {
+                        "project_id": project_id,
+                        "scene_id": scene_id,
+                        "feedback": body.feedback,
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ).encode()
+            ).hexdigest()
+            stage_run_id = await operations.start_stage(
+                tenant_id=tenant_id,
+                operation_id=operation.id,
+                stage_key="generate",
+                attempt=1,
+                input_digest=input_digest,
+            )
+            if run.status == RunStatus.QUEUED:
+                task = asyncio.create_task(
+                    background_generate_scene(
+                        tenant_id=tenant_id,
+                        project_id=project_id,
+                        scene_id=scene_id,
+                        idempotency_key=body.idempotency_key,
+                        feedback=body.feedback,
+                        run_id=run.id,
+                        operation_id=operation.id,
+                        stage_run_id=stage_run_id,
+                        input_digest=input_digest,
+                    )
+                )
+                active_runs.track(run.id, task)
+            return AdoptResponse(
+                id=run.id,
+                run_id=run.id,
+                status=run.status,
+                operation_id=operation.id,
+                creative_session_id=creative_session_id,
+            )
         try:
             project = await _script_project(database, str(context.tenant_id), project_id)
             context_pack = await service.context_pack(
@@ -423,6 +690,36 @@ def create_script_router(database: Database, auth: AuthService, settings: Settin
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(error)) from error
         except (ScriptConflict, ScriptDomainError) as error:
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
+
+    @router.get("/runs/{run_id}")
+    async def run_status(
+        project_id: str,
+        run_id: str,
+        access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
+    ) -> dict[str, object]:
+        context = await read_context(access_token)
+        coordinator = RunCoordinator(database)
+        run = await coordinator.status(
+            tenant_id=str(context.tenant_id),
+            run_id=run_id,
+        )
+        if run is None or run.project_id != project_id:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "run not found")
+        operation = await operations.operation_for_run(
+            tenant_id=str(context.tenant_id),
+            run_id=run_id,
+        )
+        return {
+            "id": run.id,
+            "status": coherent_run_status(
+                run.status, operation.status if operation else None
+            ),
+            "error_code": run.error_code,
+            "operation_id": operation.id if operation else None,
+            "creative_session_id": operation.session_id if operation else None,
+            "operation_status": operation.status if operation else None,
+            "stage": operation.stage if operation else None,
+        }
 
     @router.post("/scenes/{scene_id}/revisions/{revision_id}/adopt", response_model=AdoptResponse)
     async def adopt_scene(

@@ -17,6 +17,8 @@ from scriptnow.platform.config import Settings, get_settings
 from scriptnow.platform.core_api import create_core_router
 from scriptnow.platform.database import Database
 from scriptnow.platform.narrative_graph_api import create_narrative_graph_router
+from scriptnow.platform.run_coordinator import RunCoordinator
+from scriptnow.platform.run_events import PersistentRunEventLog, RunEventType
 from scriptnow.review.api import create_review_router
 from scriptnow.script.api import create_script_router
 from scriptnow.script.contracts import SCRIPT_BLOCK_TYPES
@@ -38,6 +40,21 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         del app
+        interrupted = await RunCoordinator(resolved_database).reconcile_interrupted()
+        run_events = PersistentRunEventLog(resolved_database)
+        for run in interrupted:
+            await run_events.append(
+                tenant_id=run.tenant_id,
+                run_id=run.id,
+                event_key="runtime:interrupted",
+                type=RunEventType.TERMINAL,
+                payload={
+                    "status": "failed",
+                    "error_code": "runtime_interrupted",
+                    "retryable": True,
+                },
+                correlation_id=run.id,
+            )
         yield
         await active_runs.cancel_all()
         if owns_database:
@@ -60,13 +77,18 @@ def create_app(
     app.include_router(
         create_core_router(resolved_database, auth, resolved_settings, initialize_project)
     )
-    app.include_router(create_script_router(resolved_database, auth, resolved_settings))
+    app.include_router(
+        create_script_router(resolved_database, auth, resolved_settings, active_runs)
+    )
     app.include_router(
         create_novel_router(resolved_database, auth, resolved_settings, active_runs)
     )
     app.include_router(
         create_cross_cultural_recreation_router(
-            resolved_database, auth, resolved_settings
+            resolved_database,
+            auth,
+            resolved_settings,
+            active_runs,
         )
     )
     app.include_router(create_narrative_graph_router(resolved_database, auth, resolved_settings))
@@ -75,7 +97,14 @@ def create_app(
         create_dock_router(resolved_database, auth, resolved_settings, active_runs)
     )
     app.include_router(create_work_package_router(resolved_database, auth, resolved_settings))
-    app.include_router(create_translation_router(resolved_database, auth, resolved_settings))
+    app.include_router(
+        create_translation_router(
+            resolved_database,
+            auth,
+            resolved_settings,
+            active_runs,
+        )
+    )
 
     import os as _os
 

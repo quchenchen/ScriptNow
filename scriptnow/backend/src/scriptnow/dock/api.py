@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from scriptnow.dock.service import DockError, DockService
 from scriptnow.platform.active_runs import ActiveRunRegistry
+from scriptnow.platform.agent_runtime import AgentRuntimeError, AgentRuntimeTimeoutError
 from scriptnow.platform.auth import AuthenticationFailed, AuthService, CsrfFailed
 from scriptnow.platform.auth_api import ACCESS_COOKIE
 from scriptnow.platform.billing import BillingError, PaymentRequired
@@ -96,6 +97,10 @@ def create_dock_router(
             )
         except PaymentRequired as error:
             raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, str(error)) from error
+        except AgentRuntimeTimeoutError as error:
+            raise HTTPException(status.HTTP_504_GATEWAY_TIMEOUT, str(error)) from error
+        except AgentRuntimeError as error:
+            raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(error)) from error
         except (DockError, BillingError, RunTransitionError) as error:
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
 

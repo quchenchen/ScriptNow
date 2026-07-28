@@ -51,6 +51,10 @@ class AgentRuntimeError(RuntimeError):
     pass
 
 
+class AgentRuntimeTimeoutError(AgentRuntimeError):
+    """The configured wall-clock limit expired before AgentScope completed."""
+
+
 RuntimeEventSink = Callable[[AgentEvent], Awaitable[None]]
 
 
@@ -191,7 +195,7 @@ class AgentRuntime:
                 timeout=self.settings.agent_runtime_timeout_seconds,
             )
         except TimeoutError as error:
-            raise AgentRuntimeError(
+            raise AgentRuntimeTimeoutError(
                 f"Agent runtime exceeded {self.settings.agent_runtime_timeout_seconds:g} seconds"
             ) from error
 
@@ -509,6 +513,7 @@ class AgentRuntime:
             role=role,
             context_snapshot=context_snapshot,
             context_tokens=usage.input_tokens if usage else max(1, len(prompt) // 4),
+            context_limit=model_record.context_window,
         )
         return AgentRuntimeResult(
             text=self._text_content(reply),
@@ -700,6 +705,7 @@ class AgentRuntime:
         role: str,
         context_snapshot: dict[str, object],
         context_tokens: int,
+        context_limit: int,
     ) -> None:
         async with self.database.session() as session:
             run = await session.get(ProjectRunModel, run_id)
@@ -725,7 +731,7 @@ class AgentRuntime:
                 state.state_version += 1
             state.serialized_state = context_snapshot
             state.context_tokens = max(1, context_tokens)
-            state.context_limit = 32_768
+            state.context_limit = context_limit
 
     @staticmethod
     def _system_prompt(role: str, soul: str, *, language: str = "zh-CN") -> str:

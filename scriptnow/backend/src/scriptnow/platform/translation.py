@@ -8,7 +8,7 @@ from scriptnow.platform.agent_runtime import AgentRuntime, AgentRuntimeError
 from scriptnow.platform.billing import BillingService
 from scriptnow.platform.config import Settings
 from scriptnow.platform.database import Database
-from scriptnow.platform.models import RunStatus, TenantModel
+from scriptnow.platform.models import ProjectRunModel, RunStatus, TenantModel
 from scriptnow.platform.run_coordinator import RunCoordinator
 from scriptnow.platform.translation_contracts import TranslationError, TranslationUnit
 
@@ -42,6 +42,7 @@ class FaithfulTranslationService:
         units: tuple[TranslationUnit, ...],
         idempotency_key: str,
         glossary_block: str = "",
+        run_id: str | None = None,
     ) -> tuple[TranslationUnit, ...]:
         target_language = target_language.strip()
         if not target_language:
@@ -57,11 +58,22 @@ class FaithfulTranslationService:
             raise TranslationError(
                 f"translation runtime is unavailable: {writer.get('reason') or 'unknown'}"
             )
-        run = await self.runs.enqueue(
-            tenant_id=tenant_id,
-            project_id=project_id,
-            idempotency_key=f"faithful-translation:{idempotency_key}",
-        )
+        manages_run = run_id is None
+        if manages_run:
+            run = await self.runs.enqueue(
+                tenant_id=tenant_id,
+                project_id=project_id,
+                idempotency_key=f"faithful-translation:{idempotency_key}",
+            )
+        else:
+            async with self.database.session() as session:
+                record = await session.get(ProjectRunModel, run_id)
+            run = record
+        if run is None or (
+            not manages_run
+            and (run.tenant_id != tenant_id or run.project_id != project_id)
+        ):
+            raise TranslationError("translation run is outside project scope")
         async with self.database.session() as session:
             tenant = await session.get(TenantModel, tenant_id)
             if tenant is None:
@@ -85,7 +97,10 @@ class FaithfulTranslationService:
             tier=tenant.tier,
             max_tokens=reserved_tokens,
         )
-        await self.runs.transition(tenant_id=tenant_id, run_id=run.id, target=RunStatus.RUNNING)
+        if manages_run:
+            await self.runs.transition(
+                tenant_id=tenant_id, run_id=run.id, target=RunStatus.RUNNING
+            )
         translated: list[TranslationUnit] = []
         try:
             for index, unit in enumerate(units):
@@ -123,20 +138,22 @@ class FaithfulTranslationService:
                     output_price_per_million=result.output_price_per_million,
                 )
             await self.billing.finalize(reservation.id)
-            await self.runs.transition(
-                tenant_id=tenant_id, run_id=run.id, target=RunStatus.SUCCEEDED
-            )
+            if manages_run:
+                await self.runs.transition(
+                    tenant_id=tenant_id, run_id=run.id, target=RunStatus.SUCCEEDED
+                )
             return tuple(translated)
         except Exception as error:
             with suppress(Exception):
                 await self.billing.release(reservation.id)
-            with suppress(Exception):
-                await self.runs.transition(
-                    tenant_id=tenant_id,
-                    run_id=run.id,
-                    target=RunStatus.FAILED,
-                    error_code="faithful_translation_failed",
-                )
+            if manages_run:
+                with suppress(Exception):
+                    await self.runs.transition(
+                        tenant_id=tenant_id,
+                        run_id=run.id,
+                        target=RunStatus.FAILED,
+                        error_code="faithful_translation_failed",
+                    )
             if isinstance(error, TranslationError):
                 raise
             if isinstance(error, AgentRuntimeError):

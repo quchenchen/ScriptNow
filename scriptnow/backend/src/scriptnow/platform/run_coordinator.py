@@ -105,6 +105,34 @@ class RunCoordinator:
             ).all()
             return [self._view(run) for run in runs]
 
+    async def reconcile_interrupted(self) -> list[RunView]:
+        """Close work that cannot survive a process restart.
+
+        A waiting run is durable because a later decision can resume it from
+        persisted state. Queued and running work currently owns a process-local
+        coroutine, so leaving either state active after restart would expose a
+        zombie run that can never make progress.
+        """
+        async with self.database.session() as session:
+            interrupted = list(
+                await session.scalars(
+                    select(ProjectRunModel)
+                    .where(
+                        ProjectRunModel.status.in_(
+                            [RunStatus.QUEUED, RunStatus.RUNNING]
+                        )
+                    )
+                    .order_by(ProjectRunModel.created_at)
+                )
+            )
+            for run in interrupted:
+                run.status = RunStatus.FAILED
+                run.waiting_reason = None
+                run.error_code = "runtime_interrupted"
+                run.state_version += 1
+            await session.flush()
+            return [self._view(run) for run in interrupted]
+
     @staticmethod
     def _view(run: ProjectRunModel) -> RunView:
         return RunView(

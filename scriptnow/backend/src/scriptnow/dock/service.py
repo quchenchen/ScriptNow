@@ -1,3 +1,4 @@
+import hashlib
 import json
 from dataclasses import asdict
 
@@ -6,12 +7,24 @@ from sqlalchemy import and_, func, or_, select
 from scriptnow.novel.domain import NovelDocumentRevisionModel
 from scriptnow.novel.project import NovelPlanModel, NovelStoryMapModel
 from scriptnow.platform.active_runs import ActiveRunRegistry
-from scriptnow.platform.agent_runtime import AgentRuntime, AgentRuntimeError, AgentRuntimeResult
+from scriptnow.platform.agent_runtime import (
+    AgentRuntime,
+    AgentRuntimeError,
+    AgentRuntimeResult,
+    AgentRuntimeTimeoutError,
+)
 from scriptnow.platform.billing import BillingService
 from scriptnow.platform.config import Settings
+from scriptnow.platform.creative_operations import (
+    CreativeOperationStore,
+    OperationView,
+)
 from scriptnow.platform.database import Database
 from scriptnow.platform.models import (
     AgentStateModel,
+    CreativeOperationModel,
+    CreativeStageStatus,
+    DecisionRequestStatus,
     MemoryAuditModel,
     MemoryEntryModel,
     ProjectEventModel,
@@ -23,7 +36,7 @@ from scriptnow.platform.models import (
     UsageReservationModel,
     new_id,
 )
-from scriptnow.platform.run_coordinator import RunCoordinator
+from scriptnow.platform.run_coordinator import RunCoordinator, RunView
 from scriptnow.platform.run_events import PersistentRunEventLog, RunEventType
 from scriptnow.review.domain import FindingStatus, ReviewFindingModel
 from scriptnow.script.domain import ScriptDocumentRevisionModel
@@ -50,6 +63,7 @@ class DockService:
             database, enforce_limits=settings.enforce_agent_budget
         )
         self.runtime = AgentRuntime(database, settings)
+        self.operations = CreativeOperationStore(database)
 
     async def project_events(
         self, *, tenant_id: str, project_id: str, after_id: str | None, types: set[str]
@@ -97,16 +111,56 @@ class DockService:
             tenant_id=tenant_id, project_id=project_id, idempotency_key=idempotency_key
         )
         if run.status != RunStatus.QUEUED:
-            return asdict(run)
+            return await self._run_with_operation(tenant_id=tenant_id, run=run)
         async with self.database.session() as session:
             tenant = await session.get(TenantModel, tenant_id)
             assert tenant is not None
+            project = await self._project(session, tenant_id, project_id)
         reservation = await self.billing.reserve(
             tenant_id=tenant_id,
             run_id=run.id,
             idempotency_key=f"dock:{idempotency_key}",
             tier=tenant.tier,
             max_tokens=self.settings.dock_reserved_tokens,
+        )
+        creative_session_id = await self.operations.get_or_open_session(
+            tenant_id=tenant_id,
+            project_id=project_id,
+            active_domain=project.medium,
+        )
+        turn_id = await self.operations.append_turn(
+            tenant_id=tenant_id,
+            session_id=creative_session_id,
+            actor={"type": "user", "id": actor_id, "role": role},
+            input={"content": content, "quote": quote, "focus": focus},
+        )
+        operation = await self.operations.enqueue_operation(
+            tenant_id=tenant_id,
+            session_id=creative_session_id,
+            turn_id=turn_id,
+            run_id=run.id,
+            command="creative_partner.message",
+            domain=project.medium,
+            stage=role,
+            idempotency_key=idempotency_key,
+            policy_snapshot={
+                "requires_confirmation": requires_confirmation,
+                "role": role,
+            },
+        )
+        input_digest = hashlib.sha256(
+            json.dumps(
+                {"content": content, "quote": quote, "focus": focus},
+                ensure_ascii=False,
+                sort_keys=True,
+            ).encode()
+        ).hexdigest()
+        stage_run_id = await self.operations.start_stage(
+            tenant_id=tenant_id,
+            operation_id=operation.id,
+            stage_key=role,
+            attempt=1,
+            input_digest=input_digest,
         )
         await self.runs.transition(tenant_id=tenant_id, run_id=run.id, target=RunStatus.RUNNING)
         await self._project_event(
@@ -149,10 +203,46 @@ class DockService:
                     content=content,
                     context_snapshot=context_snapshot,
                 )
-            except Exception:
+            except Exception as error:
                 await self.billing.release(reservation.id)
+                error_code = (
+                    "agent_runtime_timeout"
+                    if isinstance(error, AgentRuntimeTimeoutError)
+                    else "agent_runtime_failed"
+                )
                 await self.runs.transition(
-                    tenant_id=tenant_id, run_id=run.id, target=RunStatus.FAILED
+                    tenant_id=tenant_id,
+                    run_id=run.id,
+                    target=RunStatus.FAILED,
+                    error_code=error_code,
+                )
+                await self.events.append(
+                    tenant_id=tenant_id,
+                    run_id=run.id,
+                    event_key="dock:terminal",
+                    type=RunEventType.TERMINAL,
+                    payload={"status": "failed", "error_code": error_code},
+                    correlation_id=run.id,
+                )
+                await self.operations.finish_stage(
+                    tenant_id=tenant_id,
+                    operation_id=operation.id,
+                    stage_run_id=stage_run_id,
+                    status=CreativeStageStatus.FAILED,
+                    error={"code": error_code, "message": str(error)},
+                )
+                await self._project_event(
+                    tenant_id=tenant_id,
+                    project_id=project_id,
+                    event_key=f"dock:terminal:{run.id}",
+                    type=RunEventType.SYSTEM,
+                    payload={
+                        "title": "运行未完成",
+                        "status": "failed",
+                        "error_code": error_code,
+                        "run_id": run.id,
+                        "schema_version": 1,
+                    },
                 )
                 raise
         response_text = (
@@ -165,51 +255,7 @@ class DockService:
             role=role,
             context_snapshot=context_snapshot,
         )
-        fixtures = (
-            (
-                "thinking:start",
-                RunEventType.SYSTEM,
-                {
-                    "block": "thinking",
-                    "phase": "start",
-                    "title": "理解用户任务",
-                    "runtime": runtime_label,
-                },
-            ),
-            (
-                "thinking:delta",
-                RunEventType.SYSTEM,
-                {
-                    "block": "thinking",
-                    "phase": "delta",
-                    "delta": f"识别任务：{content[:120]}",
-                    "runtime": runtime_label,
-                },
-            ),
-            ("thinking:end", RunEventType.SYSTEM, {"block": "thinking", "phase": "end"}),
-            (
-                "tool:start",
-                RunEventType.NODE,
-                {
-                    "block": "tool",
-                    "phase": "start",
-                    "title": "读取真实项目状态",
-                    "group_key": "context-read",
-                    "runtime": runtime_label,
-                },
-            ),
-            (
-                "tool:end",
-                RunEventType.NODE,
-                {
-                    "block": "tool",
-                    "phase": "end",
-                    "title": "读取真实项目状态",
-                    "group_key": "context-read",
-                    "duration_ms": 0,
-                    "runtime": runtime_label,
-                },
-            ),
+        visible_events = (
             (
                 "data:end",
                 RunEventType.NODE,
@@ -235,7 +281,7 @@ class DockService:
             ),
             ("text:end", RunEventType.CONVERSATION, {"block": "text", "phase": "end"}),
         )
-        for key, event_type, payload in fixtures:
+        for key, event_type, payload in visible_events:
             await self.events.append(
                 tenant_id=tenant_id,
                 run_id=run.id,
@@ -250,9 +296,9 @@ class DockService:
             event_key=f"dock:node:{idempotency_key}",
             type=RunEventType.NODE,
             payload={
-                "title": "读取项目上下文",
+                "title": "项目上下文已构建",
                 "group_key": "context-read",
-                "count": 2,
+                "count": len(context_snapshot),
                 "run_id": run.id,
                 "schema_version": 1,
             },
@@ -275,6 +321,25 @@ class DockService:
                 },
                 correlation_id=run.id,
             )
+            decision = await self.operations.request_decision(
+                tenant_id=tenant_id,
+                operation_id=operation.id,
+                stage_run_id=stage_run_id,
+                artifact_ref_id=None,
+                checkpoint_id=None,
+                kind="tool_confirmation",
+                prompt="允许创作搭档写入当前项目工作区吗？",
+                options=[
+                    {"id": "approve", "label": "允许"},
+                    {"id": "reject", "label": "拒绝"},
+                ],
+                impact={"tool": "workspace.write", "scope": "project"},
+                idempotency_key=f"{idempotency_key}:tool-confirmation",
+            )
+            waiting_operation = await self.operations.operation_for_run(
+                tenant_id=tenant_id,
+                run_id=run.id,
+            )
             await self._project_event(
                 tenant_id=tenant_id,
                 project_id=project_id,
@@ -287,7 +352,9 @@ class DockService:
                     "schema_version": 1,
                 },
             )
-            return asdict(waiting)
+            payload = self._with_operation(asdict(waiting), waiting_operation)
+            payload["decision_request_id"] = decision.id
+            return payload
         await self._complete(
             tenant_id,
             run.id,
@@ -296,7 +363,16 @@ class DockService:
             response_text=response_text,
             runtime_result=runtime_result,
         )
-        return asdict(await self._run(tenant_id, run.id))
+        finished = await self.operations.finish_stage(
+            tenant_id=tenant_id,
+            operation_id=operation.id,
+            stage_run_id=stage_run_id,
+            status=CreativeStageStatus.READY,
+        )
+        return self._with_operation(
+            asdict(await self._run(tenant_id, run.id)),
+            finished,
+        )
 
     async def confirm(
         self,
@@ -329,6 +405,11 @@ class DockService:
             return asdict(await self._run(tenant_id, run_id))
         if run.status != RunStatus.WAITING:
             raise DockError("run is not waiting for confirmation")
+        pending_decision = await self.operations.pending_decision_for_run(
+            tenant_id=tenant_id, run_id=run_id
+        )
+        if pending_decision is None:
+            raise DockError("confirmation request is missing")
         await self.events.append(
             tenant_id=tenant_id,
             run_id=run_id,
@@ -355,11 +436,30 @@ class DockService:
             },
         )
         if not approved:
+            await self.operations.resolve_decision(
+                tenant_id=tenant_id,
+                decision_id=pending_decision.id,
+                status=DecisionRequestStatus.REJECTED,
+                decision={"approved": False, "idempotency_key": idempotency_key},
+                decided_by={"type": "user"},
+            )
             await self.billing.release(reservation.id)
             cancelled = await self.runs.transition(
                 tenant_id=tenant_id, run_id=run_id, target=RunStatus.CANCELLED
             )
-            return asdict(cancelled)
+            operation = await self.operations.finish_operation_for_run(
+                tenant_id=tenant_id,
+                run_id=run_id,
+                status=CreativeStageStatus.CANCELLED,
+            )
+            return self._with_operation(asdict(cancelled), operation)
+        await self.operations.resolve_decision(
+            tenant_id=tenant_id,
+            decision_id=pending_decision.id,
+            status=DecisionRequestStatus.APPROVED,
+            decision={"approved": True, "idempotency_key": idempotency_key},
+            decided_by={"type": "user"},
+        )
         await self.runs.transition(tenant_id=tenant_id, run_id=run_id, target=RunStatus.RUNNING)
         context_snapshot = await self._context_snapshot(
             tenant_id=tenant_id, project_id=project_id, role=role
@@ -371,7 +471,15 @@ class DockService:
             reservation.id,
             response_text=self._context_response(context_snapshot),
         )
-        return asdict(await self._run(tenant_id, run_id))
+        operation = await self.operations.finish_operation_for_run(
+            tenant_id=tenant_id,
+            run_id=run_id,
+            status=CreativeStageStatus.READY,
+        )
+        return self._with_operation(
+            asdict(await self._run(tenant_id, run_id)),
+            operation,
+        )
 
     async def cancel(self, *, tenant_id: str, project_id: str, run_id: str) -> dict[str, object]:
         run = await self._run(tenant_id, run_id)
@@ -393,6 +501,11 @@ class DockService:
         cancelled = await self.runs.transition(
             tenant_id=tenant_id, run_id=run_id, target=RunStatus.CANCELLED
         )
+        operation = await self.operations.finish_operation_for_run(
+            tenant_id=tenant_id,
+            run_id=run_id,
+            status=CreativeStageStatus.CANCELLED,
+        )
         await self._project_event(
             tenant_id=tenant_id,
             project_id=project_id,
@@ -405,7 +518,26 @@ class DockService:
                 "schema_version": 1,
             },
         )
-        return asdict(cancelled)
+        return self._with_operation(asdict(cancelled), operation)
+
+    async def _run_with_operation(
+        self, *, tenant_id: str, run: RunView
+    ) -> dict[str, object]:
+        operation = await self.operations.operation_for_run(
+            tenant_id=tenant_id, run_id=run.id
+        )
+        return self._with_operation(asdict(run), operation)
+
+    @staticmethod
+    def _with_operation(
+        payload: dict[str, object], operation: OperationView | None
+    ) -> dict[str, object]:
+        if operation is None:
+            return payload
+        payload["operation_id"] = operation.id
+        payload["creative_session_id"] = operation.session_id
+        payload["operation_status"] = operation.status
+        return payload
 
     async def project_runs(self, *, tenant_id: str, project_id: str) -> list[dict[str, object]]:
         async with self.database.session() as session:
@@ -418,6 +550,20 @@ class DockService:
                     .limit(20)
                 )
             )
+            run_ids = [item.id for item in records]
+            operation_records = (
+                list(
+                    await session.scalars(
+                        select(CreativeOperationModel).where(
+                            CreativeOperationModel.tenant_id == tenant_id,
+                            CreativeOperationModel.run_id.in_(run_ids),
+                        )
+                    )
+                )
+                if run_ids
+                else []
+            )
+            operations_by_run = {item.run_id: item for item in operation_records}
         return [
             {
                 "id": item.id,
@@ -425,6 +571,19 @@ class DockService:
                 "waiting_reason": item.waiting_reason,
                 "state_version": item.state_version,
                 "created_at": item.created_at,
+                "operation_id": (
+                    operations_by_run[item.id].id if item.id in operations_by_run else None
+                ),
+                "creative_session_id": (
+                    operations_by_run[item.id].session_id
+                    if item.id in operations_by_run
+                    else None
+                ),
+                "operation_status": (
+                    str(operations_by_run[item.id].status)
+                    if item.id in operations_by_run
+                    else None
+                ),
             }
             for item in records
         ]
@@ -620,13 +779,12 @@ class DockService:
                         role_key=role,
                         serialized_state=context_snapshot,
                         context_tokens=estimated_tokens,
-                        context_limit=32_768,
+                        context_limit=None,
                     )
                 )
             else:
                 state.serialized_state = context_snapshot
                 state.context_tokens = estimated_tokens
-                state.context_limit = state.context_limit or 32_768
                 state.state_version += 1
 
     @staticmethod

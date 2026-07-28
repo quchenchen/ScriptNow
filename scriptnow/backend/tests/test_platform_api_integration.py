@@ -1,3 +1,4 @@
+import asyncio
 from decimal import Decimal
 
 import pytest
@@ -5,8 +6,20 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
 from scriptnow.app import create_app
-from scriptnow.novel.project import NovelPlanModel, NovelStoryMapModel
-from scriptnow.platform.agent_runtime import AgentRuntime, AgentRuntimeResult
+from scriptnow.novel.cross_cultural_recreation.generator import (
+    CrossCulturalRecreationGenerator,
+)
+from scriptnow.novel.domain import NovelDocumentRevisionModel, NovelRevisionStatus
+from scriptnow.novel.project import (
+    NovelPlanModel,
+    NovelStoryMapModel,
+    initialize_novel_project,
+)
+from scriptnow.platform.agent_runtime import (
+    AgentRuntime,
+    AgentRuntimeResult,
+    AgentRuntimeTimeoutError,
+)
 from scriptnow.platform.auth import AuthService
 from scriptnow.platform.config import Settings
 from scriptnow.platform.database import Database
@@ -14,16 +27,25 @@ from scriptnow.platform.models import (
     AgentStateModel,
     AgentTemplateVersionModel,
     AuditLogModel,
+    CreativeArtifactRefModel,
+    CreativeCheckpointModel,
+    CreativeOperationModel,
+    CreativeStageRunModel,
     CreditLedgerModel,
     LanguageModelModel,
     MemoryAuditModel,
     MemoryEntryModel,
+    ProjectMedium,
     ProjectModel,
+    ProjectRunModel,
+    ProjectSource,
+    ProjectWorkflow,
     ProviderModel,
     ProviderStatus,
     RagChunkModel,
     RuntimeConfigSnapshotModel,
     TenantAgentConfigModel,
+    TenantModel,
     TierModel,
     TokenAccountModel,
     TokenUsageModel,
@@ -31,6 +53,7 @@ from scriptnow.platform.models import (
     WorkspaceFileModel,
     WorkspaceFileStatus,
 )
+from scriptnow.platform.translation_contracts import TranslationUnit
 from scriptnow.script.project import ScriptPlanModel, ScriptStoryMapModel
 
 
@@ -104,6 +127,612 @@ async def login(client: AsyncClient, email: str) -> str:
     )
     assert response.status_code == 200
     return client.cookies["sf_csrf"]
+
+
+@pytest.mark.asyncio
+async def test_translation_background_run_persists_lineage(
+    platform_api, monkeypatch
+) -> None:
+    client, _, database = platform_api
+    await login(client, "a@example.com")
+    async with database.session() as session:
+        tenant = (
+            await session.scalars(
+                select(TenantModel).where(TenantModel.name == "Studio A")
+            )
+        ).one()
+        source = ProjectModel(
+            tenant_id=tenant.id,
+            name="Source Novel",
+            medium=ProjectMedium.NOVEL,
+            direction={"language": "zh-CN"},
+        )
+        translation = ProjectModel(
+            tenant_id=tenant.id,
+            name="Source Novel · en-US",
+            medium=ProjectMedium.TRANSLATION,
+            direction={
+                "source_project_id": "",
+                "source_language": "zh-CN",
+                "target_language": "en-US",
+                "translation_mode": "faithful",
+            },
+        )
+        session.add_all([source, translation])
+        await session.flush()
+        translation.direction = {
+            **translation.direction,
+            "source_project_id": source.id,
+        }
+        await initialize_novel_project(session, source)
+        story_map = (
+            await session.scalars(
+                select(NovelStoryMapModel).where(
+                    NovelStoryMapModel.project_id == source.id
+                )
+            )
+        ).one()
+        story_map.volumes = [
+            {
+                "id": "volume-1",
+                "title": "第一卷",
+                "chapters": [{"id": "chapter-1", "title": "来信", "beats": []}],
+            }
+        ]
+        session.add(
+            NovelDocumentRevisionModel(
+                project_id=source.id,
+                chapter_id="chapter-1",
+                revision_number=1,
+                blocks=[
+                    {"block_id": "p1", "type": "prose", "text": "雨落在窗沿。"}
+                ],
+                status=NovelRevisionStatus.ADOPTED,
+                idempotency_key="translation-source",
+            )
+        )
+        translation_id = translation.id
+
+    async def fake_translate(self, *, units, **kwargs):
+        unit = units[0]
+        return (
+            TranslationUnit(
+                titles={key: "The Letter" for key in unit.titles},
+                blocks=tuple(
+                    {**block, "text": "Rain traced the window."}
+                    for block in unit.blocks
+                ),
+            ),
+        )
+
+    monkeypatch.setattr(
+        "scriptnow.platform.translation.FaithfulTranslationService.translate",
+        fake_translate,
+    )
+    queued = await client.post(
+        f"/translation/projects/{translation_id}/chapters/chapter-1/translate",
+        params={"background": "true"},
+    )
+    assert queued.status_code == 200
+    payload = queued.json()
+    assert payload["run_id"]
+    for _ in range(500):
+        status = await client.get(
+            f"/translation/projects/{translation_id}/runs/{payload['run_id']}"
+        )
+        assert status.status_code == 200
+        if status.json()["status"] in {"succeeded", "failed", "cancelled"}:
+            break
+        await asyncio.sleep(0.02)
+    assert status.json()["status"] == "succeeded"
+
+    operation = None
+    artifacts = []
+    checkpoints = []
+    for _ in range(100):
+        async with database.session() as session:
+            operation = (
+                await session.scalars(
+                    select(CreativeOperationModel).where(
+                        CreativeOperationModel.id == payload["operation_id"]
+                    )
+                )
+            ).one()
+            artifacts = list(
+                await session.scalars(
+                    select(CreativeArtifactRefModel).where(
+                        CreativeArtifactRefModel.operation_id == operation.id
+                    )
+                )
+            )
+            checkpoints = list(
+                await session.scalars(
+                    select(CreativeCheckpointModel).where(
+                        CreativeCheckpointModel.operation_id == operation.id
+                    )
+                )
+            )
+        if len(artifacts) == 1 and len(checkpoints) == 1:
+            break
+        await asyncio.sleep(0.02)
+    assert operation is not None
+    assert operation.status == "succeeded"
+    assert [item.artifact_type for item in artifacts] == [
+        "translation_revision"
+    ]
+    assert len(checkpoints) == 1
+
+
+@pytest.mark.asyncio
+async def test_recreation_source_analysis_background_run_persists_lineage(
+    platform_api, monkeypatch
+) -> None:
+    client, _, database = platform_api
+    csrf = await login(client, "a@example.com")
+    async with database.session() as session:
+        tenant = (
+            await session.scalars(
+                select(TenantModel).where(TenantModel.name == "Studio A")
+            )
+        ).one()
+        project = ProjectModel(
+            tenant_id=tenant.id,
+            name="Cross-cultural Story",
+            medium=ProjectMedium.NOVEL,
+            source_mode=ProjectSource.ADAPTATION,
+            workflow_kind=ProjectWorkflow.CROSS_CULTURAL_RECREATION,
+            direction={},
+        )
+        session.add(project)
+        await session.flush()
+        project_id = project.id
+
+    created = await client.post(
+        "/cross-cultural-recreations",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "project_id": project_id,
+            "source_language": "zh-CN",
+            "target_language": "en-US",
+            "target_market": "North America",
+            "target_audience": "adult mobile fiction readers",
+            "distribution_context": "serialized mobile fiction",
+        },
+    )
+    assert created.status_code == 201
+
+    async def fake_analyze_source(self, **kwargs):
+        del self, kwargs
+        return {
+            "story_summary": "A woman confronts a buried betrayal.",
+            "story_genes": [
+                {
+                    "name": "betrayal",
+                    "narrative_function": "forces the final choice",
+                    "evidence": "the last phone call",
+                }
+            ],
+            "cultural_gaps": [
+                {
+                    "source_element": "family obligation",
+                    "implied_social_knowledge": "kinship duty",
+                    "reader_failure_risk": "motivation appears weak",
+                    "possible_treatment": "rebuild the duty through local institutions",
+                }
+            ],
+            "protected_elements": ["the final call"],
+            "uncertainties": [],
+        }
+
+    monkeypatch.setattr(
+        CrossCulturalRecreationGenerator,
+        "analyze_source",
+        fake_analyze_source,
+    )
+    queued = await client.post(
+        f"/cross-cultural-recreations/by-project/{project_id}/analyze-source",
+        params={"background": "true"},
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "idempotency_key": "recreation-source-background",
+            "feedback": None,
+        },
+    )
+    assert queued.status_code == 200
+    payload = queued.json()
+    for _ in range(500):
+        status_response = await client.get(
+            f"/cross-cultural-recreations/by-project/{project_id}/runs/{payload['run_id']}"
+        )
+        assert status_response.status_code == 200
+        if status_response.json()["status"] in {"succeeded", "failed", "cancelled"}:
+            break
+        await asyncio.sleep(0.02)
+    assert status_response.json()["status"] == "succeeded"
+
+    async with database.session() as session:
+        operation = (
+            await session.scalars(
+                select(CreativeOperationModel).where(
+                    CreativeOperationModel.id == payload["operation_id"]
+                )
+            )
+        ).one()
+        artifacts = list(
+            await session.scalars(
+                select(CreativeArtifactRefModel).where(
+                    CreativeArtifactRefModel.operation_id == operation.id
+                )
+            )
+        )
+        checkpoints = list(
+            await session.scalars(
+                select(CreativeCheckpointModel).where(
+                    CreativeCheckpointModel.operation_id == operation.id
+                )
+            )
+        )
+        assert operation.status == "succeeded"
+        assert [item.artifact_type for item in artifacts] == ["source_story_model"]
+        assert len(checkpoints) == 1
+
+
+@pytest.mark.asyncio
+async def test_recreation_strategy_background_run_persists_three_candidates(
+    platform_api, monkeypatch
+) -> None:
+    client, _, database = platform_api
+    csrf = await login(client, "a@example.com")
+    async with database.session() as session:
+        tenant = (
+            await session.scalars(
+                select(TenantModel).where(TenantModel.name == "Studio A")
+            )
+        ).one()
+        project = ProjectModel(
+            tenant_id=tenant.id,
+            name="Cross-cultural Strategy",
+            medium=ProjectMedium.NOVEL,
+            source_mode=ProjectSource.ADAPTATION,
+            workflow_kind=ProjectWorkflow.CROSS_CULTURAL_RECREATION,
+            direction={},
+        )
+        session.add(project)
+        await session.flush()
+        project_id = project.id
+
+    created = await client.post(
+        "/cross-cultural-recreations",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "project_id": project_id,
+            "source_language": "zh-CN",
+            "target_language": "en-US",
+            "target_market": "North America",
+            "target_audience": "adult mobile fiction readers",
+            "distribution_context": "serialized mobile fiction",
+        },
+    )
+    assert created.status_code == 201
+
+    async def fake_analyze_source(self, **kwargs):
+        del self, kwargs
+        return {
+            "story_summary": "A woman confronts a buried betrayal.",
+            "story_genes": [
+                {
+                    "name": "betrayal",
+                    "narrative_function": "forces the final choice",
+                    "evidence": "the last phone call",
+                }
+            ],
+            "cultural_gaps": [
+                {
+                    "source_element": "family obligation",
+                    "implied_social_knowledge": "kinship duty",
+                    "reader_failure_risk": "motivation appears weak",
+                    "possible_treatment": "rebuild the duty through local institutions",
+                }
+            ],
+            "protected_elements": ["the final call"],
+            "uncertainties": [],
+        }
+
+    monkeypatch.setattr(
+        CrossCulturalRecreationGenerator,
+        "analyze_source",
+        fake_analyze_source,
+    )
+    source = await client.post(
+        f"/cross-cultural-recreations/by-project/{project_id}/analyze-source",
+        headers={"X-CSRF-Token": csrf},
+        json={"idempotency_key": "strategy-source", "feedback": None},
+    )
+    assert source.status_code == 200
+    contract = await client.post(
+        f"/cross-cultural-recreations/by-project/{project_id}/target-contract",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "genre_promise": "emotional suspense",
+            "background_policy": "rebuild institutions for the target culture",
+            "cultural_distance": "moderate",
+            "protected_elements": ["the final call"],
+            "allowed_changes": ["names", "locations"],
+            "prohibited_changes": ["the final choice"],
+            "idempotency_key": "strategy-contract",
+        },
+    )
+    assert contract.status_code == 200
+
+    async def fake_generate_strategies(self, **kwargs):
+        del self, kwargs
+        return tuple(
+            {
+                "title": f"Strategy {index}",
+                "target_premise": f"Target premise {index} with sufficient detail.",
+                "recreation_thesis": f"Recreation thesis {index} with sufficient detail.",
+                "localization_decisions": [
+                    {
+                        "source_function": "betrayal",
+                        "target_carrier": "local institution",
+                        "causal_reason": "preserve narrative pressure",
+                    }
+                    for _ in range(3)
+                ],
+                "retained_genes": ["betrayal", "final choice"],
+                "risks": ["flattened motivation"],
+                "pilot_unit": f"chapter-{index}",
+            }
+            for index in range(1, 4)
+        )
+
+    monkeypatch.setattr(
+        CrossCulturalRecreationGenerator,
+        "generate_strategies",
+        fake_generate_strategies,
+    )
+    queued = await client.post(
+        f"/cross-cultural-recreations/by-project/{project_id}/strategies",
+        params={"background": "true"},
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "idempotency_key": "recreation-strategy-background",
+            "feedback": "keep the final moral choice",
+        },
+    )
+    assert queued.status_code == 200
+    payload = queued.json()
+    for _ in range(500):
+        status_response = await client.get(
+            f"/cross-cultural-recreations/by-project/{project_id}/runs/{payload['run_id']}"
+        )
+        assert status_response.status_code == 200
+        if status_response.json()["status"] in {"succeeded", "failed", "cancelled"}:
+            break
+        await asyncio.sleep(0.02)
+    assert status_response.json()["status"] == "succeeded"
+
+    async with database.session() as session:
+        operation = (
+            await session.scalars(
+                select(CreativeOperationModel).where(
+                    CreativeOperationModel.id == payload["operation_id"]
+                )
+            )
+        ).one()
+        artifacts = list(
+            await session.scalars(
+                select(CreativeArtifactRefModel).where(
+                    CreativeArtifactRefModel.operation_id == operation.id
+                )
+            )
+        )
+        checkpoints = list(
+            await session.scalars(
+                select(CreativeCheckpointModel).where(
+                    CreativeCheckpointModel.operation_id == operation.id
+                )
+            )
+        )
+        assert operation.status == "succeeded"
+        assert len(artifacts) == 3
+        assert {item.artifact_type for item in artifacts} == {"recreation_strategy"}
+        assert len(checkpoints) == 1
+
+    state = await client.get(f"/cross-cultural-recreations/by-project/{project_id}")
+    assert state.status_code == 200
+    strategy_candidates = [
+        item
+        for item in state.json()["artifacts"]
+        if item["kind"] == "recreation_strategy"
+    ]
+    assert len(strategy_candidates) == 3
+    assert all(item["status"] == "candidate" for item in strategy_candidates)
+
+    adopted_strategy = await client.post(
+        (
+            f"/cross-cultural-recreations/by-project/{project_id}/artifacts/"
+            f"{strategy_candidates[0]['id']}/adopt"
+        ),
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert adopted_strategy.status_code == 200
+
+    async def wait_for_run(run_id: str):
+        response = None
+        for _ in range(500):
+            response = await client.get(
+                f"/cross-cultural-recreations/by-project/{project_id}/runs/{run_id}"
+            )
+            if response.json()["status"] in {"succeeded", "failed", "cancelled"}:
+                break
+            await asyncio.sleep(0.02)
+        assert response is not None
+        assert response.json()["status"] == "succeeded"
+
+    async def fake_generate_pilot(self, **kwargs):
+        del self, kwargs
+        return {
+            "unit_title": "The Last Call",
+            "rationale": "Tests the target-market emotional engine.",
+            "target_language_draft": "She answers the final call and chooses the truth.",
+            "change_notes": [],
+            "gene_trace": [],
+            "open_questions": [],
+        }
+
+    monkeypatch.setattr(
+        CrossCulturalRecreationGenerator,
+        "generate_pilot",
+        fake_generate_pilot,
+    )
+    pilot_run = await client.post(
+        f"/cross-cultural-recreations/by-project/{project_id}/pilots",
+        params={"background": "true"},
+        headers={"X-CSRF-Token": csrf},
+        json={"idempotency_key": "recreation-pilot-background", "feedback": None},
+    )
+    assert pilot_run.status_code == 200
+    await wait_for_run(pilot_run.json()["run_id"])
+    state = (
+        await client.get(f"/cross-cultural-recreations/by-project/{project_id}")
+    ).json()
+    pilot = next(item for item in state["artifacts"] if item["kind"] == "pilot")
+    assert pilot["status"] == "candidate"
+    assert (
+        await client.post(
+            (
+                f"/cross-cultural-recreations/by-project/{project_id}/artifacts/"
+                f"{pilot['id']}/adopt"
+            ),
+            headers={"X-CSRF-Token": csrf},
+        )
+    ).status_code == 200
+
+    async def fake_generate_scale_plan(self, **kwargs):
+        del self, kwargs
+        return {
+            "target_story_bible": {"voice": "first person"},
+            "character_migrations": [],
+            "work_packages": [
+                {
+                    "order": 1,
+                    "chapter_number": 1,
+                    "title": "The Last Call",
+                    "source_scope": "opening",
+                    "narrative_function": "force the choice",
+                    "target_design": "local institutional pressure",
+                    "dependencies": [],
+                    "protected_genes": ["the final call"],
+                    "continuity_inputs": [],
+                    "acceptance_criteria": ["the choice remains irreversible"],
+                }
+            ],
+            "continuity_rules": [],
+            "quality_gates": [],
+            "unresolved_decisions": [],
+        }
+
+    monkeypatch.setattr(
+        CrossCulturalRecreationGenerator,
+        "generate_scale_plan",
+        fake_generate_scale_plan,
+    )
+    scale_run = await client.post(
+        f"/cross-cultural-recreations/by-project/{project_id}/scale-plans",
+        params={"background": "true"},
+        headers={"X-CSRF-Token": csrf},
+        json={"idempotency_key": "recreation-scale-background", "feedback": None},
+    )
+    assert scale_run.status_code == 200
+    await wait_for_run(scale_run.json()["run_id"])
+    state = (
+        await client.get(f"/cross-cultural-recreations/by-project/{project_id}")
+    ).json()
+    scale_plan = next(
+        item for item in state["artifacts"] if item["kind"] == "scale_plan"
+    )
+    assert scale_plan["status"] == "candidate"
+    assert (
+        await client.post(
+            (
+                f"/cross-cultural-recreations/by-project/{project_id}/artifacts/"
+                f"{scale_plan['id']}/adopt"
+            ),
+            headers={"X-CSRF-Token": csrf},
+        )
+    ).status_code == 200
+
+    async def fake_generate_production_unit(self, **kwargs):
+        del self, kwargs
+        return {
+            "work_package_key": "1",
+            "title": "The Last Call",
+            "target_language_draft": "She answers. The institution must answer too.",
+            "recreation_rationale": [],
+            "gene_trace": [],
+            "continuity_updates": [],
+            "quality_self_check": [],
+            "open_questions": [],
+        }
+
+    monkeypatch.setattr(
+        CrossCulturalRecreationGenerator,
+        "generate_production_unit",
+        fake_generate_production_unit,
+    )
+    production_run = await client.post(
+        f"/cross-cultural-recreations/by-project/{project_id}/work-packages/1/drafts",
+        params={"background": "true"},
+        headers={"X-CSRF-Token": csrf},
+        json={"idempotency_key": "recreation-production-background", "feedback": None},
+    )
+    assert production_run.status_code == 200
+    await wait_for_run(production_run.json()["run_id"])
+    state = (
+        await client.get(f"/cross-cultural-recreations/by-project/{project_id}")
+    ).json()
+    assert len(state["production_units"]) == 1
+    assert state["production_units"][0]["status"] == "candidate"
+
+    operation_ids = {
+        pilot_run.json()["operation_id"],
+        scale_run.json()["operation_id"],
+        production_run.json()["operation_id"],
+    }
+    artifact_refs = []
+    checkpoints = []
+    for _ in range(100):
+        async with database.session() as session:
+            artifact_refs = list(
+                await session.scalars(
+                    select(CreativeArtifactRefModel).where(
+                        CreativeArtifactRefModel.operation_id.in_(operation_ids)
+                    )
+                )
+            )
+            checkpoints = list(
+                await session.scalars(
+                    select(CreativeCheckpointModel).where(
+                        CreativeCheckpointModel.operation_id.in_(operation_ids)
+                    )
+                )
+            )
+        if len(artifact_refs) == 3 and len(checkpoints) == 3:
+            break
+        await asyncio.sleep(0.02)
+    assert {item.artifact_type for item in artifact_refs} == {
+        "pilot",
+        "scale_plan",
+        "production_unit",
+    }, {
+        "operation_ids": operation_ids,
+        "artifact_refs": [
+            (item.operation_id, item.artifact_type, item.artifact_id)
+            for item in artifact_refs
+        ],
+    }
+    assert len(checkpoints) == 3
 
 
 @pytest.mark.asyncio
@@ -506,7 +1135,7 @@ async def test_all_medium_source_combinations_persist_only_their_domain_skeleton
 async def test_script_api_story_core_blueprint_story_map_writer_full_slice(
     platform_api, source_mode: str, monkeypatch
 ) -> None:
-    client, other_client, _ = platform_api
+    client, other_client, database = platform_api
     csrf = await login(client, "a@example.com")
     await login(other_client, "b@example.com")
     project = await client.post(
@@ -694,17 +1323,75 @@ async def test_script_api_story_core_blueprint_story_map_writer_full_slice(
         )
 
     monkeypatch.setattr(AgentRuntime, "generate", generated_scene)
-    document_candidate = await client.post(
-        f"/script/projects/{project_id}/scenes/scene-1/generate",
+    queued_scene = await client.post(
+        f"/script/projects/{project_id}/scenes/scene-1/generate?background=true",
         headers={"X-CSRF-Token": csrf},
         json={"idempotency_key": "scene-1-draft"},
     )
+    assert queued_scene.status_code == 200
+    assert queued_scene.json()["operation_id"]
+    assert queued_scene.json()["creative_session_id"]
+    scene_run_id = queued_scene.json()["run_id"]
+    scene_run_state = None
+    for _ in range(100):
+        scene_run_state = await client.get(
+            f"/script/projects/{project_id}/runs/{scene_run_id}"
+        )
+        if scene_run_state.json()["status"] in {"succeeded", "failed", "cancelled"}:
+            break
+        await asyncio.sleep(0.05)
+    assert scene_run_state is not None
+    assert scene_run_state.json()["status"] == "succeeded"
+    assert scene_run_state.json()["operation_status"] == "succeeded"
+    generated_state = (await client.get(f"/script/projects/{project_id}/state")).json()
+    document_candidate = next(
+        item for item in generated_state["documents"] if item["scene_id"] == "scene-1"
+    )
     assert (
         await client.post(
-            f"/script/projects/{project_id}/scenes/scene-1/revisions/{document_candidate.json()['id']}/adopt",
+            f"/script/projects/{project_id}/scenes/scene-1/revisions/{document_candidate['id']}/adopt",
             headers={"X-CSRF-Token": csrf},
         )
     ).status_code == 200
+    async with database.session() as session:
+        scene_runs = list(
+            await session.scalars(
+                select(ProjectRunModel).where(
+                    ProjectRunModel.project_id == project_id,
+                    ProjectRunModel.idempotency_key
+                    == f"script-scene:{project_id}:scene-1:scene-1-draft",
+                )
+            )
+        )
+        scene_operation = await session.get(
+            CreativeOperationModel,
+            queued_scene.json()["operation_id"],
+        )
+        scene_stages = list(
+            await session.scalars(
+                select(CreativeStageRunModel).where(
+                    CreativeStageRunModel.operation_id == scene_operation.id
+                )
+            )
+        )
+        scene_artifacts = list(
+            await session.scalars(
+                select(CreativeArtifactRefModel).where(
+                    CreativeArtifactRefModel.operation_id == scene_operation.id
+                )
+            )
+        )
+        scene_checkpoints = list(
+            await session.scalars(
+                select(CreativeCheckpointModel).where(
+                    CreativeCheckpointModel.operation_id == scene_operation.id
+                )
+            )
+        )
+    assert len(scene_runs) == 1
+    assert scene_operation.command == "script.scene.generate"
+    assert len(scene_stages) == len(scene_artifacts) == len(scene_checkpoints) == 1
+    assert scene_artifacts[0].artifact_type == "scene_revision"
     second_document = await client.post(
         f"/script/projects/{project_id}/scenes/scene-2/generate",
         headers={"X-CSRF-Token": csrf},
@@ -821,7 +1508,7 @@ async def test_script_api_story_core_blueprint_story_map_writer_full_slice(
 async def test_novel_api_full_slice_is_independent_and_tenant_scoped(
     platform_api, source_mode: str
 ) -> None:
-    client, other_client, _ = platform_api
+    client, other_client, database = platform_api
     csrf = await login(client, "a@example.com")
     await login(other_client, "b@example.com")
     project = await client.post(
@@ -1001,12 +1688,86 @@ async def test_novel_api_full_slice_is_independent_and_tenant_scoped(
             headers={"X-CSRF-Token": csrf},
         )
         assert adopted.status_code == 200
+    queued = await client.post(
+        f"/novel/projects/{project_id}/chapters/chapter-3/generate?background=true",
+        headers={"X-CSRF-Token": csrf},
+        json={"idempotency_key": "chapter-3-background"},
+    )
+    assert queued.status_code == 200
+    assert queued.json()["operation_id"]
+    assert queued.json()["creative_session_id"]
+    run_id = queued.json()["run_id"]
+    run_state = None
+    # The full integration suite exercises several background pipelines before
+    # this case. Give the public run endpoint enough wall-clock time to expose
+    # its terminal state without coupling the assertion to local CPU load.
+    for _ in range(200):
+        run_state = await client.get(f"/novel/projects/{project_id}/runs/{run_id}")
+        if run_state.json()["status"] in {"succeeded", "failed", "cancelled"}:
+            break
+        await asyncio.sleep(0.05)
+    assert run_state is not None
+    assert run_state.json()["status"] == "succeeded"
+    assert run_state.json()["operation_status"] == "succeeded"
+    runs = []
+    operation = None
+    stages = []
+    artifacts = []
+    checkpoints = []
+    for _ in range(100):
+        async with database.session() as session:
+            runs = list(
+                await session.scalars(
+                    select(ProjectRunModel).where(
+                            ProjectRunModel.project_id == project_id,
+                            ProjectRunModel.idempotency_key
+                            == (
+                                f"novel-chapter:{project_id}:chapter-3:"
+                                "chapter-3-background"
+                            ),
+                    )
+                )
+            )
+            operation = await session.get(
+                CreativeOperationModel,
+                queued.json()["operation_id"],
+            )
+            stages = list(
+                await session.scalars(
+                    select(CreativeStageRunModel).where(
+                        CreativeStageRunModel.operation_id == operation.id
+                    )
+                )
+            )
+            artifacts = list(
+                await session.scalars(
+                    select(CreativeArtifactRefModel).where(
+                        CreativeArtifactRefModel.operation_id == operation.id
+                    )
+                )
+            )
+            checkpoints = list(
+                await session.scalars(
+                    select(CreativeCheckpointModel).where(
+                        CreativeCheckpointModel.operation_id == operation.id
+                    )
+                )
+            )
+        if len(stages) == len(artifacts) == len(checkpoints) == 1:
+            break
+        await asyncio.sleep(0.02)
+    assert len(runs) == 1
+    assert operation is not None
+    assert operation.command == "novel.chapter.generate"
+    assert len(stages) == len(artifacts) == len(checkpoints) == 1
+    assert artifacts[0].artifact_type == "chapter_revision"
     state = (await client.get(f"/novel/projects/{project_id}/state")).json()
     assert state["phase"] == "writing"
     assert len(state["story_map"]["volumes"][0]["chapters"]) == 12
     assert {item["chapter_id"] for item in state["documents"]} == {
         "chapter-1",
         "chapter-2",
+        "chapter-3",
     }
     assert all(item["blocks"][0]["type"] == "heading" for item in state["documents"])
     finding = await client.post(
@@ -1167,26 +1928,32 @@ async def test_dock_projection_stream_wait_confirm_reconnect_and_billing_idempot
         headers={"X-CSRF-Token": csrf},
         json=message,
     )
-    assert completed.status_code == 200 and completed.json()["status"] == "succeeded"
-    run_id = completed.json()["id"]
+    completed_payload = completed.json()
+    assert completed.status_code == 200 and completed_payload["status"] == "succeeded"
+    assert completed_payload["operation_status"] == "succeeded"
+    assert completed_payload["operation_id"]
+    assert completed_payload["creative_session_id"]
+    run_id = completed_payload["id"]
     replay = await client.post(
         f"/projects/{project_id}/agents/writer/messages",
         headers={"X-CSRF-Token": csrf},
         json=message,
     )
     assert replay.json()["id"] == run_id
+    assert replay.json()["operation_id"] == completed_payload["operation_id"]
     stream = await client.get(f"/projects/{project_id}/agents/writer/stream?run_id={run_id}")
     assert stream.status_code == 200
-    for block in ("thinking", "tool", "data", "text"):
+    for block in ("data", "text"):
         assert f'"block":"{block}"' in stream.text
+    assert '"block":"thinking"' not in stream.text
+    assert '"block":"tool"' not in stream.text
     assert '"project_name":"Dock"' in stream.text
     assert '"story_units":0' in stream.text
     assert "真实项目状态" in stream.text
-    assert stream.text.index('"block":"thinking"') < stream.text.index('"block":"tool"')
     resumed = await client.get(
-        f"/projects/{project_id}/agents/writer/stream?run_id={run_id}&after_id=8"
+        f"/projects/{project_id}/agents/writer/stream?run_id={run_id}&after_id=2"
     )
-    assert '"block":"thinking"' not in resumed.text
+    assert '"project_name":"Dock"' not in resumed.text
     events = (await client.get(f"/projects/{project_id}/events")).json()
     assert all(
         item["event_id"] == item["id"]
@@ -1199,7 +1966,12 @@ async def test_dock_projection_stream_wait_confirm_reconnect_and_billing_idempot
         for item in events
     )
     assert any(item["type"] == "chat" and item["payload"].get("quote") for item in events)
-    assert any(item["type"] == "node" and item["count"] == 2 for item in events)
+    assert any(
+        item["type"] == "node"
+        and item["payload"].get("title") == "项目上下文已构建"
+        and item["count"] > 0
+        for item in events
+    )
     compression = next(
         item for item in events if item["payload"].get("action") == "context.compress"
     )
@@ -1225,10 +1997,19 @@ async def test_dock_projection_stream_wait_confirm_reconnect_and_billing_idempot
             "requires_confirmation": True,
         },
     )
-    assert waiting.json()["status"] == "waiting"
-    waiting_id = waiting.json()["id"]
+    waiting_payload = waiting.json()
+    assert waiting_payload["status"] == "waiting"
+    assert waiting_payload["operation_status"] == "waiting_for_decision"
+    assert waiting_payload["decision_request_id"]
+    waiting_id = waiting_payload["id"]
     recovered = (await client.get(f"/projects/{project_id}/runs")).json()
-    assert any(item["id"] == waiting_id and item["status"] == "waiting" for item in recovered)
+    assert any(
+        item["id"] == waiting_id
+        and item["status"] == "waiting"
+        and item["operation_id"] == waiting_payload["operation_id"]
+        and item["operation_status"] == "waiting_for_decision"
+        for item in recovered
+    )
     decision = {"run_id": waiting_id, "approved": True, "idempotency_key": "approve-1"}
     confirmed = await client.post(
         f"/projects/{project_id}/agents/writer/confirm",
@@ -1241,6 +2022,7 @@ async def test_dock_projection_stream_wait_confirm_reconnect_and_billing_idempot
         json=decision,
     )
     assert confirmed.json()["status"] == repeated.json()["status"] == "succeeded"
+    assert confirmed.json()["operation_status"] == "succeeded"
     cancellable = await client.post(
         f"/projects/{project_id}/agents/writer/messages",
         headers={"X-CSRF-Token": csrf},
@@ -1290,3 +2072,67 @@ async def test_dock_projection_stream_wait_confirm_reconnect_and_billing_idempot
             )
         )
         assert len(audits) == 1
+
+
+@pytest.mark.asyncio
+async def test_dock_timeout_has_stable_http_run_and_terminal_event(
+    platform_api, monkeypatch
+) -> None:
+    client, _, database = platform_api
+    csrf = await login(client, "a@example.com")
+    project = await client.post(
+        "/projects",
+        headers={"X-CSRF-Token": csrf},
+        json={"name": "Timeout", "medium": "novel"},
+    )
+    project_id = project.json()["id"]
+
+    async def connected_status(self, *, tenant_id: str, project_id: str):
+        del self, tenant_id, project_id
+        role = {"connected": True, "model_key": "test", "provider_key": "test"}
+        return {
+            "connected": True,
+            "roles": {
+                "director": role,
+                "architect": role,
+                "writer": role,
+                "reviewer": role,
+            },
+            "active_runs": [],
+        }
+
+    async def timed_out(self, **kwargs):
+        del self, kwargs
+        raise AgentRuntimeTimeoutError("Agent runtime exceeded 1 seconds")
+
+    monkeypatch.setattr(AgentRuntime, "status", connected_status)
+    monkeypatch.setattr(AgentRuntime, "generate", timed_out)
+
+    response = await client.post(
+        f"/projects/{project_id}/agents/writer/messages",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "content": "继续写作",
+            "idempotency_key": "dock-timeout",
+        },
+    )
+
+    assert response.status_code == 504
+    runs = (await client.get(f"/projects/{project_id}/runs")).json()
+    assert runs[0]["status"] == "failed"
+    run_id = runs[0]["id"]
+    stream = await client.get(
+        f"/projects/{project_id}/agents/writer/stream",
+        params={"run_id": run_id},
+    )
+    assert "event: terminal" in stream.text
+    assert '"error_code":"agent_runtime_timeout"' in stream.text
+    async with database.session() as session:
+        reservation = (
+            await session.scalars(
+                select(UsageReservationModel).where(
+                    UsageReservationModel.run_id == run_id
+                )
+            )
+        ).one()
+        assert reservation.status == "released"

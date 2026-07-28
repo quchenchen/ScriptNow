@@ -229,6 +229,7 @@ class AdminModelResponse(BaseModel):
     min_tier_name: str
     input_price_per_million: float
     output_price_per_million: float
+    context_window: int
     enabled: bool
     version: int
 
@@ -242,6 +243,7 @@ class AdminModelRequest(BaseModel):
     min_tier_code: str = Field(min_length=1, max_length=32)
     input_price_per_million: float = Field(ge=0, le=1_000_000)
     output_price_per_million: float = Field(ge=0, le=1_000_000)
+    context_window: int = Field(default=32_768, ge=1_024, le=10_000_000)
     enabled: bool = True
 
 
@@ -714,6 +716,7 @@ def create_admin_router(database: Database, auth: AuthService, settings: Setting
                     min_tier_name=tier.name,
                     input_price_per_million=float(model.input_price_per_million),
                     output_price_per_million=float(model.output_price_per_million),
+                    context_window=model.context_window,
                     enabled=model.enabled,
                     version=model.version,
                 )
@@ -939,6 +942,7 @@ def create_admin_router(database: Database, auth: AuthService, settings: Setting
             model.min_tier_id = tier.id
             model.input_price_per_million = body.input_price_per_million
             model.output_price_per_million = body.output_price_per_million
+            model.context_window = body.context_window
             model.enabled = body.enabled
             await session.flush()
             response = AdminModelResponse(
@@ -953,6 +957,7 @@ def create_admin_router(database: Database, auth: AuthService, settings: Setting
                 min_tier_name=tier.name,
                 input_price_per_million=float(model.input_price_per_million),
                 output_price_per_million=float(model.output_price_per_million),
+                context_window=model.context_window,
                 enabled=model.enabled,
                 version=model.version,
             )

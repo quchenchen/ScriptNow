@@ -412,10 +412,12 @@ async def test_admin_supply_changes_creator_model_visibility_without_secret_echo
             "min_tier_code": "pro",
             "input_price_per_million": 2.5,
             "output_price_per_million": 10,
+            "context_window": 65536,
             "enabled": True,
         },
     )
     assert model.status_code == 200
+    assert model.json()["context_window"] == 65536
 
     locked = await member.get(f"/projects/{project_id}/models")
     locked_item = next(item for item in locked.json() if item["key"] == "gpt-qa")
@@ -432,6 +434,7 @@ async def test_admin_supply_changes_creator_model_visibility_without_secret_echo
     visible_item = next(item for item in visible.json() if item["key"] == "gpt-qa")
     assert visible_item["available"] is True
     assert visible_item["reason"] is None
+    assert visible_item["context_window"] == 65536
 
     tier_updated = await admin.put(
         "/admin/api/tiers/pro",

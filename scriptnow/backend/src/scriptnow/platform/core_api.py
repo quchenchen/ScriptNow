@@ -209,6 +209,7 @@ class CreatorModelResponse(BaseModel):
     display_name: str
     provider_name: str
     minimum_tier: str
+    context_window: int
     available: bool
     reason: str | None = None
 
@@ -658,6 +659,7 @@ def create_core_router(
                         display_name=model.display_name,
                         provider_name=provider.name,
                         minimum_tier=minimum.code,
+                        context_window=model.context_window,
                         available=reason is None,
                         reason=reason,
                     )

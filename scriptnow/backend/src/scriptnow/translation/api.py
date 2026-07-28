@@ -1,11 +1,13 @@
 """Translation application API — coordinates platform and novel adapters."""
 
+import asyncio
 import hashlib
 import json
+from contextlib import suppress
 from typing import Annotated
 from uuid import uuid4
 
-from fastapi import APIRouter, Cookie, Form, HTTPException, Response, UploadFile
+from fastapi import APIRouter, Cookie, Form, HTTPException, Query, Response, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
@@ -16,11 +18,24 @@ from scriptnow.novel.domain import (
     NovelRevisionStatus,
 )
 from scriptnow.novel.export import NovelExportChapter, render_novel_docx
+from scriptnow.platform.active_runs import ActiveRunRegistry
 from scriptnow.platform.auth import AuthService
 from scriptnow.platform.auth_api import ACCESS_COOKIE
 from scriptnow.platform.config import Settings
+from scriptnow.platform.creative_operations import (
+    CreativeOperationStore,
+    coherent_run_status,
+)
 from scriptnow.platform.database import Database
-from scriptnow.platform.models import ProjectMedium, ProjectModel, ProjectSnapshotModel
+from scriptnow.platform.models import (
+    CreativeStageStatus,
+    ProjectMedium,
+    ProjectModel,
+    ProjectSnapshotModel,
+    RunStatus,
+)
+from scriptnow.platform.run_coordinator import RunCoordinator
+from scriptnow.platform.run_events import PersistentRunEventLog, RunEventType
 from scriptnow.platform.translation import FaithfulTranslationService
 from scriptnow.platform.translation_contracts import TranslationError
 from scriptnow.platform.translation_glossary import (
@@ -163,10 +178,15 @@ async def _add_chapter_glossary_candidates(
 
 
 def create_translation_router(
-    database: Database, auth: AuthService, settings: Settings
+    database: Database,
+    auth: AuthService,
+    settings: Settings,
+    active_runs: ActiveRunRegistry,
 ) -> APIRouter:
     router = APIRouter(prefix="/translation")
     translator = FaithfulTranslationService(database, settings)
+    operations = CreativeOperationStore(database)
+    run_events = PersistentRunEventLog(database)
 
     @router.post("/projects")
     async def create_translation_project(
@@ -287,14 +307,14 @@ def create_translation_router(
                     })
         return chapters
 
-    @router.post("/projects/{project_id}/chapters/{chapter_id}/translate")
-    async def translate_chapter(
+    async def _translate_chapter_work(
         project_id: str,
         chapter_id: str,
-        access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
+        tenant_id: str,
+        *,
+        run_id: str | None = None,
     ):
-        context = await auth.validate_access(access_token)
-        tid = str(context.tenant_id)
+        tid = tenant_id
         import uuid
         async with database.session() as session:
             project = await session.get(ProjectModel, project_id)
@@ -356,6 +376,7 @@ def create_translation_router(
                 units=(unit,),
                 idempotency_key=idem_key,
                 glossary_block=glossary_block,
+                run_id=run_id,
             )
         except TranslationError as error:
             raise HTTPException(
@@ -416,6 +437,237 @@ def create_translation_router(
             "chapter_id": chapter_id,
             "status": "completed",
             "blocks": list(translated[0].blocks),
+            "revision_id": rev.id,
+            "revision_number": rev.revision_number,
+        }
+
+    async def _background_translate_chapter(
+        *,
+        tenant_id: str,
+        project_id: str,
+        chapter_id: str,
+        run_id: str,
+        operation_id: str,
+        stage_run_id: str,
+        input_digest: str,
+    ) -> None:
+        coordinator = RunCoordinator(database)
+        try:
+            await coordinator.transition(
+                tenant_id=tenant_id,
+                run_id=run_id,
+                target=RunStatus.RUNNING,
+            )
+            result = await _translate_chapter_work(
+                project_id,
+                chapter_id,
+                tenant_id,
+                run_id=run_id,
+            )
+            revision_id = str(result["revision_id"])
+            revision_number = int(result["revision_number"])
+            artifact_ref_id = await operations.register_artifact(
+                tenant_id=tenant_id,
+                operation_id=operation_id,
+                stage_run_id=stage_run_id,
+                domain="translation",
+                artifact_type="translation_revision",
+                artifact_id=revision_id,
+                revision=revision_number,
+                status="adopted",
+                schema_version=1,
+                input_digest=input_digest,
+                dependency_versions={"chapter_id": chapter_id},
+                provenance={"source": "agent", "run_id": run_id},
+            )
+            await operations.save_checkpoint(
+                tenant_id=tenant_id,
+                operation_id=operation_id,
+                stage_run_id=stage_run_id,
+                checkpoint_key=f"translation.chapter.translate:{revision_id}",
+                state_format="json",
+                state_payload=json.dumps(
+                    {
+                        "chapter_id": chapter_id,
+                        "revision_id": revision_id,
+                        "revision_number": revision_number,
+                        "artifact_ref_id": artifact_ref_id,
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ).encode(),
+                resume_metadata={"next_action": "review_translation"},
+                is_complete=True,
+            )
+            await operations.finish_stage(
+                tenant_id=tenant_id,
+                operation_id=operation_id,
+                stage_run_id=stage_run_id,
+                status=CreativeStageStatus.READY,
+            )
+            await run_events.append(
+                tenant_id=tenant_id,
+                run_id=run_id,
+                event_key="translation-persisted",
+                type=RunEventType.TERMINAL,
+                payload={
+                    "block": "system",
+                    "phase": "end",
+                    "title": "本章译文已保存",
+                    "chapter_id": chapter_id,
+                    "revision_id": revision_id,
+                    "runtime": "agentscope",
+                },
+                correlation_id=run_id,
+            )
+            await coordinator.transition(
+                tenant_id=tenant_id,
+                run_id=run_id,
+                target=RunStatus.SUCCEEDED,
+            )
+        except asyncio.CancelledError:
+            with suppress(Exception):
+                await coordinator.transition(
+                    tenant_id=tenant_id,
+                    run_id=run_id,
+                    target=RunStatus.CANCELLED,
+                )
+            with suppress(Exception):
+                await operations.finish_stage(
+                    tenant_id=tenant_id,
+                    operation_id=operation_id,
+                    stage_run_id=stage_run_id,
+                    status=CreativeStageStatus.CANCELLED,
+                )
+            raise
+        except Exception as error:
+            with suppress(Exception):
+                current = await coordinator.status(
+                    tenant_id=tenant_id, run_id=run_id
+                )
+                if current is not None and current.status in {
+                    RunStatus.QUEUED,
+                    RunStatus.RUNNING,
+                    RunStatus.WAITING,
+                }:
+                    await coordinator.transition(
+                        tenant_id=tenant_id,
+                        run_id=run_id,
+                        target=RunStatus.FAILED,
+                        error_code="translation_chapter_failed",
+                    )
+            with suppress(Exception):
+                await operations.finish_stage(
+                    tenant_id=tenant_id,
+                    operation_id=operation_id,
+                    stage_run_id=stage_run_id,
+                    status=CreativeStageStatus.FAILED,
+                    error={"code": "translation_chapter_failed", "message": str(error)},
+                )
+
+    @router.post("/projects/{project_id}/chapters/{chapter_id}/translate")
+    async def translate_chapter(
+        project_id: str,
+        chapter_id: str,
+        background: Annotated[bool, Query()] = False,
+        access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
+    ):
+        context = await auth.validate_access(access_token)
+        tenant_id = str(context.tenant_id)
+        if not background:
+            return await _translate_chapter_work(project_id, chapter_id, tenant_id)
+
+        idempotency_key = f"translation:{project_id}:{chapter_id}:{uuid4().hex}"
+        coordinator = RunCoordinator(database)
+        run = await coordinator.enqueue(
+            tenant_id=tenant_id,
+            project_id=project_id,
+            idempotency_key=idempotency_key,
+        )
+        creative_session_id = await operations.get_or_open_session(
+            tenant_id=tenant_id,
+            project_id=project_id,
+            active_domain="translation",
+        )
+        turn_id = await operations.append_turn(
+            tenant_id=tenant_id,
+            session_id=creative_session_id,
+            actor={"type": "user"},
+            input={"command": "translation.chapter.translate", "chapter_id": chapter_id},
+        )
+        input_digest = hashlib.sha256(
+            json.dumps(
+                {"project_id": project_id, "chapter_id": chapter_id},
+                sort_keys=True,
+            ).encode()
+        ).hexdigest()
+        operation = await operations.enqueue_operation(
+            tenant_id=tenant_id,
+            session_id=creative_session_id,
+            turn_id=turn_id,
+            run_id=run.id,
+            command="translation.chapter.translate",
+            domain="translation",
+            stage="translate",
+            idempotency_key=idempotency_key,
+            policy_snapshot={"delivery": "background", "adoption": "automatic"},
+        )
+        stage_run_id = await operations.start_stage(
+            tenant_id=tenant_id,
+            operation_id=operation.id,
+            stage_key="translate",
+            attempt=1,
+            input_digest=input_digest,
+        )
+        task = asyncio.create_task(
+            _background_translate_chapter(
+                tenant_id=tenant_id,
+                project_id=project_id,
+                chapter_id=chapter_id,
+                run_id=run.id,
+                operation_id=operation.id,
+                stage_run_id=stage_run_id,
+                input_digest=input_digest,
+            )
+        )
+        active_runs.track(run.id, task)
+        return {
+            "chapter_id": chapter_id,
+            "status": run.status,
+            "run_id": run.id,
+            "operation_id": operation.id,
+            "creative_session_id": creative_session_id,
+        }
+
+    @router.get("/projects/{project_id}/runs/{run_id}")
+    async def translation_run(
+        project_id: str,
+        run_id: str,
+        access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
+    ):
+        context = await auth.validate_access(access_token)
+        run = await RunCoordinator(database).status(
+            tenant_id=str(context.tenant_id),
+            run_id=run_id,
+        )
+        if run is None or run.project_id != project_id:
+            raise HTTPException(404, "translation run not found")
+        operation = await operations.operation_for_run(
+            tenant_id=str(context.tenant_id),
+            run_id=run_id,
+        )
+        return {
+            "run_id": run.id,
+            "status": coherent_run_status(
+                run.status, operation.status if operation else None
+            ),
+            "state_version": run.state_version,
+            "waiting_reason": run.waiting_reason,
+            "error_code": run.error_code,
+            "operation_id": operation.id if operation else None,
+            "creative_session_id": operation.session_id if operation else None,
+            "operation_status": operation.status if operation else None,
+            "stage": operation.stage if operation else None,
         }
 
     @router.post("/projects/{project_id}/translate-all")

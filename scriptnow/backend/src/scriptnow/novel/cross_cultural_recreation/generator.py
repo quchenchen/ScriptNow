@@ -110,6 +110,7 @@ class CrossCulturalRecreationGenerator:
         project: ProjectModel,
         idempotency_key: str,
         target_contract: dict[str, object],
+        run_id: str | None = None,
     ) -> dict[str, object]:
         source = await self._source_text(tenant_id=tenant_id, project_id=project.id)
         if not source:
@@ -133,6 +134,7 @@ class CrossCulturalRecreationGenerator:
             stage="cross_cultural_source_analysis",
             prompt=prompt,
             payload_type=SourceStoryModelPayload,
+            run_id=run_id,
         )
 
     async def generate_strategies(
@@ -144,6 +146,7 @@ class CrossCulturalRecreationGenerator:
         source_model: dict[str, object],
         target_contract: dict[str, object],
         feedback: str | None,
+        run_id: str | None = None,
     ) -> tuple[dict[str, object], ...]:
         prompt = (
             "You are the lead story architect for cross-cultural recreation. This is NOT "
@@ -167,6 +170,7 @@ class CrossCulturalRecreationGenerator:
             prompt=prompt,
             payload_type=StrategyPayload,
             structure_error=("创作团队返回的三套策略缺少必要结构，请保留反馈后重新生成"),
+            run_id=run_id,
         )
         return tuple(dict(item) for item in payload["candidates"])
 
@@ -180,6 +184,7 @@ class CrossCulturalRecreationGenerator:
         target_contract: dict[str, object],
         strategy: dict[str, object],
         feedback: str | None,
+        run_id: str | None = None,
     ) -> dict[str, object]:
         source = await self._source_text(tenant_id=tenant_id, project_id=project.id)
         prompt = (
@@ -206,6 +211,7 @@ class CrossCulturalRecreationGenerator:
             stage="cross_cultural_pilot",
             prompt=prompt,
             payload_type=PilotPayload,
+            run_id=run_id,
         )
 
     async def generate_scale_plan(
@@ -219,6 +225,7 @@ class CrossCulturalRecreationGenerator:
         strategy: dict[str, object],
         pilot: dict[str, object],
         feedback: str | None,
+        run_id: str | None = None,
     ) -> dict[str, object]:
         prompt = (
             "You are the production architect for a cross-cultural story recreation. "
@@ -253,6 +260,7 @@ class CrossCulturalRecreationGenerator:
             stage="cross_cultural_scale_plan",
             prompt=prompt,
             payload_type=ScalePlanPayload,
+            run_id=run_id,
         )
 
     async def generate_production_unit(
@@ -269,6 +277,7 @@ class CrossCulturalRecreationGenerator:
         work_package: dict[str, object],
         adopted_units: list[dict[str, object]],
         feedback: str | None,
+        run_id: str | None = None,
     ) -> dict[str, object]:
         source = await self._source_text(tenant_id=tenant_id, project_id=project.id)
         work_package_key = str(work_package.get("order", "")).strip()
@@ -315,6 +324,7 @@ class CrossCulturalRecreationGenerator:
             stage="cross_cultural_production",
             prompt=prompt,
             payload_type=ProductionUnitPayload,
+            run_id=run_id,
         )
         if payload["work_package_key"] != work_package_key:
             correction_prompt = (
@@ -342,6 +352,7 @@ class CrossCulturalRecreationGenerator:
                 stage="cross_cultural_production_identity_repair",
                 prompt=correction_prompt,
                 payload_type=ProductionUnitPayload,
+                run_id=run_id,
             )
             if payload["work_package_key"] != work_package_key:
                 raise RecreationGenerationError("创作团队返回了错误的工作包编号")
@@ -396,18 +407,27 @@ class CrossCulturalRecreationGenerator:
         stage: str,
         prompt: str,
         payload_type: type[BaseModel],
+        run_id: str | None = None,
         structure_error: str = ("创作团队返回的内容缺少必要结构，请保留当前输入后重新生成"),
     ) -> dict[str, object]:
-        run = await self.runs.enqueue(
-            tenant_id=tenant_id,
-            project_id=project_id,
-            idempotency_key=idempotency_key,
-        )
-        await self.runs.transition(tenant_id=tenant_id, run_id=run.id, target=RunStatus.RUNNING)
+        owns_run = run_id is None
+        if owns_run:
+            run = await self.runs.enqueue(
+                tenant_id=tenant_id,
+                project_id=project_id,
+                idempotency_key=idempotency_key,
+            )
+            run_id = run.id
+            await self.runs.transition(
+                tenant_id=tenant_id,
+                run_id=run_id,
+                target=RunStatus.RUNNING,
+            )
+        assert run_id is not None
         try:
             result = await self.runtime.generate(
                 tenant_id=tenant_id,
-                run_id=run.id,
+                run_id=run_id,
                 role=role,
                 content=prompt,
                 context_snapshot={
@@ -434,7 +454,7 @@ class CrossCulturalRecreationGenerator:
                 )
                 repaired = await self.runtime.generate(
                     tenant_id=tenant_id,
-                    run_id=run.id,
+                    run_id=run_id,
                     role=role,
                     content=repair_prompt,
                     context_snapshot={
@@ -449,26 +469,32 @@ class CrossCulturalRecreationGenerator:
                     repaired.text,
                     error_message=structure_error,
                 )
-            await self.runs.transition(
-                tenant_id=tenant_id, run_id=run.id, target=RunStatus.SUCCEEDED
-            )
-            return payload
-        except (AgentRuntimeError, RecreationGenerationError) as error:
-            with suppress(Exception):
+            if owns_run:
                 await self.runs.transition(
                     tenant_id=tenant_id,
-                    run_id=run.id,
-                    target=RunStatus.FAILED,
-                    error_code="cross_cultural_generation_failed",
+                    run_id=run_id,
+                    target=RunStatus.SUCCEEDED,
                 )
-            with suppress(Exception):
-                await CrossCulturalRecreationService(self.database).record_generation_failure(
-                    tenant_id=tenant_id,
-                    project_id=project_id,
-                    stage=stage,
-                    run_id=run.id,
-                    message=str(error),
-                )
+            return payload
+        except (AgentRuntimeError, RecreationGenerationError) as error:
+            if owns_run:
+                with suppress(Exception):
+                    await self.runs.transition(
+                        tenant_id=tenant_id,
+                        run_id=run_id,
+                        target=RunStatus.FAILED,
+                        error_code="cross_cultural_generation_failed",
+                    )
+                with suppress(Exception):
+                    await CrossCulturalRecreationService(
+                        self.database
+                    ).record_generation_failure(
+                        tenant_id=tenant_id,
+                        project_id=project_id,
+                        stage=stage,
+                        run_id=run_id,
+                        message=str(error),
+                    )
             raise RecreationGenerationError(str(error)) from error
 
     @staticmethod

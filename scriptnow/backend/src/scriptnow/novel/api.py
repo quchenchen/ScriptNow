@@ -1,4 +1,7 @@
 import asyncio
+import hashlib
+import json
+from contextlib import suppress
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Cookie, Header, HTTPException, Query, Response, status
@@ -46,9 +49,14 @@ from scriptnow.platform.active_runs import ActiveRunRegistry
 from scriptnow.platform.auth import AuthenticationFailed, AuthService, CsrfFailed
 from scriptnow.platform.auth_api import ACCESS_COOKIE
 from scriptnow.platform.config import Settings
+from scriptnow.platform.creative_operations import (
+    CreativeOperationStore,
+    coherent_run_status,
+)
 from scriptnow.platform.database import Database
-from scriptnow.platform.models import ProjectModel, RunStatus
+from scriptnow.platform.models import CreativeStageStatus, ProjectModel, RunStatus
 from scriptnow.platform.run_coordinator import RunCoordinator
+from scriptnow.platform.run_events import PersistentRunEventLog, RunEventType
 from scriptnow.platform.translation import FaithfulTranslationService
 
 
@@ -93,6 +101,9 @@ class GenerateNovelQualityReportRequest(BaseModel):
 class AdoptResponse(BaseModel):
     id: str
     status: str
+    run_id: str | None = None
+    operation_id: str | None = None
+    creative_session_id: str | None = None
 
 
 class ProposeStoryMapRequest(BaseModel):
@@ -155,6 +166,7 @@ def create_novel_router(
     async def _background_generate_chapter(
         tenant_id, pid: str, cid: str,
         idem: str, fb: str | None, src: str | None, rid: str,
+        operation_id: str, stage_run_id: str, input_digest: str,
     ) -> None:
         coordinator = RunCoordinator(database)
         try:
@@ -164,16 +176,117 @@ def create_novel_router(
             blocks = await writer.generate(
                 tenant_id=str(tenant_id), project=project, chapter_id=cid,
                 idempotency_key=idem, feedback=fb, source_revision_id=src,
+                run_id=rid,
             )
-            await service.propose_document(
+            item = await service.propose_document(
                 tenant_id=str(tenant_id), project_id=pid, chapter_id=cid,
                 blocks=blocks, idempotency_key=idem, source="agent",
             )
-            await coordinator.transition(tenant_id=tenant_id, run_id=rid, target=RunStatus.SUCCEEDED)
-        except Exception:
-            await coordinator.transition(
-                tenant_id=tenant_id, run_id=rid, target=RunStatus.FAILED, error_code="generation_failed"
+            artifact_ref_id = await operations.register_artifact(
+                tenant_id=str(tenant_id),
+                operation_id=operation_id,
+                stage_run_id=stage_run_id,
+                domain="novel",
+                artifact_type="chapter_revision",
+                artifact_id=item.id,
+                revision=item.revision_number,
+                status=str(item.status),
+                schema_version=1,
+                input_digest=input_digest,
+                dependency_versions={
+                    "chapter_id": cid,
+                    "source_revision_id": src,
+                },
+                provenance={
+                    "source": "agent",
+                    "run_id": rid,
+                    "idempotency_key": idem,
+                },
             )
+            await operations.save_checkpoint(
+                tenant_id=str(tenant_id),
+                operation_id=operation_id,
+                stage_run_id=stage_run_id,
+                checkpoint_key=f"novel.chapter.generate:{item.id}",
+                state_format="json",
+                state_payload=json.dumps(
+                    {
+                        "chapter_id": cid,
+                        "revision_id": item.id,
+                        "revision_number": item.revision_number,
+                        "artifact_ref_id": artifact_ref_id,
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ).encode(),
+                resume_metadata={"next_action": "review_candidate"},
+                is_complete=True,
+            )
+            await operations.finish_stage(
+                tenant_id=str(tenant_id),
+                operation_id=operation_id,
+                stage_run_id=stage_run_id,
+                status=CreativeStageStatus.READY,
+            )
+            await run_events.append(
+                tenant_id=str(tenant_id),
+                run_id=rid,
+                event_key="chapter-candidate-persisted",
+                type=RunEventType.TERMINAL,
+                payload={
+                    "block": "system",
+                    "phase": "end",
+                    "title": "章节候选稿已保存，可以审阅",
+                    "chapter_id": cid,
+                    "revision_id": item.id,
+                    "runtime": "agentscope",
+                },
+                correlation_id=rid,
+            )
+            await coordinator.transition(tenant_id=tenant_id, run_id=rid, target=RunStatus.SUCCEEDED)
+        except asyncio.CancelledError:
+            with suppress(Exception):
+                current = await coordinator.status(tenant_id=str(tenant_id), run_id=rid)
+                if current is not None and current.status in {
+                    RunStatus.QUEUED,
+                    RunStatus.RUNNING,
+                    RunStatus.WAITING,
+                }:
+                    await coordinator.transition(
+                        tenant_id=str(tenant_id),
+                        run_id=rid,
+                        target=RunStatus.CANCELLED,
+                    )
+            with suppress(Exception):
+                await operations.finish_stage(
+                    tenant_id=str(tenant_id),
+                    operation_id=operation_id,
+                    stage_run_id=stage_run_id,
+                    status=CreativeStageStatus.CANCELLED,
+                )
+            raise
+        except Exception as error:
+            with suppress(Exception):
+                current = await coordinator.status(tenant_id=str(tenant_id), run_id=rid)
+                if current is not None and current.status in {
+                    RunStatus.QUEUED,
+                    RunStatus.RUNNING,
+                    RunStatus.WAITING,
+                }:
+                    await coordinator.transition(
+                        tenant_id=str(tenant_id),
+                        run_id=rid,
+                        target=RunStatus.FAILED,
+                        error_code="novel_chapter_failed",
+                    )
+            with suppress(Exception):
+                await operations.finish_stage(
+                    tenant_id=str(tenant_id),
+                    operation_id=operation_id,
+                    stage_run_id=stage_run_id,
+                    status=CreativeStageStatus.FAILED,
+                    error={"code": "novel_chapter_failed", "message": str(error)},
+                )
 
     service = NovelService(database)
     exports = NovelExportService(
@@ -183,6 +296,8 @@ def create_novel_router(
     ideation = NovelIdeationGenerator(database, settings)
     story_map_generator = NovelStoryMapGenerator(database, settings)
     writer = NovelChapterGenerator(database, settings)
+    operations = CreativeOperationStore(database)
+    run_events = PersistentRunEventLog(database)
     quality = NovelQualityService(database)
     creative_graph = CreativeGraphExtractor(database, settings)
     graph_queue = CreativeGraphQueue(active_runs)
@@ -471,25 +586,87 @@ def create_novel_router(
     ) -> AdoptResponse:
         auth_context = await context(access_token, csrf_token, write=True)
         if background:
+            tenant_id = str(auth_context.tenant_id)
+            project = await _novel_project(database, tenant_id, project_id)
+            run_key = f"novel-chapter:{project_id}:{chapter_id}:{body.idempotency_key}"
             run_coordinator = RunCoordinator(database)
             run = await run_coordinator.enqueue(
-                tenant_id=str(auth_context.tenant_id),
+                tenant_id=tenant_id,
                 project_id=project_id,
-                idempotency_key=body.idempotency_key,
+                idempotency_key=run_key,
             )
-            task = asyncio.create_task(
-                _background_generate_chapter(
-                    auth_context.tenant_id,
-                    project_id,
-                    chapter_id,
-                    body.idempotency_key,
-                    body.feedback,
-                    body.source_revision_id,
-                    run.id,
+            creative_session_id = await operations.get_or_open_session(
+                tenant_id=tenant_id,
+                project_id=project_id,
+                active_domain="novel",
+            )
+            turn_id = await operations.append_turn(
+                tenant_id=tenant_id,
+                session_id=creative_session_id,
+                actor={"type": "user"},
+                input={
+                    "command": "novel.chapter.generate",
+                    "chapter_id": chapter_id,
+                    "feedback": body.feedback,
+                    "source_revision_id": body.source_revision_id,
+                },
+            )
+            operation = await operations.enqueue_operation(
+                tenant_id=tenant_id,
+                session_id=creative_session_id,
+                turn_id=turn_id,
+                run_id=run.id,
+                command="novel.chapter.generate",
+                domain="novel",
+                stage="generate",
+                idempotency_key=run_key,
+                policy_snapshot={
+                    "project_medium": project.medium,
+                    "project_direction": dict(project.direction or {}),
+                },
+            )
+            input_digest = hashlib.sha256(
+                json.dumps(
+                    {
+                        "project_id": project_id,
+                        "chapter_id": chapter_id,
+                        "feedback": body.feedback,
+                        "source_revision_id": body.source_revision_id,
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ).encode()
+            ).hexdigest()
+            stage_run_id = await operations.start_stage(
+                tenant_id=tenant_id,
+                operation_id=operation.id,
+                stage_key="generate",
+                attempt=1,
+                input_digest=input_digest,
+            )
+            if run.status == RunStatus.QUEUED:
+                task = asyncio.create_task(
+                    _background_generate_chapter(
+                        tenant_id,
+                        project_id,
+                        chapter_id,
+                        body.idempotency_key,
+                        body.feedback,
+                        body.source_revision_id,
+                        run.id,
+                        operation.id,
+                        stage_run_id,
+                        input_digest,
+                    )
                 )
+                active_runs.track(run.id, task)
+            return AdoptResponse(
+                id=run.id,
+                run_id=run.id,
+                status=run.status,
+                operation_id=operation.id,
+                creative_session_id=creative_session_id,
             )
-            active_runs.track(run.id, task)
-            return AdoptResponse(id=run.id, status="queued")
         try:
             async with database.session() as session:
                 project = await session.get(ProjectModel, project_id)
@@ -515,7 +692,7 @@ def create_novel_router(
         except (NovelConflict, NovelDomainError, NovelWriterError) as error:
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
 
-    @router.get("/runs/{run_id}")
+    @router.get("/projects/{project_id}/runs/{run_id}")
     async def run_status(
         project_id: str,
         run_id: str,
@@ -528,7 +705,21 @@ def create_novel_router(
         )
         if run is None or run.project_id != project_id:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "run not found")
-        return {"id": run.id, "status": run.status, "error_code": run.error_code}
+        operation = await operations.operation_for_run(
+            tenant_id=str(auth_context.tenant_id),
+            run_id=run_id,
+        )
+        return {
+            "id": run.id,
+            "status": coherent_run_status(
+                run.status, operation.status if operation else None
+            ),
+            "error_code": run.error_code,
+            "operation_id": operation.id if operation else None,
+            "creative_session_id": operation.session_id if operation else None,
+            "operation_status": operation.status if operation else None,
+            "stage": operation.stage if operation else None,
+        }
 
     @router.post(
         "/projects/{project_id}/chapters/{chapter_id}/propose",
