@@ -8,6 +8,7 @@ from scriptnow.platform.skill_benchmarks import (
     SkillTrialResult,
     evaluate_skill_trials,
     load_benchmark_suite,
+    record_skill_admission,
 )
 from scriptnow.platform.skills import CreativeProfile, SkillCatalog, SkillResolver
 
@@ -82,6 +83,75 @@ def test_benchmark_rejects_incomplete_or_unpaired_evidence() -> None:
             candidate_skill_digest="candidate-v2",
             trials=trials,
         )
+
+
+def test_admission_registry_is_updated_from_measured_report(tmp_path: Path) -> None:
+    suite = load_benchmark_suite(BENCHMARK_ROOT / "novel-genre-benchmark-v2.json")
+    registry = tmp_path / "admission.json"
+    registry.write_text(
+        json.dumps(
+            {
+                "domains": {
+                    "novel": {
+                        "candidate": {
+                            "status": "candidate",
+                            "quality_status": "baseline_required",
+                        }
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    report = evaluate_skill_trials(
+        suite=suite,
+        candidate_skill_digest="digest-v2",
+        trials=_paired_trials(baseline_score=65, candidate_score=78),
+    )
+
+    decision = record_skill_admission(
+        registry_path=registry,
+        domain="novel",
+        skill_name="candidate",
+        report=report,
+        report_path="reports/candidate-v2.json",
+    )
+
+    stored = json.loads(registry.read_text(encoding="utf-8"))["domains"]["novel"]["candidate"]
+    assert decision.status == "admitted"
+    assert stored["quality_status"] == "measured"
+    assert stored["candidate_digest"] == "digest-v2"
+    assert stored["benchmark_report"] == "reports/candidate-v2.json"
+
+
+def test_failed_quality_report_quarantines_candidate(tmp_path: Path) -> None:
+    suite = load_benchmark_suite(BENCHMARK_ROOT / "novel-genre-benchmark-v2.json")
+    registry = tmp_path / "admission.json"
+    registry.write_text(
+        '{"domains":{"novel":{"candidate":{"status":"candidate"}}}}',
+        encoding="utf-8",
+    )
+    report = evaluate_skill_trials(
+        suite=suite,
+        candidate_skill_digest="regression",
+        trials=_paired_trials(baseline_score=80, candidate_score=60),
+    )
+
+    decision = record_skill_admission(
+        registry_path=registry,
+        domain="novel",
+        skill_name="candidate",
+        report=report,
+        report_path="reports/rejected.json",
+    )
+
+    assert decision.status == "quarantined"
+    assert (
+        json.loads(registry.read_text(encoding="utf-8"))["domains"]["novel"]["candidate"][
+            "quality_status"
+        ]
+        == "rejected"
+    )
 
 
 def test_external_category_map_has_37_independently_owned_capabilities() -> None:

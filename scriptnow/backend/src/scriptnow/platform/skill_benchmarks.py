@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from collections import defaultdict
 from pathlib import Path
 from typing import Literal
@@ -122,6 +124,18 @@ class SkillBenchmarkReport(BaseModel):
     failed_gates: list[str]
 
 
+class SkillAdmissionResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    domain: str
+    skill_name: str
+    candidate_skill_digest: str
+    status: Literal["admitted", "quarantined"]
+    quality_status: Literal["measured", "rejected"]
+    benchmark_suite: str
+    benchmark_report: str
+
+
 def load_benchmark_suite(path: str | Path) -> SkillBenchmarkSuite:
     source = Path(path)
     try:
@@ -240,4 +254,66 @@ def evaluate_skill_trials(
         anchor_comparisons=comparisons,
         passed=not failed_gates,
         failed_gates=failed_gates,
+    )
+
+
+def record_skill_admission(
+    *,
+    registry_path: str | Path,
+    domain: str,
+    skill_name: str,
+    report: SkillBenchmarkReport,
+    report_path: str,
+) -> SkillAdmissionResult:
+    source = Path(registry_path)
+    try:
+        registry = json.loads(source.read_text(encoding="utf-8"))
+        entry = registry["domains"][domain][skill_name]
+    except (OSError, UnicodeError, json.JSONDecodeError, KeyError, TypeError) as error:
+        raise SkillBenchmarkError(
+            f"skill is not registered for admission: {domain}/{skill_name}"
+        ) from error
+    if not isinstance(entry, dict):
+        raise SkillBenchmarkError(f"invalid admission entry: {domain}/{skill_name}")
+
+    status = "admitted" if report.passed else "quarantined"
+    quality_status = "measured" if report.passed else "rejected"
+    entry.update(
+        {
+            "status": status,
+            "quality_status": quality_status,
+            "benchmark_suite": report.suite_version,
+            "benchmark_report": report_path,
+            "candidate_digest": report.candidate_skill_digest,
+        }
+    )
+    rendered = f"{json.dumps(registry, ensure_ascii=False, indent=2)}\n"
+    temporary_name: str | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=source.parent,
+            prefix=f".{source.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as temporary:
+            temporary.write(rendered)
+            temporary.flush()
+            os.fsync(temporary.fileno())
+            temporary_name = temporary.name
+        os.replace(temporary_name, source)
+    except OSError as error:
+        if temporary_name:
+            Path(temporary_name).unlink(missing_ok=True)
+        raise SkillBenchmarkError(f"could not persist skill admission: {source}") from error
+
+    return SkillAdmissionResult(
+        domain=domain,
+        skill_name=skill_name,
+        candidate_skill_digest=report.candidate_skill_digest,
+        status=status,
+        quality_status=quality_status,
+        benchmark_suite=report.suite_version,
+        benchmark_report=report_path,
     )

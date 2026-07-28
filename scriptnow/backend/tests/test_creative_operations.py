@@ -8,8 +8,10 @@ from scriptnow.platform.creative_operations import (
 from scriptnow.platform.database import Database
 from scriptnow.platform.models import (
     CreativeArtifactRefModel,
+    CreativeContextManifestModel,
     CreativeOperationModel,
     CreativeOperationStatus,
+    CreativeResumptionStatus,
     CreativeStageRunModel,
     CreativeStageStatus,
     DecisionRequestStatus,
@@ -166,17 +168,104 @@ async def test_operation_lineage_and_decision_are_durable_and_idempotent(
     assert repeated_resolution.status == resolved.status
     assert repeated_resolution.decision == resolved.decision
     assert resolved.decided_at is not None
+    claim = await store.claim_resumption(
+        tenant_id=tenant.id,
+        decision_id=decision.id,
+        idempotency_key="resume:revision-1",
+        claimed_by={"type": "worker", "id": "worker-1"},
+    )
+    repeated_claim = await store.claim_resumption(
+        tenant_id=tenant.id,
+        decision_id=decision.id,
+        idempotency_key="resume:revision-1",
+        claimed_by={"type": "worker", "id": "worker-1"},
+    )
+    assert repeated_claim == claim
+    finished_claim = await store.finish_resumption(
+        tenant_id=tenant.id,
+        resumption_id=claim.id,
+        result={"artifact_ref_id": artifact_id},
+    )
+    repeated_finish = await store.finish_resumption(
+        tenant_id=tenant.id,
+        resumption_id=claim.id,
+        result={"artifact_ref_id": artifact_id},
+    )
+    assert repeated_finish == finished_claim
+    assert finished_claim.status == CreativeResumptionStatus.COMPLETED
 
     async with database.session() as db:
         stored_operation = await db.get(CreativeOperationModel, operation.id)
+        stored_manifest = await db.get(
+            CreativeContextManifestModel,
+            stored_operation.context_manifest_id if stored_operation else None,
+        )
         stored_stage = await db.get(CreativeStageRunModel, stage_id)
         stored_artifact = await db.get(CreativeArtifactRefModel, artifact_id)
         assert stored_operation is not None
         assert stored_operation.status == CreativeOperationStatus.RUNNING
+        assert stored_manifest is not None
+        assert stored_manifest.project_id == project.id
+        assert stored_manifest.content["turn_input"]["text"] == "生成第一章候选"
+        assert stored_manifest.content["operation"]["policy"]["target_words"] == 1800
         assert stored_stage is not None
         assert stored_stage.status == CreativeStageStatus.RUNNING
         assert stored_artifact is not None
         assert stored_artifact.provenance["provider"] == "configured-runtime"
+
+
+@pytest.mark.asyncio
+async def test_context_manifest_is_content_addressed_and_detects_tampering(
+    operation_data: tuple[CreativeOperationStore, Database, TenantModel, ProjectModel],
+) -> None:
+    store, database, tenant, project = operation_data
+    session_id = await store.open_session(
+        tenant_id=tenant.id,
+        project_id=project.id,
+        active_domain="novel",
+    )
+    first = await store.enqueue_operation(
+        tenant_id=tenant.id,
+        session_id=session_id,
+        turn_id=None,
+        run_id=None,
+        command="novel.chapter.generate",
+        domain="novel",
+        stage="chapter_candidate",
+        idempotency_key="manifest:first",
+        policy_snapshot={"chapter_id": "chapter-1", "target_words": 1800},
+    )
+    second = await store.enqueue_operation(
+        tenant_id=tenant.id,
+        session_id=session_id,
+        turn_id=None,
+        run_id=None,
+        command="novel.chapter.regenerate",
+        domain="novel",
+        stage="chapter_candidate",
+        idempotency_key="manifest:second",
+        policy_snapshot={"chapter_id": "chapter-1", "target_words": 1800},
+    )
+    async with database.session() as db:
+        first_row = await db.get(CreativeOperationModel, first.id)
+        second_row = await db.get(CreativeOperationModel, second.id)
+        assert first_row is not None
+        assert second_row is not None
+        assert first_row.context_manifest_id == second_row.context_manifest_id
+        manifest = await db.get(
+            CreativeContextManifestModel,
+            first_row.context_manifest_id,
+        )
+        assert manifest is not None
+        manifest.content = {**manifest.content, "tampered": True}
+
+    async with database.session() as db:
+        with pytest.raises(ValueError, match="digest does not match"):
+            await store.context_manifests.load(
+                db,
+                tenant_id=tenant.id,
+                manifest_id=first_row.context_manifest_id,
+            )
 
 
 @pytest.mark.asyncio
@@ -296,4 +385,83 @@ async def test_decision_cannot_be_changed_after_resolution(
             status=DecisionRequestStatus.REJECTED,
             decision={"option": "reject"},
             decided_by={"type": "user", "id": "writer"},
+        )
+
+
+@pytest.mark.asyncio
+async def test_resumption_rejects_second_claim_and_unresolved_decision(
+    operation_data: tuple[CreativeOperationStore, Database, TenantModel, ProjectModel],
+) -> None:
+    store, _, tenant, project = operation_data
+    session_id = await store.open_session(
+        tenant_id=tenant.id,
+        project_id=project.id,
+        active_domain="novel",
+    )
+    operation = await store.enqueue_operation(
+        tenant_id=tenant.id,
+        session_id=session_id,
+        turn_id=None,
+        run_id=None,
+        command="novel.chapter.generate",
+        domain="novel",
+        stage="chapter_candidate",
+        idempotency_key="parked-operation",
+        policy_snapshot={},
+    )
+    stage_id = await store.start_stage(
+        tenant_id=tenant.id,
+        operation_id=operation.id,
+        stage_key="chapter_candidate",
+        attempt=1,
+        input_digest="b" * 64,
+    )
+    checkpoint_id = await store.save_checkpoint(
+        tenant_id=tenant.id,
+        operation_id=operation.id,
+        stage_run_id=stage_id,
+        checkpoint_key="parked-tool",
+        state_format="agentscope-agent-state-json-v1",
+        state_payload=b'{"version":1}',
+        resume_metadata={"reply_id": "reply-1"},
+        is_complete=True,
+    )
+    decision = await store.request_decision(
+        tenant_id=tenant.id,
+        operation_id=operation.id,
+        stage_run_id=stage_id,
+        artifact_ref_id=None,
+        checkpoint_id=checkpoint_id,
+        kind="tool_confirmation",
+        prompt="允许调用工具吗？",
+        options=[{"id": "approve"}, {"id": "reject"}],
+        impact={"tool": "save_candidate"},
+        idempotency_key="confirm-tool",
+    )
+    with pytest.raises(CreativeOperationError, match="must be resolved"):
+        await store.claim_resumption(
+            tenant_id=tenant.id,
+            decision_id=decision.id,
+            idempotency_key="resume-1",
+            claimed_by={"type": "worker", "id": "worker-1"},
+        )
+    await store.resolve_decision(
+        tenant_id=tenant.id,
+        decision_id=decision.id,
+        status=DecisionRequestStatus.APPROVED,
+        decision={"approved": True},
+        decided_by={"type": "user", "id": "writer"},
+    )
+    await store.claim_resumption(
+        tenant_id=tenant.id,
+        decision_id=decision.id,
+        idempotency_key="resume-1",
+        claimed_by={"type": "worker", "id": "worker-1"},
+    )
+    with pytest.raises(CreativeOperationError, match="already claimed"):
+        await store.claim_resumption(
+            tenant_id=tenant.id,
+            decision_id=decision.id,
+            idempotency_key="resume-2",
+            claimed_by={"type": "worker", "id": "worker-2"},
         )

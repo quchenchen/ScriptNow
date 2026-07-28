@@ -41,6 +41,7 @@ logs/
 .scratch/*
 !.scratch/scriptnow/
 !.scratch/scriptnow/.gitkeep
+.local/
 .artifacts/
 .codex-tmp/
 *.inspect.ndjson

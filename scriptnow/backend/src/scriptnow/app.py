@@ -26,6 +26,8 @@ from scriptnow.script.project import initialize_script_project
 from scriptnow.translation.api import create_translation_router
 from scriptnow.work_package.api import create_work_package_router
 
+from . import __version__
+
 
 def create_app(
     *,
@@ -60,7 +62,7 @@ def create_app(
         if owns_database:
             await resolved_database.dispose()
 
-    app = FastAPI(title="ScriptNow", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="ScriptNow", version=__version__, lifespan=lifespan)
     app.state.database = resolved_database
     app.state.settings = resolved_settings
     app.state.active_runs = active_runs

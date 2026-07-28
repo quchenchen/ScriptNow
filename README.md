@@ -2,7 +2,8 @@
 
 **AI Agent 团队驱动的剧本与小说创作平台。**
 
-ScriptNow 是当前项目暂定名称。现行应用只有一套，位于 [`scriptnow/`](./scriptnow/)；旧版本执行代码已经归档，不参与构建、测试或运行。
+当前产品版本为 **`0.2.0`（开发预览）**。现行应用只有一套，位于
+[`scriptnow/`](./scriptnow/)；旧版本执行代码和阶段性研究资料不参与构建、测试或运行。
 
 ## 当前基线
 
@@ -10,6 +11,8 @@ ScriptNow 是当前项目暂定名称。现行应用只有一套，位于 [`scri
 - [`docs/v7-spec-v1.1/01-PRD-V7.md`](./docs/v7-spec-v1.1/01-PRD-V7.md) — 产品与技术规格
 - [`docs/v7-spec-v1.1/02-LEGACY-DECONTAMINATION.md`](./docs/v7-spec-v1.1/02-LEGACY-DECONTAMINATION.md) — 复用、归档与删除规则
 - [`docs/v7-spec-v1.1/03-DEVELOPMENT-PLAN.md`](./docs/v7-spec-v1.1/03-DEVELOPMENT-PLAN.md) — 开发与验证计划
+- [`docs/v7-spec-v1.1/RELEASE-NOTES.md`](./docs/v7-spec-v1.1/RELEASE-NOTES.md) — 产品版本、验证结果与已知限制
+- [`docs/archive/README.md`](./docs/archive/README.md) — 非现行资料归档索引
 
 ## 5 分钟启动
 

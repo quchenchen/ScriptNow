@@ -189,9 +189,10 @@ flowchart TB
     Decision -.-> State
 ```
 
-当前已接入公开 `reply_stream()`、Block 投影、最小耐久运行内核及四领域主要生成入口。跨进程
-Checkpoint 恢复、parked confirmation 的 AgentState 恢复与完整 Context Manifest 仍需通过
-退出门。
+当前已接入公开 `reply_stream()`、Block 投影、最小耐久运行内核及四领域主要生成入口。
+Context Manifest、恢复判定矩阵、parked AgentState checkpoint 与 resumption claim 已落地。
+真实 MCP 的 `RequireUserConfirmEvent → 进程重启 → UserConfirmResultEvent` 端到端续跑仍需
+通过退出门。
 
 ## 7. 管理与治理闭环
 
@@ -221,8 +222,12 @@ flowchart LR
 | 状态 | 能力 |
 |---|---|
 | 已接入 | Creative Session/Operation 最小持久化谱系；四领域主要生成入口；ArtifactRef 与 Checkpoint 成功边界；真实 Block 事件投影；候选、人工修订、采纳与版本原则 |
-| 部分完成 | 全阶段状态统一；跨进程恢复；parked confirmation；Context Manifest；四领域真实 Provider 黄金回放；Skill 质量量化；成本路由 |
+| 已接入 | Context Manifest；跨进程恢复判定矩阵；parked AgentState checkpoint 与单次 resumption claim；Skill 基准准入闭环；四领域真实 Provider 证据审计工具 |
+| 部分完成 | 全阶段状态统一；真实 MCP parked confirmation 续跑；四领域外部 Provider 实跑证据包 |
 | 目标态 | 创作搭档完全驱动所有流程；受控 Dreaming；经重新评审后可能启动的 CLI / 外部 Agent |
+
+成本路由已从当前目标态移除。既有模型绑定和用量记账继续有效，但系统不得因价格自动替换
+用户或租户已选择的模型。
 
 ## 9. 验收使用方式
 

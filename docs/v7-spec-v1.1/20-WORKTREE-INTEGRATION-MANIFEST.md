@@ -2,9 +2,10 @@
 
 | | |
 |---|---|
-| 日期 | 2026-07-28 |
-| 目的 | 把当前大批量改动拆成可审查、可验证、可回滚的集成单元 |
-| 状态 | 已完成分批集成，待全量门禁 |
+| 日期 | 2026-07-29 |
+| 对应产品版本 | `0.2.0` 开发预览 |
+| 目的 | 记录跨层升级的集成边界、验证证据和未通过项 |
+| 状态 | 自动化门禁已通过；真实 Provider 黄金回放仍有未完成领域 |
 
 ## 1. 当前工作主题
 
@@ -28,14 +29,14 @@
 
 这些资产不进入 Git。`.artifacts/`、`.codex-tmp/` 与 `*.inspect.ndjson` 已加入忽略规则。
 
-## 3. 实际提交序列
+## 3. 已完成的集成序列
 
 | 顺序 | 提交 | 主题 | 主要范围 | 验证 |
 |---:|---|---|---|---|
 | 1 | `f377750` | 建立可恢复创作运行内核 | migration、platform、AgentScope/Dock、四领域入口与 public API 测试 | 空库迁移、后端全量测试、Ruff |
 | 2 | `767e8da` | 建立四领域黄金审计基线 | golden fixtures、真实证据采集、审计脚本与回放测试 | 18 项黄金契约测试、Ruff |
 | 3 | `b51ed6a` | 统一创作搭档运行状态交互 | Creator/Admin stores、components、shared messages 与样式 | 55 项前端测试、双 SPA 类型检查与构建 |
-| 4 | 当前提交 | 更新 v1.1 规格与工作树治理 | docs 14—20、ADR 0013/0014、PRD 修订、忽略规则 | 链接扫描、diff check |
+| 4 | 当前版本整理 | 更新 v1.1 规格与工作树治理 | docs 14—22、版本记录、归档索引、忽略规则 | 链接扫描、全量门禁、diff check |
 
 实际集成考虑了模块强耦合关系：AgentScope/Dock 和四领域入口依赖同一 Creative Operation
 契约，因此合并为一个可迁移、可测试的后端原子提交，而不是机械拆成不可运行的中间状态。
@@ -59,9 +60,30 @@ git diff --check
 - 前端不展示 Pydantic、Provider 或 AgentScope 原始异常；
 - Script 与 Novel 不出现跨域 DTO、Writer、包装或导出语义。
 
+2026-07-29 版本整理前的最近一次完整自动化门禁为：
+
+- 后端 `315 passed`；
+- 前端 `55 passed`；
+- Ruff、Creator/Admin 类型检查与构建通过；
+- `git diff --check` 通过。
+
+版本整理后的最终复跑结果记录在 [`RELEASE-NOTES.md`](./RELEASE-NOTES.md)。
+
+真实 Provider 回放不属于可被单元测试替代的门禁。当前 Novel、Script、Translation、
+Recreation 均仍有至少一个未完成阶段，因此 `0.2.0` 明确保持“开发预览”，不得标记为
+Release Candidate。
+
 ## 5. 暂不随本轮主线提交
 
 - 产品化 CLI 与外部 Agent 适配器；
 - 未通过退出门的受控 Dreaming 自动发布；
 - 用兜底文本掩盖结构化输出失败的“降级成功”；
 - 为测试方便而写死的模型、章节数、字数、预算、市场或业务策略。
+
+## 6. 仓库边界
+
+- 唯一可执行产品目录为 `scriptnow/`。
+- 唯一现行规格目录为 `docs/v7-spec-v1.1/`。
+- 历史研究和阶段审计统一位于 `docs/archive/`，不得被运行时代码导入。
+- 用户素材、数据库快照和运行日志只允许进入本机 `.local/` 或其他 Git 忽略目录。
+- 当前版本与验证结果以 [`RELEASE-NOTES.md`](./RELEASE-NOTES.md) 为准。

@@ -110,6 +110,12 @@ class DecisionRequestStatus(StrEnum):
     EXPIRED = "expired"
 
 
+class CreativeResumptionStatus(StrEnum):
+    CLAIMED = "claimed"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
 class ReservationState(StrEnum):
     RESERVED = "reserved"
     FINALIZED = "finalized"
@@ -623,6 +629,47 @@ class CreativeTurnModel(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class CreativeContextManifestModel(Base):
+    """Immutable, content-addressed inputs used to execute a creative operation."""
+
+    __tablename__ = "creative_context_manifests"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "project_id",
+            "content_digest",
+            name="uq_creative_context_manifest_digest",
+        ),
+        Index(
+            "ix_creative_context_manifest_project_created",
+            "tenant_id",
+            "project_id",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="RESTRICT"), nullable=False
+    )
+    project_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    session_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("creative_sessions.id", ondelete="CASCADE"), nullable=False
+    )
+    turn_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("creative_turns.id", ondelete="SET NULL")
+    )
+    domain: Mapped[str] = mapped_column(String(40), nullable=False)
+    stage: Mapped[str] = mapped_column(String(120), nullable=False)
+    schema_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    content_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    content: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
+    source_versions: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
 class CreativeOperationModel(Base):
     __tablename__ = "creative_operations"
     __table_args__ = (
@@ -657,7 +704,10 @@ class CreativeOperationModel(Base):
     )
     idempotency_key: Mapped[str] = mapped_column(String(160), nullable=False)
     policy_snapshot: Mapped[dict[str, object]] = mapped_column(JSON, default=dict, nullable=False)
-    context_manifest_id: Mapped[str | None] = mapped_column(String(120))
+    context_manifest_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("creative_context_manifests.id", ondelete="RESTRICT"),
+    )
     error_code: Mapped[str | None] = mapped_column(String(120))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
@@ -787,6 +837,43 @@ class CreativeDecisionRequestModel(Base):
     decision: Mapped[dict[str, object] | None] = mapped_column(JSON)
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class CreativeResumptionModel(Base):
+    __tablename__ = "creative_resumptions"
+    __table_args__ = (
+        UniqueConstraint("decision_request_id", name="uq_creative_resumption_decision"),
+        UniqueConstraint(
+            "operation_id",
+            "idempotency_key",
+            name="uq_creative_resumption_idempotency",
+        ),
+        Index("ix_creative_resumption_operation_status", "operation_id", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    operation_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("creative_operations.id", ondelete="CASCADE"), nullable=False
+    )
+    decision_request_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("creative_decision_requests.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    checkpoint_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("creative_checkpoints.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(160), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(32), default=CreativeResumptionStatus.CLAIMED, nullable=False
+    )
+    claimed_by: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
+    result: Mapped[dict[str, object] | None] = mapped_column(JSON)
+    error: Mapped[dict[str, object] | None] = mapped_column(JSON)
+    claimed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class ProjectEventModel(Base):

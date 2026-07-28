@@ -37,6 +37,8 @@ def test_initial_migration_up_and_down(tmp_path: Path) -> None:
         "novel_document_revisions",
         "review_findings",
         "run_stream_events",
+        "creative_context_manifests",
+        "creative_resumptions",
     } <= tables
 
     command.downgrade(config, "base")

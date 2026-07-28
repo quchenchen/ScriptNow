@@ -3,9 +3,10 @@
 | | |
 |---|---|
 | 版本 | `v7-spec-v1.1` |
+| 对应产品版本 | `ScriptNow 0.2.0`（开发预览） |
 | 初始批准 | 2026-07-18 |
-| 最近修订 | 2026-07-28 |
-| 状态 | 已批准，持续修订 |
+| 最近修订 | 2026-07-29 |
+| 状态 | 已批准；实现持续验证，尚未达到 Release Candidate |
 | 取代 | 已归档的 v1.0 规格 |
 
 ## 基线声明
@@ -36,6 +37,7 @@ V7 的唯一规格基线是本目录。需要核对历史决策时，先按
 - `08-I18N-THEME-GOVERNANCE.md`：界面语言、作品语言、素材语言边界，以及日夜主题与文案迁移规范。
 - `09-WEBNOVEL-WRITER-FUSION-PLAN.md`：外部长篇网文系统审计、机制取舍、融合架构与分阶段验收规划。
 - `10-NOVEL-GENRE-SKILL-QUALITY.md`：37 类题材覆盖地图、质量锚点、成对基准评测与 Skill 准入规则。
+- `11-CROSS-CULTURAL-STORY-RECREATION.md`：归化翻译的领域边界、阶段产物与人工决策门。
 - `12-CHAPTER-PIPELINE.md`：章节生产单元、状态机、上下文快照、审读、人工修订与采纳边界。
 - `13-CREATIVE-FLOW-TECHNICAL-AUDIT.md`：四类创作流程的时延、失败模式与技术审计。
 - `14-AGENTSCOPE-ALIGNED-IMPLEMENTATION-PLAN.md`：AgentScope 对齐矩阵、分阶段实施任务和退出门槛。
@@ -45,6 +47,9 @@ V7 的唯一规格基线是本目录。需要核对历史决策时，先按
 - `18-CREATIVE-FLOW-GOLDEN-BASELINE.md`：四领域黄金场景、真实完成不变式、证据格式与阶段 0 验收办法。
 - `19-SYSTEM-BUSINESS-FLOW-MAP.md`：全系统参与者、四领域业务管线、AgentScope 运行边界、产物血缘与治理回路。
 - `20-WORKTREE-INTEGRATION-MANIFEST.md`：当前工作树改动分组、归档边界、建议提交序列与集成检查清单。
+- `21-UX-OPTIMIZATION-STRATEGY.md`：原型回归、沉浸式创作和响应式布局策略。
+- `22-SCRIPT-SKILL-SYSTEM.md`：剧本创作 Skill、场景思维、质量门与格式契约。
+- `RELEASE-NOTES.md`：产品版本、验证门禁、真实 Provider 回放结果与已知限制。
 - `adr/`：V7 独立 ADR 编号空间，不覆盖根目录历史 ADR。
 - `references/AGENTSCOPE-2.0.4-VERIFICATION.md`：API 表面验证；其中未实测项必须在 P0 tracer bullet 中完成。
 
@@ -53,3 +58,12 @@ V7 的唯一规格基线是本目录。需要核对历史决策时，先按
 本版本已经完成产品方向和架构原则批复，并按修订单持续吸收已批准的运行协议、四领域
 管线与治理契约。`01-PRD-V7.md` 是产品与系统不变式，`14`—`20` 是实施、验收和现状证据；
 任何“已实现”结论都必须由代码、迁移和自动化测试共同支持。
+
+2026-07-29 范围修订：成本路由退出当前研发主线；Context Manifest、恢复判定、真实
+Provider 证据审计和 Skill 基准准入继续推进。该决策不删除用量账本，也不授权按价格自动
+改写模型选择。
+
+2026-07-29 版本整理：实现版本统一更新为 `0.2.0`；研究报告、阶段性审计和截图移入
+`docs/archive/2026-07-29/`；用户上传素材和旧运行数据库移出 Git 开发树。当前版本通过
+单元测试、Lint 和构建门禁后方可保留该版本号，但四领域真实 Provider 黄金回放仍是发布
+退出门，未通过时不得标记为 RC。

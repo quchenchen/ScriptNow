@@ -76,7 +76,9 @@ accept
   Recreation 的源作品分析、归化策略、代表性试写、整书规划和逐章生产均已接入。
 - [x] Dock Confirm 通道已接入 DecisionRequest、产品事件和等待态恢复；四领域领域确认仍待
   P3 分批接入。
-- [ ] parked confirmation 使用 AgentState 恢复，验证只执行一次。
+- [x] AgentState checkpoint、确认结果构造和 resumption 单次 claim 已实现并通过单元测试。
+- [ ] 将 `RequireUserConfirmEvent` 接入真实 MCP 运行流，进程重启后使用
+  `UserConfirmResultEvent` 恢复，并以幂等工具验证副作用只执行一次。
 - [x] 删除 Dock 在完整生成后补造的 thinking/tool fixtures；Data/Text 只投影真实上下文与
   AgentScope 回复。
 
@@ -88,14 +90,15 @@ accept
 
 ### P2：耐久 Creative Operation
 
-- [x] 新增 session/turn/operation/stage/artifact/checkpoint/decision 最小持久化契约与迁移；
-  平台谱系、幂等决定与四领域生成入口已经接入，跨进程精确恢复仍不宣称完成。
+- [x] 新增 session/turn/operation/stage/artifact/checkpoint/decision/context manifest/resumption
+  最小持久化契约与迁移；平台谱系、幂等决定与四领域生成入口已经接入。
 - [x] Novel、Script、Translation 与 Recreation 的生成入口在创建耐久 operation 后立即返回；
   重任务由应用级 task registry 在后台继续，前端只轮询持久化运行事实。
 - [ ] 每阶段独立状态：queued/running/validating/repairing/ready/failed/cancelled。
 - [x] artifact ref 记录 schema version、输入摘要、依赖版本和 provenance；领域产物内容仍留在
   各自模块。
-- [ ] 支持从最后一个完整 checkpoint 恢复，不重跑已成功阶段。
+- [x] 建立基于 run、operation、checkpoint、decision、resumption 的跨进程恢复判定矩阵。
+- [ ] 执行器按恢复判定从最后一个完整 checkpoint 续跑，不重跑已成功阶段。
 - [x] 建立 CreativeSession/Turn/Decision/ArtifactRef 数据契约；Web、创作搭档和未来适配器
   共享该契约。
 - [x] Dock 消息入口已持久化 Session、Turn、Operation、StageRun 与 DecisionRequest，
