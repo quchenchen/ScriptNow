@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| 文档版本 | v1.1（2026-07-18） |
-| 状态 | 已批准，允许启动 P0 |
-| 依据 | ① 创作端原型 `scriptnow-revision-focus.html`（6408 行，全量交互）② 管理后台初步原型 `scriptnow-admin.html`（364 行，结构+语义完整、JS 占位）③ AgentScope 2.0.4 本地 API 反射验证 ④ V6 代码库现状（28 表 / 60+ 路由）⑤ ADR-0002 及既有产品文档 |
+| 文档版本 | v1.1（初始批准 2026-07-18；修订至 2026-07-28） |
+| 状态 | 已批准，持续修订 |
+| 依据 | ① v1.1 规格与领域契约 ② 当前 `scriptnow/` 实现、Alembic 迁移及自动化测试 ③ AgentScope 2.0.4 本地 API 反射验证 ④ 冻结原型的交互研究结论；历史 V6 材料不构成现行需求 |
 | 取代关系 | 本文档取代 `v7-spec-v1.0/01-PRD-V7.md`；V5/V6 文档仅作历史研究材料 |
 | 读者 | 产品 / 前端 / 后端 / Agent 工程 / QA |
 
@@ -14,7 +14,7 @@
 
 ### 1.1 定位与主张
 
-ScriptFlow 是 **AI Agent 团队驱动的剧本/小说创作平台**。核心隐喻是 **Growing（生长）**：用户不是在"填表生成内容"，而是与一支人格化的 Agent 团队（创意导演、架构规划师、写作者、审读编辑）协作，让作品从创意种子逐步生长为可交付内容。
+ScriptNow 是 **AI Agent 团队驱动的剧本/小说创作平台**。核心隐喻是 **Growing（生长）**：用户不是在"填表生成内容"，而是与一支人格化的 Agent 团队（创意导演、架构规划师、写作者、审读编辑）协作，让作品从创意种子逐步生长为可交付内容。
 
 **V7 是全新产品基线。** 它可以复用 V6 的技术资产，但不继承 V5/V6 的领域模型约束。旧 `CONTEXT.md`、旧 PRD 与 ADR 仅作历史研究材料。复用以契约和测试为依据：匹配则复用，不匹配则迁移或重新实现，不为了复用保留长期兼容分支。
 
@@ -47,7 +47,7 @@ V6 已回答"作品如何长出来"（发散 → 采纳 → 蓝图 → 逐场写
 │  reply_stream 事件流 · AgenticMemory/RAG/Budget/Tracing 中间件        │
 │  PermissionEngine + Workspace(Local→Docker) 沙箱                     │
 ├──────────────────────────────────────────────────────────────────────┤
-│  SQLite(aiosqlite)：V6 28 表 + V7 新增 ~20 表  ·  项目工作区文件系统   │
+│  SQLite + Alembic：平台事实 + 四领域独立事实  ·  项目工作区文件系统   │
 │  （原著文档 / RAG 索引(MilvusLite) / Agent 记忆 markdown / 快照）      │
 └──────────────────────────────────────────────────────────────────────┘
 ```
@@ -69,6 +69,13 @@ V6 已回答"作品如何长出来"（发散 → 采纳 → 蓝图 → 逐场写
 | 框架事件 | AgentScope `reply_stream` 产出的 30 种细粒度事件（delta 级），事件桥将其映射/聚合为产品事件 |
 | 记忆治理 | 对 Agent 长期记忆（markdown 文件化）的浏览、纠偏、删除与压缩审计 |
 | Trace | 一次 Agent 运行的 OTel 追踪单元，admin 可深链到 AgentScope Studio 查看明细 |
+| Creative Session | 一次可持续的人机创作协作会话；承载 Turn，但不替代领域项目或作品版本 |
+| Creative Operation | 一次有明确目标、状态、阶段、预算和幂等边界的创作操作 |
+| Stage Run | Operation 内可单独超时、重试、观测和恢复的阶段执行 |
+| ArtifactRef | 指向领域候选或正式产物的带版本、依赖摘要和来源信息的引用 |
+| Checkpoint | 只在阶段产物完整且可读取后创建的恢复点 |
+| DecisionRequest | 需要创作者确认、采纳、拒绝或修订的持久化决定请求 |
+| Context Manifest | 一次运行实际使用的项目事实、已采纳版本、术语、Skill、工具和模型配置清单 |
 
 ### 1.4 角色与权限
 
@@ -133,7 +140,7 @@ skills/
 
 ### 2.3 工具体系（agentscope.tool）
 
-**TR-2.3.1 领域工具（FunctionTool）**——ScriptFlow 的核心资产，让 Agent 可以**主动查询**项目真理而非被动接收 context dump：
+**TR-2.3.1 领域工具（FunctionTool）**——ScriptNow 的核心资产，让 Agent 可以**主动查询**项目真理而非被动接收 context dump：
 
 | 工具组 | 函数（示例） | 读写性 |
 |---|---|---|
@@ -239,6 +246,42 @@ creator_visible(model, tenant) = model.enabled ∧ provider(model).connected ∧
 ```
 
 **TR-2.11.3** 等级配置（月度额度、点数包价格/规格、模型作用域）全部为 admin 可配数据，创作端账户面板即时同步。**任何等级/价格/模型清单禁止硬编码。**
+
+### 2.12 全系统业务流程与运行真相边界
+
+**TR-2.12.1 单一运行入口**：Creator SPA、创作搭档 Dock 与未来获批的协议适配器，都必须
+建立或加入 `CreativeSession`，并通过 `CreativeOperation` 发起生成型任务。页面不得另建
+一套不可恢复的业务编排。
+
+**TR-2.12.2 责任边界**：
+
+- AgentScope 负责 `reply_stream()`、Thinking/Text/Data/Tool Block、Toolkit/MCP、
+  AgentState、模型调用和框架级确认事件；
+- ScriptNow platform 负责 Operation/Stage 状态、ArtifactRef、Checkpoint、DecisionRequest、
+  配置快照、幂等、预算、事件投影与恢复；
+- Novel、Script、Translation、Recreation 各自负责领域校验、候选、人工修订、采纳、正式
+  版本和导出，不得跨域复用正文 DTO、Writer、StoryMap 或审读规则。
+
+**TR-2.12.3 真实成功边界**：
+
+```text
+operation succeeded
+  ⇔ domain validation passed
+  ∧ consumable artifact persisted
+  ∧ artifact provenance and dependency versions persisted
+  ∧ complete checkpoint persisted
+  ∧ user projection published
+```
+
+模型结束、SSE 结束或出现文本均不等于业务成功。结构化输出失败不得用兜底文本伪装完成。
+
+**TR-2.12.4 状态表达**：产品必须区分当前已实现、部分实现与目标态。跨进程 Checkpoint
+恢复、parked confirmation 的 AgentState 恢复、完整 Context Manifest、四领域真实 Provider
+黄金回放和受控 Dreaming，在通过对应退出门前不得标记为生产完成。
+
+全系统流程、状态机、领域分支和治理闭环见 `19-SYSTEM-BUSINESS-FLOW-MAP.md`；实施顺序见
+`14-AGENTSCOPE-ALIGNED-IMPLEMENTATION-PLAN.md` 与
+`17-SYSTEM-UPGRADE-ITERATION-ROADMAP.md`。
 
 ---
 
@@ -432,10 +475,17 @@ status(open|accepted|dismissed|stale) · stale_reason · superseded_by · idempo
 | BR-12 | **计量单点**：token 用量仅由 UsageMeteringMiddleware 记录，禁止调用方自报 |
 | BR-13 | **产品分域**：Script 与 Novel 不共享正文、目录、Writer、审读、格式或导出领域模块，只共享平台基础设施 |
 | BR-14 | **运行配置快照**：每次运行固定并记录模板、模型、工具、权限、记忆和价格配置版本；运行中配置变化只影响后续运行 |
+| BR-15 | **真实完成边界**：只有领域校验、可消费产物、来源信息、完整检查点和用户投影全部成功后，Operation 才能成功 |
+| BR-16 | **版本与采纳**：生成只产生候选；人工保存形成独立修订版本；明确采纳后才改变正式事实，历史版本不得覆盖 |
+| BR-17 | **恢复恰好一次**：重试、刷新、确认和恢复共用 Operation 与幂等键；已成功阶段及已执行副作用不得重复 |
+| BR-18 | **四领域独立管线**：Novel、Script、Translation、Recreation 共享运行协议，不共享领域产物、生成器、审读或导出契约 |
 
 ---
 
-## 6. 数据模型增量（V6 28 表保留，V7 新增）
+## 6. 数据模型（全新基线，Alembic 演进）
+
+开发树只维护 ScriptNow 当前模型与 Alembic 迁移，不保留可执行 V6 数据模型。历史表述只用于
+迁移研究，不构成现行 schema 约束。
 
 **账务域**：`tenants` · `subscriptions` · `orders` · `credit_ledger`（append-only）· `usage_reservations`（run/idempotency/status/reserved/finalized/expires_at）· `token_usage`（call_id/run_id/价格与币种快照）
 
@@ -453,7 +503,12 @@ status(open|accepted|dismissed|stale) · stale_reason · superseded_by · idempo
 
 **安全与审计域**：`sessions`（refresh hash/revoked/expires）· `admin_audit_log`（actor/action/target/before/after/request_id/created_at）· `runtime_config_snapshots`（run_id + 各配置版本）。所有租户数据表必须具有显式 `tenant_id`、外键、唯一约束和租户复合索引。
 
-迁移策略：延续「schema 变更 → 删库重建」（开发期）；V7 末期引入 Alembic 基线（进入生产前置条件）。
+**运行协议域**：Creative Session、Turn、Operation、Stage Run、ArtifactRef、Checkpoint 与
+DecisionRequest 采用平台级持久化模型；领域正文与候选仍存放在各自领域表，仅通过
+ArtifactRef 建立血缘。
+
+迁移策略：所有 schema 变更必须新增 Alembic migration，并通过空库升级、现存开发库升级和
+关键数据回读测试；禁止以删库重建代替迁移正确性。
 
 ---
 
