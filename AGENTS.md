@@ -68,7 +68,7 @@ agent-script-platform/
 
 ## Git 与清理
 
-- 中文短句 commit message 可以
+- 所有 commit message 必须使用英文，建议采用简洁的祈使句并准确描述变更
 - 不 amend 已 push 的提交，不 force push main
 - 删除历史实现前先生成可验证归档
 - 开发树内不保留可执行旧版本、重复依赖目录或真实运行数据库
