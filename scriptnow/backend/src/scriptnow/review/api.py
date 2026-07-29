@@ -7,6 +7,7 @@ from sqlalchemy import select
 from scriptnow.novel.review import create_novel_review_service, novel_scan_input
 from scriptnow.platform.auth import AuthenticationFailed, AuthService, CsrfFailed
 from scriptnow.platform.auth_api import ACCESS_COOKIE
+from scriptnow.platform.creative_delivery import CreativeDeliveryService
 from scriptnow.platform.database import Database
 from scriptnow.platform.models import ProjectEventModel, ProjectModel, UserModel
 from scriptnow.review.domain import FindingDomain, FindingDraft, FindingSeverity, FindingSource
@@ -37,6 +38,7 @@ class HumanFindingRequest(BaseModel):
 
 def create_review_router(database: Database, auth: AuthService) -> APIRouter:
     router = APIRouter(tags=["review"])
+    deliveries = CreativeDeliveryService(database)
 
     async def context(access: str | None, csrf: str | None = None, *, write=False):
         if access is None:
@@ -89,6 +91,23 @@ def create_review_router(database: Database, auth: AuthService) -> APIRouter:
                 author="Script Editor" if project.medium == "script" else "Novel Editor",
                 idempotency_key=body.idempotency_key,
             )
+            if project.medium == "script":
+                await deliveries.record(
+                    tenant_id=str(actor.tenant_id),
+                    project_id=project_id,
+                    domain="script",
+                    stage="quality_review",
+                    kind="script_quality_report",
+                    idempotency_key=f"script-review:{body.idempotency_key}",
+                    payload={
+                        "unit_id": unit_id,
+                        "revision_id": revision_id,
+                        "finding_id": item.id,
+                        "severity": str(item.severity),
+                        "diagnosis": item.diagnosis,
+                        "suggestion": item.suggestion,
+                    },
+                )
             return _finding(item)
         except (ReviewError, RuntimeError) as error:
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error

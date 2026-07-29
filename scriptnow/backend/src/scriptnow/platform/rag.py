@@ -19,6 +19,8 @@ class RagHit:
     ordinal: int
     content: str
     score: int
+    content_hash: str
+    source_version: str
 
 
 class RagService:
@@ -66,21 +68,31 @@ class RagService:
         if not terms:
             return []
         async with self.database.session() as session:
-            chunks = (
-                await session.scalars(
-                    select(RagChunkModel).where(
+            rows = (
+                await session.execute(
+                    select(RagChunkModel, WorkspaceFileModel.sha256)
+                    .join(WorkspaceFileModel, WorkspaceFileModel.id == RagChunkModel.source_file_id)
+                    .where(
                         RagChunkModel.tenant_id == tenant_id,
                         RagChunkModel.project_id == project_id,
                     )
                 )
             ).all()
             hits = []
-            for chunk in chunks:
+            for chunk, source_sha256 in rows:
                 normalized = chunk.content.casefold()
                 score = sum(normalized.count(term) for term in terms)
                 if score:
                     hits.append(
-                        RagHit(chunk.id, chunk.source_file_id, chunk.ordinal, chunk.content, score)
+                        RagHit(
+                            chunk.id,
+                            chunk.source_file_id,
+                            chunk.ordinal,
+                            chunk.content,
+                            score,
+                            chunk.content_hash,
+                            f"sha256:{source_sha256}",
+                        )
                     )
             return sorted(hits, key=lambda hit: (-hit.score, hit.ordinal))[:limit]
 
@@ -88,9 +100,10 @@ class RagService:
         self, *, tenant_id: str, project_id: str, limit: int = 5
     ) -> list[RagHit]:
         async with self.database.session() as session:
-            chunks = (
-                await session.scalars(
-                    select(RagChunkModel)
+            rows = (
+                await session.execute(
+                    select(RagChunkModel, WorkspaceFileModel.sha256)
+                    .join(WorkspaceFileModel, WorkspaceFileModel.id == RagChunkModel.source_file_id)
                     .where(
                         RagChunkModel.tenant_id == tenant_id,
                         RagChunkModel.project_id == project_id,
@@ -100,8 +113,16 @@ class RagService:
                 )
             ).all()
             return [
-                RagHit(chunk.id, chunk.source_file_id, chunk.ordinal, chunk.content, 0)
-                for chunk in chunks
+                RagHit(
+                    chunk.id,
+                    chunk.source_file_id,
+                    chunk.ordinal,
+                    chunk.content,
+                    0,
+                    chunk.content_hash,
+                    f"sha256:{source_sha256}",
+                )
+                for chunk, source_sha256 in rows
             ]
 
     def _chunks(self, text: str) -> list[str]:

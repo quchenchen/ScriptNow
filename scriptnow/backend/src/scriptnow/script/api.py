@@ -12,15 +12,22 @@ from scriptnow.platform.active_runs import ActiveRunRegistry
 from scriptnow.platform.auth import AuthenticationFailed, AuthService, CsrfFailed
 from scriptnow.platform.auth_api import ACCESS_COOKIE
 from scriptnow.platform.config import Settings
+from scriptnow.platform.context_retrieval import ContextRequest, RetrievalMode
 from scriptnow.platform.creative_operations import (
     CreativeOperationStore,
     coherent_run_status,
 )
 from scriptnow.platform.database import Database
 from scriptnow.platform.models import CreativeStageStatus, ProjectModel, RunStatus
+from scriptnow.platform.retrieval_runtime import (
+    estimate_tokens,
+    retrieval_policy,
+    retrieval_service,
+)
 from scriptnow.platform.run_coordinator import RunCoordinator
 from scriptnow.platform.run_events import PersistentRunEventLog, RunEventType
 from scriptnow.platform.translation import FaithfulTranslationService
+from scriptnow.script.context import ScriptSceneContextAdapter
 from scriptnow.script.contracts import ScriptBlock
 from scriptnow.script.delivery import ScriptDeliveryError, ScriptExportService
 from scriptnow.script.domain import (
@@ -138,6 +145,59 @@ def create_script_router(
     operations = CreativeOperationStore(database)
     run_events = PersistentRunEventLog(database)
 
+    async def build_scene_context(
+        *,
+        tenant_id: str,
+        project: ProjectModel,
+        scene_id: str,
+        feedback: str | None,
+    ):
+        direction = dict(project.direction or {})
+        source_project_id = str(direction.get("source_project_id") or "")
+        retrieval_project_ids = (
+            (source_project_id,) if source_project_id else ()
+        )
+        required_dimensions = ["scene_contract", "continuity", "blueprint"]
+        coverage_requirements = {
+            "scene_contract": 1.0,
+            "continuity": 1.0,
+            "blueprint": 1.0,
+        }
+        if retrieval_project_ids:
+            required_dimensions.append("source_fidelity")
+            coverage_requirements["source_fidelity"] = 0.5
+        return await retrieval_service(database, settings).build(
+            request=ContextRequest(
+                tenant_id=tenant_id,
+                project_id=project.id,
+                retrieval_project_ids=retrieval_project_ids,
+                domain="script",
+                stage="scene_writing",
+                operation="generate_scene_candidate",
+                unit_ref=scene_id,
+                user_intent=feedback,
+                required_dimensions=tuple(required_dimensions),
+                risk_level="high",
+                policy_ref="settings:script_scene_context",
+            ),
+            policy=retrieval_policy(
+                settings,
+                allowed_sources=(
+                    "script_story_map",
+                    "script_blueprint",
+                    "script_revision",
+                    "workspace_source",
+                    "narrative_graph_source",
+                ),
+                coverage_requirements=coverage_requirements,
+                modes=(RetrievalMode.LEXICAL, RetrievalMode.NARRATIVE_GRAPH),
+            ),
+            adapter=ScriptSceneContextAdapter(
+                database,
+                token_counter=estimate_tokens,
+            ),
+        )
+
     async def background_generate_scene(
         *,
         tenant_id: str,
@@ -158,10 +218,11 @@ def create_script_router(
                 target=RunStatus.RUNNING,
             )
             project = await _script_project(database, tenant_id, project_id)
-            context_pack = await service.context_pack(
+            persisted_context = await build_scene_context(
                 tenant_id=tenant_id,
-                project_id=project_id,
+                project=project,
                 scene_id=scene_id,
+                feedback=feedback,
             )
             async with database.session() as session:
                 story_map = (
@@ -186,7 +247,7 @@ def create_script_router(
                 tenant_id=tenant_id,
                 project=project,
                 scene=scene,
-                context=context_pack,
+                context=persisted_context.context_pack.model_dump(mode="json"),
                 feedback=feedback,
                 run_id=run_id,
             )
@@ -208,7 +269,11 @@ def create_script_router(
                 status=str(revision.status),
                 schema_version=1,
                 input_digest=input_digest,
-                dependency_versions={"scene_id": scene_id},
+                dependency_versions={
+                    "scene_id": scene_id,
+                    "retrieval_manifest_id": persisted_context.manifest_id,
+                    "retrieval_manifest_digest": persisted_context.content_digest,
+                },
                 provenance={
                     "source": "agent",
                     "run_id": run_id,
@@ -647,10 +712,11 @@ def create_script_router(
             )
         try:
             project = await _script_project(database, str(context.tenant_id), project_id)
-            context_pack = await service.context_pack(
+            persisted_context = await build_scene_context(
                 tenant_id=str(context.tenant_id),
-                project_id=project_id,
+                project=project,
                 scene_id=scene_id,
+                feedback=body.feedback,
             )
             async with database.session() as session:
                 story_map = (
@@ -675,7 +741,7 @@ def create_script_router(
                 tenant_id=str(context.tenant_id),
                 project=project,
                 scene=scene,
-                context=context_pack,
+                context=persisted_context.context_pack.model_dump(mode="json"),
                 feedback=body.feedback,
             )
             revision = await service.propose_document(

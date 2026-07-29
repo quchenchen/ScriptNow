@@ -1,6 +1,7 @@
 import pytest
 from sqlalchemy import select
 
+from scriptnow.platform.context_retrieval import ContextRequest, RetrievalMode, RetrievalPolicy
 from scriptnow.platform.database import Database
 from scriptnow.platform.models import (
     ProjectEventModel,
@@ -8,6 +9,7 @@ from scriptnow.platform.models import (
     ProjectModel,
     TenantModel,
 )
+from scriptnow.script.context import ScriptSceneContextAdapter
 from scriptnow.script.contracts import ScriptBlock
 from scriptnow.script.domain import (
     BlueprintAnchorDraft,
@@ -359,6 +361,9 @@ async def test_writer_candidate_adoption_stale_base_format_and_context_pack(scri
         "character:lin",
         "foreshadow:stamp",
     }
+    assert pack["scene"]["id"] == "scene-1"
+    assert pack["scene_ordinal"] == 1
+    assert pack["story_map_version"] == 2
     assert all(item["id"] != "event:blackout" for item in pack["anchors"])
     assert pack["adopted_scenes"][0]["revision_id"] == second.id
     async with service.database.session() as session:
@@ -388,6 +393,69 @@ async def test_writer_candidate_adoption_stale_base_format_and_context_pack(scri
         assert adopted.payload["candidate"]["title"] == "Direction 1"
     with pytest.raises(ScriptDomainError, match="tenant scope"):
         await service.context_pack(tenant_id=other.id, project_id=project.id, scene_id="scene-1")
+
+
+@pytest.mark.asyncio
+async def test_script_context_adapter_keeps_scene_contract_and_blueprint_traceable(
+    script_data,
+) -> None:
+    service, database, tenant, _, project = script_data
+    await adopt_core_blueprint(service, tenant, project)
+    structure = await service.propose_structure(
+        tenant_id=tenant.id,
+        project_id=project.id,
+        expected_version=1,
+        episodes=episodes(),
+        idempotency_key="context-structure",
+    )
+    await service.adopt_structure(
+        tenant_id=tenant.id,
+        project_id=project.id,
+        candidate_id=structure.id,
+    )
+    request = ContextRequest(
+        tenant_id=tenant.id,
+        project_id=project.id,
+        domain="script",
+        stage="scene_candidate",
+        operation="script.scene.generate",
+        unit_ref="scene-1",
+        required_dimensions=("scene_contract", "continuity", "blueprint"),
+        risk_level="normal",
+        policy_ref="script-context-v1",
+    )
+    policy = RetrievalPolicy(
+        allowed_sources=("script_story_map", "script_blueprint", "script_revision"),
+        retrieval_modes=(RetrievalMode.CANONICAL,),
+        coverage_requirements={
+            "scene_contract": 1.0,
+            "continuity": 1.0,
+            "blueprint": 1.0,
+        },
+        token_limit=8000,
+        timeout_seconds=10,
+        max_iterations=1,
+        conflict_policy="surface",
+        external_research_enabled=False,
+    )
+
+    seed = await ScriptSceneContextAdapter(
+        database,
+        token_counter=lambda value: len(value.split()),
+    ).canonical_context(request, policy)
+
+    assert seed.coverage == {
+        "scene_contract": 1.0,
+        "blueprint": 1.0,
+        "continuity": 1.0,
+    }
+    assert seed.domain_state["scene_ordinal"] == 1
+    assert seed.canonical_facts[0]["kind"] == "scene_contract"
+    assert seed.canonical_facts[0]["scene"]["id"] == "scene-1"
+    assert {item.source_type for item in seed.evidence} == {
+        "script_story_map",
+        "script_blueprint",
+    }
 
 
 def test_story_core_schema_requires_five_angles_and_blueprint_anchor_ids() -> None:

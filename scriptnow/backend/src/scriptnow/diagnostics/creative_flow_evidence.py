@@ -27,6 +27,7 @@ from scriptnow.platform.creative_flow_audit import (
     ObservedStage,
 )
 from scriptnow.platform.models import (
+    CreativeDeliveryArtifactModel,
     ProjectMedium,
     ProjectModel,
     ProjectRunModel,
@@ -268,6 +269,17 @@ async def _novel_evidence(
             if blueprints
             else []
         ),
+        *(
+            [
+                _adoption_decision(
+                    stage_id="story_map",
+                    artifact_id=story_map.id,
+                    adopted_count=1,
+                )
+            ]
+            if story_map is not None
+            else []
+        ),
         *[
             _adoption_decision(
                 stage_id="chapter_write",
@@ -323,6 +335,16 @@ async def _script_evidence(
             select(ScriptExportManifestModel).where(
                 ScriptExportManifestModel.project_id == project_id,
                 ScriptExportManifestModel.status == "succeeded",
+            )
+        )
+    ).all()
+    quality_reports = (
+        await session.scalars(
+            select(CreativeDeliveryArtifactModel).where(
+                CreativeDeliveryArtifactModel.project_id == project_id,
+                CreativeDeliveryArtifactModel.domain == "script",
+                CreativeDeliveryArtifactModel.stage == "quality_review",
+                CreativeDeliveryArtifactModel.status == "succeeded",
             )
         )
     ).all()
@@ -382,7 +404,19 @@ async def _script_evidence(
                 for item in revisions
             ],
         ),
-        _stage("quality_review", []),
+        _stage(
+            "quality_review",
+            [
+                _artifact(
+                    artifact_id=item.id,
+                    kind="script_quality_report",
+                    revision=f"v{item.version}",
+                    readable=bool(item.payload.get("diagnosis")),
+                    next_stage_consumable=bool(item.payload.get("suggestion")),
+                )
+                for item in quality_reports
+            ],
+        ),
         _stage(
             "packaging",
             [
@@ -431,6 +465,17 @@ async def _script_evidence(
                 )
             ]
             if blueprints
+            else []
+        ),
+        *(
+            [
+                _adoption_decision(
+                    stage_id="story_map",
+                    artifact_id=story_map.id,
+                    adopted_count=1,
+                )
+            ]
+            if story_map is not None
             else []
         ),
         *[
@@ -486,6 +531,16 @@ async def _translation_evidence(
             )
         ).all()
     }
+    exports = (
+        await session.scalars(
+            select(CreativeDeliveryArtifactModel).where(
+                CreativeDeliveryArtifactModel.project_id == project.id,
+                CreativeDeliveryArtifactModel.domain == "translation",
+                CreativeDeliveryArtifactModel.stage == "export",
+                CreativeDeliveryArtifactModel.status == "succeeded",
+            )
+        )
+    ).all()
     stages = [
         _stage(
             "source_import",
@@ -545,7 +600,19 @@ async def _translation_evidence(
                 for item in snapshots
             ],
         ),
-        _stage("export", []),
+        _stage(
+            "export",
+            [
+                _artifact(
+                    artifact_id=item.id,
+                    kind="translation_export_manifest",
+                    revision=f"v{item.version}",
+                    readable=bool(item.artifact and item.artifact_sha256),
+                    next_stage_consumable=bool(item.artifact and item.byte_size),
+                )
+                for item in exports
+            ],
+        ),
     ]
     decisions = [
         *[
@@ -597,6 +664,17 @@ async def _recreation_evidence(
             )
         )
     ).all()
+    delivery_artifacts = (
+        await session.scalars(
+            select(CreativeDeliveryArtifactModel).where(
+                CreativeDeliveryArtifactModel.project_id == project.id,
+                CreativeDeliveryArtifactModel.domain == "recreation",
+                CreativeDeliveryArtifactModel.status == "succeeded",
+            )
+        )
+    ).all()
+    packages = [item for item in delivery_artifacts if item.stage == "packaging"]
+    exports = [item for item in delivery_artifacts if item.stage == "export"]
     stage_kinds = {
         "source_analysis": (
             RecreationArtifactKind.SOURCE_STORY_MODEL,
@@ -672,8 +750,32 @@ async def _recreation_evidence(
                     if item.review_report
                 ],
             ),
-            _stage("packaging", []),
-            _stage("export", []),
+            _stage(
+                "packaging",
+                [
+                    _artifact(
+                        artifact_id=item.id,
+                        kind="recreation_package",
+                        revision=f"v{item.version}",
+                        readable=bool(item.payload.get("section_count")),
+                        next_stage_consumable=bool(item.payload.get("sections")),
+                    )
+                    for item in packages
+                ],
+            ),
+            _stage(
+                "export",
+                [
+                    _artifact(
+                        artifact_id=item.id,
+                        kind="recreation_export_manifest",
+                        revision=f"v{item.version}",
+                        readable=bool(item.artifact and item.artifact_sha256),
+                        next_stage_consumable=bool(item.artifact and item.byte_size),
+                    )
+                    for item in exports
+                ],
+            ),
         ]
     )
     decisions.extend(
@@ -709,10 +811,13 @@ async def collect_persisted_evidence(
         and project.workflow_kind != ProjectWorkflow.CROSS_CULTURAL_RECREATION
     ):
         raise ValueError("project workflow does not match the recreation scenario")
-    latest_run = (
+    latest_successful_run = (
         await session.scalars(
             select(ProjectRunModel)
-            .where(ProjectRunModel.project_id == project_id)
+            .where(
+                ProjectRunModel.project_id == project_id,
+                ProjectRunModel.status == RunStatus.SUCCEEDED,
+            )
             .order_by(ProjectRunModel.updated_at.desc())
         )
     ).first()
@@ -734,16 +839,16 @@ async def collect_persisted_evidence(
     all_complete = all(item.status == "succeeded" for item in ordered_stages)
     operation_status = (
         "succeeded"
-        if latest_run is not None
-        and latest_run.status == RunStatus.SUCCEEDED
-        and all_complete
+        if latest_successful_run is not None and all_complete
         else "partial"
     )
     return FlowObservation(
         schema_version="creative-flow-observation/v1",
         scenario_id=scenario.id,
         operation_id=(
-            latest_run.id if latest_run is not None else f"untracked-project:{project.id}"
+            latest_successful_run.id
+            if latest_successful_run is not None
+            else f"untracked-project:{project.id}"
         ),
         status=operation_status,
         stages=ordered_stages,

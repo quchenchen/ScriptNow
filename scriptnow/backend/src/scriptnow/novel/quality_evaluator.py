@@ -6,6 +6,7 @@ from json_repair import loads as repair_json
 from pydantic import ValidationError
 from sqlalchemy import select
 
+from scriptnow.novel.context import NovelChapterContextAdapter
 from scriptnow.novel.continuity import latest_effective_revisions
 from scriptnow.novel.domain import (
     NovelBlueprintAnchorModel,
@@ -24,12 +25,18 @@ from scriptnow.novel.quality import (
 )
 from scriptnow.platform.agent_runtime import AgentRuntime, AgentRuntimeError
 from scriptnow.platform.config import Settings
+from scriptnow.platform.context_retrieval import ContextRequest, RetrievalMode
 from scriptnow.platform.database import Database
 from scriptnow.platform.models import (
     DistillationDecision,
     ProjectModel,
     RunStatus,
     SourceProfileModel,
+)
+from scriptnow.platform.retrieval_runtime import (
+    estimate_tokens,
+    retrieval_policy,
+    retrieval_service,
 )
 from scriptnow.platform.run_coordinator import RunCoordinator
 
@@ -58,6 +65,62 @@ class NovelQualityEvaluator:
             project=project,
             chapter_id=chapter_id,
             revision_id=revision_id,
+        )
+        direction = dict(project.direction or {})
+        source_project_id = str(direction.get("source_project_id") or "").strip()
+        required_dimensions = [
+            "chapter_contract",
+            "blueprint",
+            "continuity",
+            "character_state",
+        ]
+        coverage_requirements = {
+            "chapter_contract": 1.0,
+            "blueprint": 0.5,
+            "continuity": 0.5,
+            "character_state": 0.5,
+        }
+        if source_project_id:
+            required_dimensions.append("source_fidelity")
+            coverage_requirements["source_fidelity"] = 0.5
+        persisted_context = await retrieval_service(
+            self.database, self.settings
+        ).build(
+            request=ContextRequest(
+                tenant_id=tenant_id,
+                project_id=project.id,
+                retrieval_project_ids=(
+                    (source_project_id,) if source_project_id else ()
+                ),
+                domain="novel",
+                stage="chapter_review",
+                operation="novel.chapter.review",
+                unit_ref=chapter_id,
+                user_intent="Review the immutable candidate revision.",
+                required_dimensions=tuple(required_dimensions),
+                risk_level="high",
+                policy_ref="novel.chapter-review.v1",
+            ),
+            policy=retrieval_policy(
+                self.settings,
+                allowed_sources=(
+                    "novel_story_map",
+                    "novel_blueprint",
+                    "novel_revision",
+                    "workspace_source",
+                    "narrative_graph_source",
+                ),
+                coverage_requirements=coverage_requirements,
+                modes=(RetrievalMode.LEXICAL, RetrievalMode.NARRATIVE_GRAPH),
+            ),
+            adapter=NovelChapterContextAdapter(
+                self.database, token_counter=estimate_tokens
+            ),
+        )
+        context["retrieval_manifest_id"] = persisted_context.manifest_id
+        context["retrieval_manifest_digest"] = persisted_context.content_digest
+        context["retrieval_context"] = persisted_context.context_pack.model_dump(
+            mode="json"
         )
         status = await self.runtime.status(tenant_id=tenant_id, project_id=project.id)
         reviewer = dict(dict(status["roles"])["reviewer"])

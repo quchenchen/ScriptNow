@@ -17,6 +17,7 @@ from json_repair import loads as repair_json
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from sqlalchemy import select
 
+from scriptnow.novel.context import NovelChapterContextAdapter
 from scriptnow.novel.continuity import latest_effective_revisions
 from scriptnow.novel.contracts import NovelBlock
 from scriptnow.novel.domain import (
@@ -35,8 +36,14 @@ from scriptnow.novel.writer_context import (
 from scriptnow.platform.agent_runtime import AgentRuntime, AgentRuntimeError, AgentRuntimeResult
 from scriptnow.platform.billing import BillingService
 from scriptnow.platform.config import Settings
+from scriptnow.platform.context_retrieval import ContextRequest, RetrievalMode
 from scriptnow.platform.database import Database
 from scriptnow.platform.models import ProjectModel, RunStatus, TenantModel
+from scriptnow.platform.retrieval_runtime import (
+    estimate_tokens,
+    retrieval_policy,
+    retrieval_service,
+)
 from scriptnow.platform.run_coordinator import RunCoordinator
 from scriptnow.platform.run_events import PersistentRunEventLog, RunEventType
 
@@ -102,6 +109,62 @@ class NovelChapterGenerator:
             chapter_id=chapter_id,
             source_revision_id=source_revision_id,
         )
+        direction = dict(project.direction or {})
+        source_project_id = str(direction.get("source_project_id") or "").strip()
+        required_dimensions = [
+            "chapter_contract",
+            "blueprint",
+            "continuity",
+            "character_state",
+        ]
+        coverage_requirements = {
+            "chapter_contract": 1.0,
+            "blueprint": 0.5,
+            "continuity": 0.5,
+            "character_state": 0.5,
+        }
+        if source_project_id:
+            required_dimensions.append("source_fidelity")
+            coverage_requirements["source_fidelity"] = 0.5
+        persisted_context = await retrieval_service(
+            self.database, self.settings
+        ).build(
+            request=ContextRequest(
+                tenant_id=tenant_id,
+                project_id=project.id,
+                retrieval_project_ids=(
+                    (source_project_id,) if source_project_id else ()
+                ),
+                domain="novel",
+                stage="chapter_writing",
+                operation="novel.chapter.generate",
+                unit_ref=chapter_id,
+                user_intent=feedback,
+                required_dimensions=tuple(required_dimensions),
+                risk_level="high",
+                policy_ref="novel.chapter.v1",
+            ),
+            policy=retrieval_policy(
+                self.settings,
+                allowed_sources=(
+                    "novel_story_map",
+                    "novel_blueprint",
+                    "novel_revision",
+                    "workspace_source",
+                    "narrative_graph_source",
+                ),
+                coverage_requirements=coverage_requirements,
+                modes=(RetrievalMode.LEXICAL, RetrievalMode.NARRATIVE_GRAPH),
+            ),
+            adapter=NovelChapterContextAdapter(
+                self.database, token_counter=estimate_tokens
+            ),
+        )
+        context["retrieval_manifest_id"] = persisted_context.manifest_id
+        context["retrieval_manifest_digest"] = persisted_context.content_digest
+        context["retrieval_context"] = persisted_context.context_pack.model_dump(
+            mode="json"
+        )
         status = await self.runtime.status(tenant_id=tenant_id, project_id=project.id)
         writer = dict(dict(status["roles"])["writer"])
         if self.settings.environment != "production" and writer.get("reason") == "mock_only":
@@ -159,6 +222,7 @@ class NovelChapterGenerator:
                     "story_units": 1,
                     "adopted_units": len(list(context.get("prior_chapter_revisions") or [])),
                     "open_findings": 0,
+                    "retrieval_manifest_id": persisted_context.manifest_id,
                 },
                 "runtime": "agentscope",
             },
@@ -544,6 +608,8 @@ class NovelChapterGenerator:
             f"{context.get('narrative_state', '')[:2000]}\n"
             "\nCOLD CONTEXT (reference only):\n"
             f"{context.get('character_graph', '')[:1000]}\n"
+            "\nTRACEABLE RETRIEVAL CONTEXT (supporting evidence; adopted facts above win):\n"
+            f"{json.dumps(context.get('retrieval_context', {}), ensure_ascii=False)[:6000]}\n"
             "\nAfter reviewing the context above, write the chapter following your loaded skills "
             "(novel-write, novel-continuity-check, novel-pacing-check, novel-emotional-depth). "
             "Return JSON only with the blocks schema.\n"

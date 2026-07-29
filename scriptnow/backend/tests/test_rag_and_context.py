@@ -1,5 +1,11 @@
 import pytest
 
+from scriptnow.platform.context_retrieval import (
+    ContextRequest,
+    RetrievalMode,
+    RetrievalPolicy,
+    RetrievalQuery,
+)
 from scriptnow.platform.context_summary import ContextSummary
 from scriptnow.platform.database import Database
 from scriptnow.platform.models import (
@@ -10,6 +16,7 @@ from scriptnow.platform.models import (
     WorkspaceFileStatus,
 )
 from scriptnow.platform.rag import RagError, RagService
+from scriptnow.platform.retrievers import LexicalRagRetriever
 
 
 @pytest.fixture
@@ -72,6 +79,133 @@ async def test_rag_reindex_search_and_tenant_isolation(rag_data) -> None:
         == 1
     )
     assert await rag.search(tenant_id=tenant.id, project_id=project.id, query="witness") == []
+
+
+@pytest.mark.asyncio
+async def test_lexical_retriever_preserves_source_version_and_explicit_dimensions(
+    rag_data,
+) -> None:
+    rag, tenant, _, project, source = rag_data
+    await rag.index_text(
+        tenant_id=tenant.id,
+        project_id=project.id,
+        source_file_id=source.id,
+        parsed_text="Harbor fog hides the witness.",
+    )
+    retriever = LexicalRagRetriever(
+        rag,
+        source_type="uploaded_source",
+        result_limit=3,
+        token_counter=lambda text: len(text.split()),
+    )
+    request = ContextRequest(
+        tenant_id=tenant.id,
+        project_id=project.id,
+        domain="novel",
+        stage="chapter_candidate",
+        operation="novel.chapter_candidate.generate",
+        required_dimensions=("character", "continuity"),
+        risk_level="normal",
+        policy_ref="test-policy",
+    )
+    policy = RetrievalPolicy(
+        allowed_sources=("uploaded_source",),
+        retrieval_modes=(RetrievalMode.LEXICAL,),
+        coverage_requirements={"continuity": 1.0},
+        token_limit=500,
+        timeout_seconds=5,
+        max_iterations=1,
+        conflict_policy="surface",
+        external_research_enabled=False,
+    )
+    batch = await retriever.retrieve(
+        request,
+        policy,
+        RetrievalQuery(
+            query="harbor witness",
+            iteration=1,
+            mode=RetrievalMode.LEXICAL,
+            purpose="retrieve continuity evidence",
+            dimensions=("continuity",),
+        ),
+    )
+
+    assert len(batch.evidence) == 1
+    assert batch.evidence[0].dimensions == ("continuity",)
+    assert batch.evidence[0].source_version == f"sha256:{source.sha256}"
+    assert batch.evidence[0].content_digest
+    assert batch.evidence[0].excerpt == "Harbor fog hides the witness."
+
+
+@pytest.mark.asyncio
+async def test_lexical_retriever_searches_explicit_source_project(rag_data) -> None:
+    rag, tenant, _, project, _ = rag_data
+    async with rag.database.session() as session:
+        source_project = ProjectModel(
+            tenant_id=tenant.id,
+            name="Source manuscript",
+            medium=ProjectMedium.NOVEL,
+        )
+        session.add(source_project)
+        await session.flush()
+        source_file = WorkspaceFileModel(
+            tenant_id=tenant.id,
+            project_id=source_project.id,
+            original_name="source-manuscript.txt",
+            storage_name="source-manuscript.txt",
+            media_type="text/plain",
+            byte_size=40,
+            sha256="1" * 64,
+            status=WorkspaceFileStatus.READY,
+        )
+        session.add(source_file)
+        await session.flush()
+    await rag.index_text(
+        tenant_id=tenant.id,
+        project_id=source_project.id,
+        source_file_id=source_file.id,
+        parsed_text="The silver witness remembers the sealed harbor.",
+    )
+    retriever = LexicalRagRetriever(
+        rag,
+        source_type="uploaded_source",
+        result_limit=3,
+        token_counter=lambda text: len(text.split()),
+    )
+    request = ContextRequest(
+        tenant_id=tenant.id,
+        project_id=project.id,
+        retrieval_project_ids=(source_project.id,),
+        domain="translation",
+        stage="chapter_translation",
+        operation="faithful_translate",
+        required_dimensions=("source_fidelity",),
+        risk_level="high",
+        policy_ref="test-source-project-policy",
+    )
+    batch = await retriever.retrieve(
+        request,
+        RetrievalPolicy(
+            allowed_sources=("uploaded_source",),
+            retrieval_modes=(RetrievalMode.LEXICAL,),
+            coverage_requirements={"source_fidelity": 0.5},
+            token_limit=500,
+            timeout_seconds=5,
+            max_iterations=1,
+            conflict_policy="surface",
+            external_research_enabled=False,
+        ),
+        RetrievalQuery(
+            query="silver witness",
+            iteration=1,
+            mode=RetrievalMode.LEXICAL,
+            purpose="retrieve source evidence",
+            dimensions=("source_fidelity",),
+        ),
+    )
+
+    assert len(batch.evidence) == 1
+    assert batch.evidence[0].source_id == source_file.id
 
 
 def test_context_compression_contract_requires_three_preserved_categories() -> None:

@@ -44,10 +44,14 @@ class SemanticUnit:
 
 @dataclass(frozen=True, slots=True)
 class NarrativeHit:
+    index_id: str
     unit_id: str
+    source_file_id: str
+    source_version: str
     chapter_title: str
     ordinal: int
     content: str
+    content_hash: str
     score: float
     reasons: tuple[str, ...]
 
@@ -477,10 +481,14 @@ class NarrativeGraphService:
         ordered = sorted(scores, key=scores.get, reverse=True)[:limit]
         return [
             NarrativeHit(
+                index_id=index.id,
                 unit_id=unit_id,
+                source_file_id=by_id[unit_id].source_file_id,
+                source_version=f"sha256:{index.source_hash}",
                 chapter_title=by_id[unit_id].chapter_title,
                 ordinal=by_id[unit_id].ordinal,
                 content=by_id[unit_id].content,
+                content_hash=by_id[unit_id].content_hash,
                 score=scores[unit_id],
                 reasons=tuple(reasons[unit_id]),
             )

@@ -38,6 +38,7 @@ def test_initial_migration_up_and_down(tmp_path: Path) -> None:
         "review_findings",
         "run_stream_events",
         "creative_context_manifests",
+        "creative_retrieval_manifests",
         "creative_resumptions",
     } <= tables
 

@@ -3,6 +3,9 @@ from unittest.mock import AsyncMock
 import pytest
 from sqlalchemy import select
 
+from scriptnow.novel.cross_cultural_recreation.api import (
+    _governance_manifest_requirements,
+)
 from scriptnow.novel.cross_cultural_recreation.domain import (
     ChapterPipelineStatus,
     ChapterRevisionKind,
@@ -447,6 +450,197 @@ def test_production_language_gate_rejects_clear_script_mismatch() -> None:
 
 
 @pytest.mark.asyncio
+async def test_pilot_uses_traceable_context_without_loading_full_source(
+    recreation_data,
+) -> None:
+    database, tenant, project = recreation_data
+    generator = CrossCulturalRecreationGenerator(database, AsyncMock())
+    generator._source_text = AsyncMock(return_value="must not be loaded")  # type: ignore[method-assign]
+    generator._generate = AsyncMock(  # type: ignore[method-assign]
+        return_value={
+            "unit_title": "Pilot",
+            "rationale": "A bounded representative unit for the target audience.",
+            "target_language_draft": "Draft text. " * 40,
+            "change_notes": [{"source_function": "test"}, {"source_function": "test-2"}],
+            "gene_trace": [{"gene": "one"}, {"gene": "two"}],
+            "open_questions": [],
+        }
+    )
+
+    await generator.generate_pilot(
+        tenant_id=tenant.id,
+        project=project,
+        idempotency_key="pilot-context",
+        source_model={},
+        target_contract={},
+        strategy={},
+        feedback=None,
+        context_pack={"evidence": [{"ref_id": "source:pilot"}]},
+        retrieval_manifest_id="manifest-pilot",
+    )
+
+    generator._source_text.assert_not_awaited()
+    call = generator._generate.await_args.kwargs
+    assert "source:pilot" in call["prompt"]
+    assert call["context_snapshot"] == {
+        "retrieval_manifest_id": "manifest-pilot",
+        "task": "cross-cultural-pilot",
+    }
+
+
+@pytest.mark.asyncio
+async def test_source_strategy_and_scale_plan_require_traceable_manifests(
+    recreation_data,
+) -> None:
+    database, tenant, project = recreation_data
+    generator = CrossCulturalRecreationGenerator(database, AsyncMock())
+
+    with pytest.raises(RecreationGenerationError, match="源作品分析缺少"):
+        await generator.analyze_source(
+            tenant_id=tenant.id,
+            project=project,
+            idempotency_key="source-no-manifest",
+            target_contract={},
+        )
+    with pytest.raises(RecreationGenerationError, match="归化策略缺少"):
+        await generator.generate_strategies(
+            tenant_id=tenant.id,
+            project=project,
+            idempotency_key="strategy-no-manifest",
+            source_model={},
+            target_contract={},
+            feedback=None,
+        )
+    with pytest.raises(RecreationGenerationError, match="整书方案缺少"):
+        await generator.generate_scale_plan(
+            tenant_id=tenant.id,
+            project=project,
+            idempotency_key="scale-no-manifest",
+            source_model={},
+            target_contract={},
+            strategy={},
+            pilot={},
+            feedback=None,
+        )
+
+
+@pytest.mark.asyncio
+async def test_governance_artifacts_are_versioned_without_regressing_stage(
+    recreation_data,
+) -> None:
+    database, tenant, project = recreation_data
+    service = CrossCulturalRecreationService(database)
+    recreation = await service.create(
+        tenant_id=tenant.id,
+        project_id=project.id,
+        source_language="zh-CN",
+        target_language="en-US",
+        target_market="North America",
+        target_audience="adult readers",
+        distribution_context="mobile fiction",
+    )
+    strategy = (
+        await service.record_artifacts(
+            recreation_id=recreation.id,
+            kind=RecreationArtifactKind.RECREATION_STRATEGY,
+            payloads=({"title": "adopted"},),
+            idempotency_key="governance-stage",
+        )
+    )[0]
+    await service.adopt(
+        tenant_id=tenant.id,
+        project_id=project.id,
+        artifact_id=strategy.id,
+    )
+    mapping = (
+        await service.record_artifacts(
+            recreation_id=recreation.id,
+            kind=RecreationArtifactKind.CULTURAL_MAPPING_SET,
+            payloads=({"mappings": [{"mapping_key": "family-duty"}]},),
+            idempotency_key="mapping-v1",
+            adopt=True,
+        )
+    )[0]
+
+    assert str(mapping.status) == RecreationArtifactStatus.ADOPTED
+    current = await service.get(tenant_id=tenant.id, project_id=project.id)
+    assert str(current.status) == RecreationStatus.STRATEGY_ADOPTED
+
+
+@pytest.mark.asyncio
+async def test_adopting_governance_candidate_does_not_regress_stage(
+    recreation_data,
+) -> None:
+    database, tenant, project = recreation_data
+    service = CrossCulturalRecreationService(database)
+    recreation = await service.create(
+        tenant_id=tenant.id,
+        project_id=project.id,
+        source_language="zh-CN",
+        target_language="en-US",
+        target_market="North America",
+        target_audience="adult readers",
+        distribution_context="mobile fiction",
+    )
+    strategy = (
+        await service.record_artifacts(
+            recreation_id=recreation.id,
+            kind=RecreationArtifactKind.RECREATION_STRATEGY,
+            payloads=({"title": "adopted"},),
+            idempotency_key="governance-adopt-stage",
+        )
+    )[0]
+    await service.adopt(
+        tenant_id=tenant.id,
+        project_id=project.id,
+        artifact_id=strategy.id,
+    )
+    decision = (
+        await service.record_artifacts(
+            recreation_id=recreation.id,
+            kind=RecreationArtifactKind.PROTECTION_CONFLICT_DECISION,
+            payloads=(
+                {
+                    "decisions": [
+                        {
+                            "protected_element": "ending",
+                            "decision": "preserve",
+                        }
+                    ]
+                },
+            ),
+            idempotency_key="decision-candidate",
+        )
+    )[0]
+
+    await service.adopt(
+        tenant_id=tenant.id,
+        project_id=project.id,
+        artifact_id=decision.id,
+    )
+
+    current = await service.get(tenant_id=tenant.id, project_id=project.id)
+    assert str(current.status) == RecreationStatus.STRATEGY_ADOPTED
+
+
+def test_governance_artifacts_become_explicit_manifest_requirements() -> None:
+    dimensions, coverage = _governance_manifest_requirements(
+        {
+            RecreationArtifactKind.CULTURAL_MAPPING_SET.value: {"mappings": []},
+            RecreationArtifactKind.PROTECTION_CONFLICT_DECISION.value: {
+                "decisions": []
+            },
+        }
+    )
+
+    assert dimensions == ("cultural_mapping", "protection_decisions")
+    assert coverage == {
+        "cultural_mapping": 1.0,
+        "protection_decisions": 1.0,
+    }
+
+
+@pytest.mark.asyncio
 async def test_production_identity_mismatch_is_rewritten_not_relabeled(
     recreation_data,
 ) -> None:
@@ -480,6 +674,8 @@ async def test_production_identity_mismatch_is_rewritten_not_relabeled(
         work_package={"order": "act-2", "title": "Act two"},
         adopted_units=[],
         feedback=None,
+        context_pack={"evidence": [{"ref_id": "source:12"}]},
+        retrieval_manifest_id="manifest-12",
     )
 
     assert result["work_package_key"] == "act-2"
@@ -487,3 +683,30 @@ async def test_production_identity_mismatch_is_rewritten_not_relabeled(
     correction_call = generator._generate.await_args_list[1].kwargs
     assert correction_call["stage"] == "cross_cultural_production_identity_repair"
     assert "Rewrite it as the requested package" in correction_call["prompt"]
+    assert "source:12" in correction_call["prompt"]
+    assert correction_call["context_snapshot"] == {
+        "retrieval_manifest_id": "manifest-12",
+        "work_package_key": "act-2",
+    }
+    generator._source_text.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_production_requires_traceable_retrieval_context(recreation_data) -> None:
+    database, tenant, project = recreation_data
+    generator = CrossCulturalRecreationGenerator(database, AsyncMock())
+
+    with pytest.raises(RecreationGenerationError, match="可追溯检索上下文"):
+        await generator.generate_production_unit(
+            tenant_id=tenant.id,
+            project=project,
+            idempotency_key="missing-context",
+            source_model={},
+            target_contract={"target_language": "en-US"},
+            strategy={},
+            pilot={},
+            scale_plan={"work_packages": [{"order": "act-2"}]},
+            work_package={"order": "act-2", "title": "Act two"},
+            adopted_units=[],
+            feedback=None,
+        )

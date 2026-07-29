@@ -35,6 +35,8 @@ class RecreationArtifactKind(StrEnum):
     SOURCE_STORY_MODEL = "source_story_model"
     TARGET_STORY_CONTRACT = "target_story_contract"
     RECREATION_STRATEGY = "recreation_strategy"
+    CULTURAL_MAPPING_SET = "cultural_mapping_set"
+    PROTECTION_CONFLICT_DECISION = "protection_conflict_decision"
     PILOT = "pilot"
     SCALE_PLAN = "scale_plan"
 

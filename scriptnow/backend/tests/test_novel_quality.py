@@ -322,3 +322,48 @@ async def test_quality_context_uses_latest_effective_human_continuity(quality_da
     assert len(prior) == 1
     assert prior[0]["source"] == "human"
     assert prior[0]["blocks"][0]["text"] == "Human continuity."
+
+
+async def test_quality_review_uses_persisted_retrieval_manifest(quality_data):
+    service, tenant, _, project, revision = quality_data
+    evaluator = NovelQualityEvaluator(
+        service.database,
+        Settings(environment="test"),
+    )
+    captured: dict[str, object] = {}
+
+    class ConnectedRuntime:
+        async def status(self, **kwargs):
+            del kwargs
+            return {"roles": {"reviewer": {"connected": True, "reason": None}}}
+
+        async def generate(self, **kwargs):
+            captured.update(kwargs)
+            return AgentRuntimeResult(
+                text=quality_draft().model_dump_json(),
+                runtime="test",
+                model_key="test-reviewer",
+                input_tokens=1,
+                output_tokens=1,
+                input_price_per_million=Decimal(0),
+                output_price_per_million=Decimal(0),
+                config_fingerprint="test-fingerprint",
+            )
+
+    evaluator.runtime = ConnectedRuntime()  # type: ignore[assignment]
+    await evaluator.evaluate(
+        tenant_id=tenant.id,
+        project=project,
+        chapter_id="chapter-1",
+        revision_id=revision.id,
+        idempotency_key="retrieval-quality",
+    )
+
+    snapshot = captured["context_snapshot"]
+    assert isinstance(snapshot, dict)
+    assert snapshot["retrieval_manifest_id"]
+    assert snapshot["retrieval_manifest_digest"]
+    retrieval_context = snapshot["retrieval_context"]
+    assert isinstance(retrieval_context, dict)
+    assert retrieval_context["task_contract"]["stage"] == "chapter_review"
+    assert "Immutable review context" in str(captured["content"])

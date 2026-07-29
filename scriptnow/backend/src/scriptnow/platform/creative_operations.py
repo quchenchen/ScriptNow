@@ -175,6 +175,7 @@ class CreativeOperationStore:
         idempotency_key: str,
         policy_snapshot: dict[str, object],
         context_manifest_id: str | None = None,
+        retrieval_manifest_id: str | None = None,
     ) -> OperationView:
         async with self.database.session() as session:
             creative_session = await self._owned_session(session, tenant_id, session_id)
@@ -204,16 +205,20 @@ class CreativeOperationStore:
                 ):
                     raise CreativeOperationError("run is outside creative session")
             if context_manifest_id is None:
-                manifest = await self.context_manifests.build(
-                    session,
-                    tenant_id=tenant_id,
-                    project=project,
-                    session_id=session_id,
-                    turn_id=turn_id,
-                    domain=domain,
-                    stage=stage,
-                    policy_snapshot=policy_snapshot,
-                )
+                try:
+                    manifest = await self.context_manifests.build(
+                        session,
+                        tenant_id=tenant_id,
+                        project=project,
+                        session_id=session_id,
+                        turn_id=turn_id,
+                        domain=domain,
+                        stage=stage,
+                        policy_snapshot=policy_snapshot,
+                        retrieval_manifest_id=retrieval_manifest_id,
+                    )
+                except ValueError as error:
+                    raise CreativeOperationError(str(error)) from error
                 context_manifest_id = manifest.id
             else:
                 try:
@@ -231,6 +236,13 @@ class CreativeOperationStore:
                 ):
                     raise CreativeOperationError(
                         "context manifest is outside creative project"
+                    )
+                if (
+                    retrieval_manifest_id is not None
+                    and manifest_view.retrieval_manifest_id != retrieval_manifest_id
+                ):
+                    raise CreativeOperationError(
+                        "context manifest does not reference retrieval manifest"
                     )
             operation = CreativeOperationModel(
                 tenant_id=tenant_id,

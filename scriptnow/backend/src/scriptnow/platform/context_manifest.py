@@ -12,6 +12,7 @@ from scriptnow.platform.models import (
     CreativeContextManifestModel,
     CreativeDecisionRequestModel,
     CreativeOperationModel,
+    CreativeRetrievalManifestModel,
     CreativeTurnModel,
     DecisionRequestStatus,
     ProjectModel,
@@ -39,6 +40,7 @@ class ContextManifestView:
     content_digest: str
     content: dict[str, object]
     source_versions: dict[str, object]
+    retrieval_manifest_id: str | None
 
 
 class ContextManifestStore:
@@ -55,6 +57,7 @@ class ContextManifestStore:
         domain: str,
         stage: str,
         policy_snapshot: dict[str, object],
+        retrieval_manifest_id: str | None = None,
     ) -> CreativeContextManifestModel:
         turn_input: dict[str, object] | None = None
         if turn_id is not None:
@@ -112,6 +115,27 @@ class ContextManifestStore:
             )
         )
 
+        retrieval_reference: dict[str, object] | None = None
+        if retrieval_manifest_id is not None:
+            retrieval_manifest = await session.get(
+                CreativeRetrievalManifestModel,
+                retrieval_manifest_id,
+            )
+            if (
+                retrieval_manifest is None
+                or retrieval_manifest.tenant_id != tenant_id
+                or retrieval_manifest.project_id != project.id
+            ):
+                raise ValueError("retrieval manifest is outside creative project")
+            if retrieval_manifest.domain != domain or retrieval_manifest.stage != stage:
+                raise ValueError("retrieval manifest does not match operation scope")
+            if content_digest(retrieval_manifest.content) != retrieval_manifest.content_digest:
+                raise ValueError("retrieval manifest digest does not match immutable content")
+            retrieval_reference = {
+                "id": retrieval_manifest.id,
+                "content_digest": retrieval_manifest.content_digest,
+            }
+
         source_versions: dict[str, object] = {
             "project": content_digest(
                 {
@@ -130,6 +154,8 @@ class ContextManifestStore:
                 for item in latest_artifacts.values()
             },
         }
+        if retrieval_reference is not None:
+            source_versions["retrieval_manifest"] = retrieval_reference["content_digest"]
         content: dict[str, object] = {
             "schema_version": CONTEXT_MANIFEST_SCHEMA_VERSION,
             "project": {
@@ -146,6 +172,7 @@ class ContextManifestStore:
                 "policy": policy_snapshot,
             },
             "turn_input": turn_input,
+            "retrieval_manifest": retrieval_reference,
             "adopted_artifacts": [
                 {
                     "domain": item.domain,
@@ -185,6 +212,7 @@ class ContextManifestStore:
             project_id=project.id,
             session_id=session_id,
             turn_id=turn_id,
+            retrieval_manifest_id=retrieval_manifest_id,
             domain=domain,
             stage=stage,
             schema_version=CONTEXT_MANIFEST_SCHEMA_VERSION,
@@ -213,4 +241,5 @@ class ContextManifestStore:
             content_digest=manifest.content_digest,
             content=manifest.content,
             source_versions=manifest.source_versions,
+            retrieval_manifest_id=manifest.retrieval_manifest_id,
         )

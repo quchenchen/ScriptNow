@@ -42,6 +42,8 @@ class FaithfulTranslationService:
         units: tuple[TranslationUnit, ...],
         idempotency_key: str,
         glossary_block: str = "",
+        context_pack: dict[str, object] | None = None,
+        retrieval_manifest_id: str | None = None,
         run_id: str | None = None,
     ) -> tuple[TranslationUnit, ...]:
         target_language = target_language.strip()
@@ -114,6 +116,7 @@ class FaithfulTranslationService:
                         target_language=target_language,
                         unit=unit,
                         glossary_block=glossary_block,
+                        context_pack=context_pack,
                     ),
                     context_snapshot={
                         "project_id": project_id,
@@ -121,6 +124,7 @@ class FaithfulTranslationService:
                         "source_language": source_language,
                         "target_language": target_language,
                         "unit_index": index,
+                        "retrieval_manifest_id": retrieval_manifest_id,
                     },
                 )
                 translated.append(self._parse(result.text, original=unit))
@@ -164,16 +168,24 @@ class FaithfulTranslationService:
     def _prompt(
         *, source_language: str, target_language: str, unit: TranslationUnit,
         glossary_block: str = "",
+        context_pack: dict[str, object] | None = None,
     ) -> str:
         payload = {
             "titles": list(unit.titles.values()),
             "blocks": [str(block.get("text", "")) for block in unit.blocks],
         }
         glossary_section = f"\n{glossary_block}\n" if glossary_block else ""
+        context_section = (
+            "\nTRACEABLE CONTEXT (supporting evidence only; SOURCE remains authoritative):\n"
+            f"{json.dumps(context_pack, ensure_ascii=False)}\n"
+            if context_pack
+            else ""
+        )
         return (
             "You are performing faithful literary translation for an export copy.\n"
             f"Translate from {source_language or 'the source language'} into {target_language}.\n"
             f"{glossary_section}"
+            f"{context_section}"
             "Preserve meaning, story facts, names, worldview, plot, tone, point of view, tense, "
             "paragraph order and block roles. Use an established target-language form for a proper "
             "name only when one exists. Do not localize culture, customs, setting, food, clothing, "

@@ -508,6 +508,49 @@ class WorkPackageModel(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
+class CreativeDeliveryArtifactModel(Base):
+    """Durable envelope for a domain-owned review, package, or export result."""
+
+    __tablename__ = "creative_delivery_artifacts"
+    __table_args__ = (
+        UniqueConstraint(
+            "project_id",
+            "domain",
+            "stage",
+            "idempotency_key",
+            name="uq_creative_delivery_artifact_request",
+        ),
+        Index(
+            "ix_creative_delivery_artifact_lookup",
+            "tenant_id",
+            "project_id",
+            "domain",
+            "stage",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="RESTRICT"), nullable=False
+    )
+    project_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    domain: Mapped[str] = mapped_column(String(32), nullable=False)
+    stage: Mapped[str] = mapped_column(String(32), nullable=False)
+    kind: Mapped[str] = mapped_column(String(80), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(160), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    payload: Mapped[dict[str, object]] = mapped_column(JSON, default=dict, nullable=False)
+    artifact: Mapped[bytes | None] = mapped_column(LargeBinary)
+    artifact_sha256: Mapped[str | None] = mapped_column(String(64))
+    byte_size: Mapped[int | None] = mapped_column(Integer)
+    error: Mapped[str | None] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
 class CoverArtifactModel(Base):
     __tablename__ = "cover_artifacts"
     __table_args__ = (Index("ix_cover_artifacts_tenant_project", "tenant_id", "project_id"),)
@@ -661,8 +704,48 @@ class CreativeContextManifestModel(Base):
     turn_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("creative_turns.id", ondelete="SET NULL")
     )
+    retrieval_manifest_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("creative_retrieval_manifests.id", ondelete="RESTRICT"),
+    )
     domain: Mapped[str] = mapped_column(String(40), nullable=False)
     stage: Mapped[str] = mapped_column(String(120), nullable=False)
+    schema_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    content_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    content: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
+    source_versions: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class CreativeRetrievalManifestModel(Base):
+    """Immutable, content-addressed record of evidence retrieval and coverage."""
+
+    __tablename__ = "creative_retrieval_manifests"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "project_id",
+            "content_digest",
+            name="uq_creative_retrieval_manifest_digest",
+        ),
+        Index(
+            "ix_creative_retrieval_manifest_project_created",
+            "tenant_id",
+            "project_id",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="RESTRICT"), nullable=False
+    )
+    project_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    domain: Mapped[str] = mapped_column(String(40), nullable=False)
+    stage: Mapped[str] = mapped_column(String(120), nullable=False)
+    operation: Mapped[str] = mapped_column(String(120), nullable=False)
     schema_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     content_digest: Mapped[str] = mapped_column(String(64), nullable=False)
     content: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)

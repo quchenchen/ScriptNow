@@ -1,5 +1,12 @@
 import pytest
 
+from scriptnow.platform.context_retrieval import (
+    ContextRequest,
+    RetrievalManifestPayload,
+    RetrievalMode,
+    RetrievalPolicy,
+    RetrievalStopReason,
+)
 from scriptnow.platform.creative_operations import (
     CreativeOperationError,
     CreativeOperationStore,
@@ -19,6 +26,7 @@ from scriptnow.platform.models import (
     ProjectModel,
     TenantModel,
 )
+from scriptnow.platform.retrieval_manifest import RetrievalManifestStore
 
 
 @pytest.mark.parametrize(
@@ -266,6 +274,93 @@ async def test_context_manifest_is_content_addressed_and_detects_tampering(
                 tenant_id=tenant.id,
                 manifest_id=first_row.context_manifest_id,
             )
+
+
+@pytest.mark.asyncio
+async def test_operation_context_references_matching_retrieval_manifest(
+    operation_data: tuple[CreativeOperationStore, Database, TenantModel, ProjectModel],
+) -> None:
+    store, database, tenant, project = operation_data
+    session_id = await store.open_session(
+        tenant_id=tenant.id,
+        project_id=project.id,
+        active_domain="novel",
+    )
+    payload = RetrievalManifestPayload(
+        request=ContextRequest(
+            tenant_id=tenant.id,
+            project_id=project.id,
+            domain="novel",
+            stage="chapter_candidate",
+            operation="novel.chapter.generate",
+            unit_ref="chapter-1",
+            required_dimensions=("continuity",),
+            risk_level="normal",
+            policy_ref="project-policy-v1",
+        ),
+        policy=RetrievalPolicy(
+            allowed_sources=("project_facts",),
+            retrieval_modes=(RetrievalMode.CANONICAL,),
+            coverage_requirements={"continuity": 1.0},
+            token_limit=4000,
+            timeout_seconds=10,
+            max_iterations=1,
+            conflict_policy="surface",
+            external_research_enabled=False,
+        ),
+        coverage={"continuity": 1.0},
+        input_tokens=0,
+        output_tokens=0,
+        latency_ms=2,
+        stop_reason=RetrievalStopReason.COVERAGE_MET,
+    )
+    async with database.session() as db:
+        retrieval_manifest = await RetrievalManifestStore().create(db, payload=payload)
+        retrieval_manifest_id = retrieval_manifest.id
+
+    operation = await store.enqueue_operation(
+        tenant_id=tenant.id,
+        session_id=session_id,
+        turn_id=None,
+        run_id=None,
+        command="novel.chapter.generate",
+        domain="novel",
+        stage="chapter_candidate",
+        idempotency_key="with-retrieval-manifest",
+        policy_snapshot={"chapter_id": "chapter-1"},
+        retrieval_manifest_id=retrieval_manifest_id,
+    )
+    async with database.session() as db:
+        operation_row = await db.get(CreativeOperationModel, operation.id)
+        assert operation_row is not None
+        context = await store.context_manifests.load(
+            db,
+            tenant_id=tenant.id,
+            manifest_id=operation_row.context_manifest_id,
+        )
+        assert context.retrieval_manifest_id == retrieval_manifest_id
+        assert context.content["retrieval_manifest"]["id"] == retrieval_manifest_id
+        assert (
+            context.source_versions["retrieval_manifest"]
+            == context.content["retrieval_manifest"]["content_digest"]
+        )
+
+    with pytest.raises(
+        CreativeOperationError,
+        match="retrieval manifest does not match operation scope",
+    ):
+        await store.enqueue_operation(
+            tenant_id=tenant.id,
+            session_id=session_id,
+            turn_id=None,
+            run_id=None,
+            command="novel.blueprint.generate",
+            domain="novel",
+            stage="blueprint",
+            idempotency_key="mismatched-retrieval-manifest",
+            policy_snapshot={},
+            retrieval_manifest_id=retrieval_manifest_id,
+        )
 
 
 @pytest.mark.asyncio

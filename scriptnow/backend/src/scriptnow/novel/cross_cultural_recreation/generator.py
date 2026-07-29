@@ -110,11 +110,12 @@ class CrossCulturalRecreationGenerator:
         project: ProjectModel,
         idempotency_key: str,
         target_contract: dict[str, object],
+        context_pack: dict[str, object] | None = None,
+        retrieval_manifest_id: str | None = None,
         run_id: str | None = None,
     ) -> dict[str, object]:
-        source = await self._source_text(tenant_id=tenant_id, project_id=project.id)
-        if not source:
-            raise RecreationGenerationError("尚未形成可分析的源作品文本，请先完成素材上传与索引")
+        if not context_pack or not retrieval_manifest_id:
+            raise RecreationGenerationError("源作品分析缺少可追溯的分层检索上下文，请重新分析")
         prompt = (
             "You are the source-story analyst in a cross-cultural story recreation team. "
             "This is NOT translation. Extract the narrative functions that must be preserved "
@@ -124,7 +125,8 @@ class CrossCulturalRecreationGenerator:
             "cultural_gaps item must explain source_element, implied_social_knowledge, "
             "reader_failure_risk, and possible treatment without selecting a final treatment. "
             f"Target hypothesis: {json.dumps(target_contract, ensure_ascii=False)}\n"
-            f"Source evidence:\n{source}"
+            "Layered traceable source evidence:\n"
+            f"{json.dumps(context_pack, ensure_ascii=False)}"
         )
         return await self._generate(
             tenant_id=tenant_id,
@@ -134,6 +136,10 @@ class CrossCulturalRecreationGenerator:
             stage="cross_cultural_source_analysis",
             prompt=prompt,
             payload_type=SourceStoryModelPayload,
+            context_snapshot={
+                "retrieval_manifest_id": retrieval_manifest_id,
+                "task": "cross-cultural-source-analysis",
+            },
             run_id=run_id,
         )
 
@@ -146,8 +152,12 @@ class CrossCulturalRecreationGenerator:
         source_model: dict[str, object],
         target_contract: dict[str, object],
         feedback: str | None,
+        context_pack: dict[str, object] | None = None,
+        retrieval_manifest_id: str | None = None,
         run_id: str | None = None,
     ) -> tuple[dict[str, object], ...]:
+        if not context_pack or not retrieval_manifest_id:
+            raise RecreationGenerationError("归化策略缺少可追溯检索上下文，请重新生成")
         prompt = (
             "You are the lead story architect for cross-cultural recreation. This is NOT "
             "translation and must not preserve sentences. Propose exactly three genuinely "
@@ -159,7 +169,9 @@ class CrossCulturalRecreationGenerator:
             "retained_genes, risks, pilot_unit. Do not silently change protected elements.\n"
             f"Source story model: {json.dumps(source_model, ensure_ascii=False)}\n"
             f"Target story contract: {json.dumps(target_contract, ensure_ascii=False)}\n"
-            f"Author feedback: {feedback or 'none'}"
+            f"Author feedback: {feedback or 'none'}\n"
+            "Traceable evidence and confirmed governance decisions:\n"
+            f"{json.dumps(context_pack, ensure_ascii=False)}"
         )
         payload = await self._generate(
             tenant_id=tenant_id,
@@ -170,6 +182,10 @@ class CrossCulturalRecreationGenerator:
             prompt=prompt,
             payload_type=StrategyPayload,
             structure_error=("创作团队返回的三套策略缺少必要结构，请保留反馈后重新生成"),
+            context_snapshot={
+                "retrieval_manifest_id": retrieval_manifest_id,
+                "task": "cross-cultural-strategy",
+            },
             run_id=run_id,
         )
         return tuple(dict(item) for item in payload["candidates"])
@@ -184,9 +200,14 @@ class CrossCulturalRecreationGenerator:
         target_contract: dict[str, object],
         strategy: dict[str, object],
         feedback: str | None,
+        context_pack: dict[str, object] | None = None,
+        retrieval_manifest_id: str | None = None,
         run_id: str | None = None,
     ) -> dict[str, object]:
-        source = await self._source_text(tenant_id=tenant_id, project_id=project.id)
+        if not context_pack or not retrieval_manifest_id:
+            raise RecreationGenerationError(
+                "代表性试写缺少可追溯检索上下文，请重新生成"
+            )
         prompt = (
             "You are the target-language novelist in a cross-cultural story recreation "
             "team. This is an ORIGINAL RECREATION PILOT, not translation. Write one "
@@ -201,7 +222,8 @@ class CrossCulturalRecreationGenerator:
             f"Target story contract: {json.dumps(target_contract, ensure_ascii=False)}\n"
             f"Adopted strategy: {json.dumps(strategy, ensure_ascii=False)}\n"
             f"Author feedback: {feedback or 'none'}\n"
-            f"Source evidence:\n{source}"
+            "Traceable source evidence and graph paths:\n"
+            f"{json.dumps(context_pack, ensure_ascii=False)}"
         )
         return await self._generate(
             tenant_id=tenant_id,
@@ -211,6 +233,10 @@ class CrossCulturalRecreationGenerator:
             stage="cross_cultural_pilot",
             prompt=prompt,
             payload_type=PilotPayload,
+            context_snapshot={
+                "retrieval_manifest_id": retrieval_manifest_id,
+                "task": "cross-cultural-pilot",
+            },
             run_id=run_id,
         )
 
@@ -225,8 +251,12 @@ class CrossCulturalRecreationGenerator:
         strategy: dict[str, object],
         pilot: dict[str, object],
         feedback: str | None,
+        context_pack: dict[str, object] | None = None,
+        retrieval_manifest_id: str | None = None,
         run_id: str | None = None,
     ) -> dict[str, object]:
+        if not context_pack or not retrieval_manifest_id:
+            raise RecreationGenerationError("整书方案缺少可追溯检索上下文，请重新生成")
         prompt = (
             "You are the production architect for a cross-cultural story recreation. "
             "The author has approved a representative pilot. Build the production blueprint "
@@ -250,7 +280,9 @@ class CrossCulturalRecreationGenerator:
             f"Target story contract: {json.dumps(target_contract, ensure_ascii=False)}\n"
             f"Adopted strategy: {json.dumps(strategy, ensure_ascii=False)}\n"
             f"Adopted pilot: {json.dumps(pilot, ensure_ascii=False)}\n"
-            f"Author feedback: {feedback or 'none'}"
+            f"Author feedback: {feedback or 'none'}\n"
+            "Traceable evidence, cultural mappings and protection decisions:\n"
+            f"{json.dumps(context_pack, ensure_ascii=False)}"
         )
         return await self._generate(
             tenant_id=tenant_id,
@@ -260,6 +292,10 @@ class CrossCulturalRecreationGenerator:
             stage="cross_cultural_scale_plan",
             prompt=prompt,
             payload_type=ScalePlanPayload,
+            context_snapshot={
+                "retrieval_manifest_id": retrieval_manifest_id,
+                "task": "cross-cultural-scale-plan",
+            },
             run_id=run_id,
         )
 
@@ -277,9 +313,14 @@ class CrossCulturalRecreationGenerator:
         work_package: dict[str, object],
         adopted_units: list[dict[str, object]],
         feedback: str | None,
+        context_pack: dict[str, object] | None = None,
+        retrieval_manifest_id: str | None = None,
         run_id: str | None = None,
     ) -> dict[str, object]:
-        source = await self._source_text(tenant_id=tenant_id, project_id=project.id)
+        if not context_pack or not retrieval_manifest_id:
+            raise RecreationGenerationError(
+                "归化生产单元缺少可追溯检索上下文，请重新生成该工作包"
+            )
         work_package_key = str(work_package.get("order", "")).strip()
         if not work_package_key:
             raise RecreationGenerationError("整书方案中的工作包缺少稳定编号")
@@ -314,7 +355,9 @@ class CrossCulturalRecreationGenerator:
             f"Adopted scale plan: {json.dumps(scale_plan, ensure_ascii=False)}\n"
             f"Accepted earlier continuity: {json.dumps(prior_continuity, ensure_ascii=False)}\n"
             f"Author feedback: {feedback or 'none'}\n"
-            f"Source evidence:\n{source}"
+            "Traceable retrieval context is supporting evidence only. Adopted source genes, "
+            "target contract, strategy and work-package scope above remain authoritative:\n"
+            f"{json.dumps(context_pack, ensure_ascii=False)}"
         )
         payload = await self._generate(
             tenant_id=tenant_id,
@@ -325,6 +368,10 @@ class CrossCulturalRecreationGenerator:
             prompt=prompt,
             payload_type=ProductionUnitPayload,
             run_id=run_id,
+            context_snapshot={
+                "retrieval_manifest_id": retrieval_manifest_id,
+                "work_package_key": work_package_key,
+            },
         )
         if payload["work_package_key"] != work_package_key:
             correction_prompt = (
@@ -339,6 +386,9 @@ class CrossCulturalRecreationGenerator:
                 f"Adopted scale plan: {json.dumps(scale_plan, ensure_ascii=False)}\n"
                 f"Accepted earlier continuity: {json.dumps(prior_continuity, ensure_ascii=False)}\n"
                 f"Author feedback: {feedback or 'none'}\n"
+                "Traceable retrieval context is supporting evidence only. Adopted artifacts "
+                "and the requested work-package scope remain authoritative:\n"
+                f"{json.dumps(context_pack or {}, ensure_ascii=False)}\n"
                 f"Rejected candidate: {json.dumps(payload, ensure_ascii=False)}"
             )
             payload = await self._generate(
@@ -353,6 +403,10 @@ class CrossCulturalRecreationGenerator:
                 prompt=correction_prompt,
                 payload_type=ProductionUnitPayload,
                 run_id=run_id,
+                context_snapshot={
+                    "retrieval_manifest_id": retrieval_manifest_id,
+                    "work_package_key": work_package_key,
+                },
             )
             if payload["work_package_key"] != work_package_key:
                 raise RecreationGenerationError("创作团队返回了错误的工作包编号")
@@ -408,6 +462,7 @@ class CrossCulturalRecreationGenerator:
         prompt: str,
         payload_type: type[BaseModel],
         run_id: str | None = None,
+        context_snapshot: dict[str, object] | None = None,
         structure_error: str = ("创作团队返回的内容缺少必要结构，请保留当前输入后重新生成"),
     ) -> dict[str, object]:
         owns_run = run_id is None
@@ -434,6 +489,7 @@ class CrossCulturalRecreationGenerator:
                     "project_id": project_id,
                     "workflow_kind": "cross_cultural_recreation",
                     "stage": stage,
+                    **(context_snapshot or {}),
                 },
                 stage_override=stage,
             )
@@ -461,6 +517,7 @@ class CrossCulturalRecreationGenerator:
                         "project_id": project_id,
                         "workflow_kind": "cross_cultural_recreation",
                         "stage": f"{stage}_structure_repair",
+                        **(context_snapshot or {}),
                     },
                     stage_override=stage,
                 )

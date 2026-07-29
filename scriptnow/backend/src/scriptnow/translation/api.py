@@ -22,6 +22,8 @@ from scriptnow.platform.active_runs import ActiveRunRegistry
 from scriptnow.platform.auth import AuthService
 from scriptnow.platform.auth_api import ACCESS_COOKIE
 from scriptnow.platform.config import Settings
+from scriptnow.platform.context_retrieval import ContextRequest, RetrievalMode
+from scriptnow.platform.creative_delivery import CreativeDeliveryService
 from scriptnow.platform.creative_operations import (
     CreativeOperationStore,
     coherent_run_status,
@@ -34,6 +36,11 @@ from scriptnow.platform.models import (
     ProjectSnapshotModel,
     RunStatus,
 )
+from scriptnow.platform.retrieval_runtime import (
+    estimate_tokens,
+    retrieval_policy,
+    retrieval_service,
+)
 from scriptnow.platform.run_coordinator import RunCoordinator
 from scriptnow.platform.run_events import PersistentRunEventLog, RunEventType
 from scriptnow.platform.translation import FaithfulTranslationService
@@ -42,6 +49,7 @@ from scriptnow.platform.translation_glossary import (
     create_glossary,
     get_glossary,
 )
+from scriptnow.translation.context import FaithfulTranslationContextAdapter
 from scriptnow.translation.domain import (
     TranslationCorrectionModel,
     TranslationGlossaryTermModel,
@@ -185,6 +193,7 @@ def create_translation_router(
 ) -> APIRouter:
     router = APIRouter(prefix="/translation")
     translator = FaithfulTranslationService(database, settings)
+    deliveries = CreativeDeliveryService(database)
     operations = CreativeOperationStore(database)
     run_events = PersistentRunEventLog(database)
 
@@ -367,6 +376,47 @@ def create_translation_router(
         idem_key = f"trans:{project_id}:{chapter_id}:{uuid.uuid4().hex[:12]}"
         glossary = await _persistent_glossary(database, project)
         glossary_block = glossary.to_prompt_block() if glossary else ""
+        context_request = ContextRequest(
+            tenant_id=tid,
+            project_id=project_id,
+            retrieval_project_ids=(str(source_id),),
+            domain="translation",
+            stage="chapter_translation",
+            operation="faithful_translate",
+            unit_ref=chapter_id,
+            user_intent=f"{source_lang} to {target_lang}",
+            required_dimensions=(
+                "source_fidelity",
+                "terminology",
+                "voice",
+                "continuity",
+            ),
+            risk_level="high",
+            policy_ref="settings:faithful_translation_context",
+        )
+        persisted_context = await retrieval_service(database, settings).build(
+            request=context_request,
+            policy=retrieval_policy(
+                settings,
+                allowed_sources=(
+                    "source_revision",
+                    "translation_glossary",
+                    "prior_translation",
+                    "workspace_source",
+                    "narrative_graph_source",
+                ),
+                coverage_requirements={
+                    "source_fidelity": 1.0,
+                    "voice": 1.0,
+                    "continuity": 1.0,
+                },
+                modes=(RetrievalMode.LEXICAL, RetrievalMode.NARRATIVE_GRAPH),
+            ),
+            adapter=FaithfulTranslationContextAdapter(
+                database,
+                token_counter=estimate_tokens,
+            ),
+        )
         try:
             translated = await translator.translate(
                 tenant_id=tid,
@@ -376,6 +426,8 @@ def create_translation_router(
                 units=(unit,),
                 idempotency_key=idem_key,
                 glossary_block=glossary_block,
+                context_pack=persisted_context.context_pack.model_dump(mode="json"),
+                retrieval_manifest_id=persisted_context.manifest_id,
                 run_id=run_id,
             )
         except TranslationError as error:
@@ -895,6 +947,21 @@ def create_translation_router(
             raise HTTPException(409, "请至少完成一章翻译后再导出译文")
         artifact = render_novel_docx(
             project_name=project.name, chapters=tuple(chapters)
+        )
+        revision_documents = _translation_documents(revisions)
+        await deliveries.record(
+            tenant_id=tid,
+            project_id=project_id,
+            domain="translation",
+            stage="export",
+            kind="translation_export_manifest",
+            idempotency_key=f"translation-export:{_translation_hash(revision_documents)}",
+            payload={
+                "chapter_ids": [str(item["chapter_id"]) for item in revision_documents],
+                "source_project_id": source_id,
+                "target_language": str(project.direction.get("target_language") or ""),
+            },
+            artifact=artifact,
         )
         filename = f"translation-{project.id}.docx"
         return Response(

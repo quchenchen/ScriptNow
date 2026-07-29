@@ -3,10 +3,10 @@
 | | |
 |---|---|
 | 版本 | `v7-spec-v1.1` |
-| 对应产品版本 | `ScriptNow 0.2.0`（开发预览） |
+| 对应产品版本 | `ScriptNow 0.2.0-rc.1` |
 | 初始批准 | 2026-07-18 |
 | 最近修订 | 2026-07-29 |
-| 状态 | 已批准；实现持续验证，尚未达到 Release Candidate |
+| 状态 | 已批准；首个 Release Candidate 已通过自动化门禁与四领域真实 Provider 黄金回放 |
 | 取代 | 已归档的 v1.0 规格 |
 
 ## 基线声明
@@ -49,6 +49,7 @@ V7 的唯一规格基线是本目录。需要核对历史决策时，先按
 - `20-WORKTREE-INTEGRATION-MANIFEST.md`：当前工作树改动分组、归档边界、建议提交序列与集成检查清单。
 - `21-UX-OPTIMIZATION-STRATEGY.md`：原型回归、沉浸式创作和响应式布局策略。
 - `22-SCRIPT-SKILL-SYSTEM.md`：剧本创作 Skill、场景思维、质量门与格式契约。
+- `23-CROSS-DOMAIN-CONTEXT-RETRIEVAL.md`：四领域创作上下文、RAG、图谱检索、证据清单与分阶段实施架构。
 - `RELEASE-NOTES.md`：产品版本、验证门禁、真实 Provider 回放结果与已知限制。
 - `adr/`：V7 独立 ADR 编号空间，不覆盖根目录历史 ADR。
 - `references/AGENTSCOPE-2.0.4-VERIFICATION.md`：API 表面验证；其中未实测项必须在 P0 tracer bullet 中完成。
@@ -63,7 +64,7 @@ V7 的唯一规格基线是本目录。需要核对历史决策时，先按
 Provider 证据审计和 Skill 基准准入继续推进。该决策不删除用量账本，也不授权按价格自动
 改写模型选择。
 
-2026-07-29 版本整理：实现版本统一更新为 `0.2.0`；研究报告、阶段性审计和截图移入
+2026-07-29 版本整理：实现版本统一更新为 `0.2.0-rc.1`；研究报告、阶段性审计和截图移入
 `docs/archive/2026-07-29/`；用户上传素材和旧运行数据库移出 Git 开发树。当前版本通过
-单元测试、Lint 和构建门禁后方可保留该版本号，但四领域真实 Provider 黄金回放仍是发布
-退出门，未通过时不得标记为 RC。
+单元测试、Lint、构建和四领域真实 Provider 黄金回放；Novel、Script、忠实翻译与故事
+归化均以真实领域产物完成退出门，因此标记为首个 Release Candidate。

@@ -388,9 +388,12 @@ class CrossCulturalRecreationService:
             unit = await session.get(RecreationProductionUnitModel, unit_id)
             if recreation is None or unit is None or unit.recreation_id != recreation.id:
                 raise CrossCulturalRecreationError("章节候选不存在")
+            was_adopted = str(unit.status) == RecreationArtifactStatus.ADOPTED
             if str(unit.pipeline_status) not in {
                 ChapterPipelineStatus.REVIEW_PENDING,
                 ChapterPipelineStatus.REVISION_REQUIRED,
+                ChapterPipelineStatus.READY_FOR_DECISION,
+                ChapterPipelineStatus.ADOPTED,
             }:
                 raise CrossCulturalRecreationError("当前章节版本不在待审读状态")
 
@@ -424,11 +427,18 @@ class CrossCulturalRecreationService:
                 "reviewed_revision": unit.version,
                 "review_basis": "chapter_contract",
             }
-            unit.pipeline_status = (
-                ChapterPipelineStatus.REVISION_REQUIRED
-                if findings
-                else ChapterPipelineStatus.READY_FOR_DECISION
-            )
+            if findings:
+                if was_adopted:
+                    raise CrossCulturalRecreationError(
+                        "已采纳章节未通过复核，请先生成新版候选再修订"
+                    )
+                unit.pipeline_status = ChapterPipelineStatus.REVISION_REQUIRED
+            else:
+                unit.pipeline_status = (
+                    ChapterPipelineStatus.ADOPTED
+                    if was_adopted
+                    else ChapterPipelineStatus.READY_FOR_DECISION
+                )
             await session.flush()
             await self._append_pipeline_event(
                 session,
@@ -616,7 +626,11 @@ class CrossCulturalRecreationService:
             recreation = await session.get(CrossCulturalRecreationModel, recreation_id)
             if recreation is None:
                 raise CrossCulturalRecreationError("故事归化项目不存在")
-            recreation.status = self._next_status(kind, adopt=adopt)
+            if kind not in {
+                RecreationArtifactKind.CULTURAL_MAPPING_SET,
+                RecreationArtifactKind.PROTECTION_CONFLICT_DECISION,
+            }:
+                recreation.status = self._next_status(kind, adopt=adopt)
             await session.flush()
             for record in records:
                 await self._append_artifact_event(
@@ -657,9 +671,12 @@ class CrossCulturalRecreationService:
                 .values(status=RecreationArtifactStatus.SUPERSEDED)
             )
             artifact.status = RecreationArtifactStatus.ADOPTED
-            recreation.status = self._next_status(
-                RecreationArtifactKind(str(artifact.kind)), adopt=True
-            )
+            artifact_kind = RecreationArtifactKind(str(artifact.kind))
+            if artifact_kind not in {
+                RecreationArtifactKind.CULTURAL_MAPPING_SET,
+                RecreationArtifactKind.PROTECTION_CONFLICT_DECISION,
+            }:
+                recreation.status = self._next_status(artifact_kind, adopt=True)
             await session.flush()
             await self._append_artifact_event(
                 session, recreation=recreation, artifact=artifact, adopted=True
@@ -680,6 +697,8 @@ class CrossCulturalRecreationService:
             RecreationArtifactKind.SOURCE_STORY_MODEL: "源作品分析",
             RecreationArtifactKind.TARGET_STORY_CONTRACT: "目标故事契约",
             RecreationArtifactKind.RECREATION_STRATEGY: "归化策略",
+            RecreationArtifactKind.CULTURAL_MAPPING_SET: "文化映射",
+            RecreationArtifactKind.PROTECTION_CONFLICT_DECISION: "保护项冲突决策",
             RecreationArtifactKind.PILOT: "代表性试写",
             RecreationArtifactKind.SCALE_PLAN: "整书扩展方案",
         }
@@ -687,6 +706,8 @@ class CrossCulturalRecreationService:
             RecreationArtifactKind.SOURCE_STORY_MODEL: "director",
             RecreationArtifactKind.TARGET_STORY_CONTRACT: "director",
             RecreationArtifactKind.RECREATION_STRATEGY: "architect",
+            RecreationArtifactKind.CULTURAL_MAPPING_SET: "architect",
+            RecreationArtifactKind.PROTECTION_CONFLICT_DECISION: "director",
             RecreationArtifactKind.PILOT: "writer",
             RecreationArtifactKind.SCALE_PLAN: "architect",
         }
@@ -814,6 +835,10 @@ class CrossCulturalRecreationService:
             return str(
                 payload.get("title") or payload.get("target_premise") or "已形成归化策略候选"
             )
+        if kind == RecreationArtifactKind.CULTURAL_MAPPING_SET:
+            return "已确认文化载体、叙事功能与目标文化对应关系"
+        if kind == RecreationArtifactKind.PROTECTION_CONFLICT_DECISION:
+            return "已记录保护项冲突的人工决策与理由"
         if kind == RecreationArtifactKind.PILOT:
             return str(payload.get("unit_title") or payload.get("rationale") or "已形成代表性试写")
         return "已形成可逐单元推进、确认与追溯的整书扩展方案"

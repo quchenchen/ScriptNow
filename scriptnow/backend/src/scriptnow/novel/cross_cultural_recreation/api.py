@@ -5,9 +5,15 @@ from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from typing import Annotated
 
-from fastapi import APIRouter, Cookie, Header, HTTPException, Query, status
+from fastapi import APIRouter, Cookie, Header, HTTPException, Query, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 
+from scriptnow.novel.contracts import NovelBlock
+from scriptnow.novel.cross_cultural_recreation.context import (
+    RecreationSourceAnalysisContextAdapter,
+    RecreationStageContextAdapter,
+    RecreationUnitContextAdapter,
+)
 from scriptnow.novel.cross_cultural_recreation.domain import (
     CrossCulturalArtifactModel,
     RecreationArtifactKind,
@@ -22,17 +28,25 @@ from scriptnow.novel.cross_cultural_recreation.service import (
     CrossCulturalRecreationError,
     CrossCulturalRecreationService,
 )
+from scriptnow.novel.export import NovelExportChapter, render_novel_docx
 from scriptnow.platform.active_runs import ActiveRunRegistry
 from scriptnow.platform.agent_runtime import AgentRuntime
 from scriptnow.platform.auth import AuthenticationFailed, AuthService, CsrfFailed
 from scriptnow.platform.auth_api import ACCESS_COOKIE
 from scriptnow.platform.config import Settings
+from scriptnow.platform.context_retrieval import ContextRequest, RetrievalMode
+from scriptnow.platform.creative_delivery import CreativeDeliveryService
 from scriptnow.platform.creative_operations import (
     CreativeOperationStore,
     coherent_run_status,
 )
 from scriptnow.platform.database import Database
 from scriptnow.platform.models import CreativeStageStatus, ProjectModel, RunStatus
+from scriptnow.platform.retrieval_runtime import (
+    estimate_tokens,
+    retrieval_policy,
+    retrieval_service,
+)
 from scriptnow.platform.run_coordinator import RunCoordinator
 from scriptnow.platform.run_events import PersistentRunEventLog, RunEventType
 
@@ -73,6 +87,56 @@ class ManualRevisionRequest(BaseModel):
     title: str = Field(min_length=1, max_length=240)
     target_language_draft: str = Field(min_length=1)
     idempotency_key: str = Field(min_length=1, max_length=120)
+
+
+class CulturalMappingItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mapping_key: str = Field(min_length=1, max_length=160)
+    source_element: str = Field(min_length=1)
+    narrative_function: str = Field(min_length=1)
+    target_equivalent: str = Field(min_length=1)
+    causal_reason: str = Field(min_length=1)
+    evidence_refs: list[str] = Field(min_length=1)
+    affected_protected_elements: list[str] = Field(default_factory=list)
+
+
+class ConfirmCulturalMappingsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mappings: list[CulturalMappingItem] = Field(min_length=1)
+    idempotency_key: str = Field(min_length=1, max_length=120)
+
+
+class ProtectionConflictDecisionItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    protected_element: str = Field(min_length=1)
+    proposed_change: str = Field(min_length=1)
+    decision: str = Field(pattern=r"^(preserve|allow_change|revise_mapping)$")
+    rationale: str = Field(min_length=1)
+    evidence_refs: list[str] = Field(min_length=1)
+
+
+class ResolveProtectionConflictsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    decisions: list[ProtectionConflictDecisionItem] = Field(min_length=1)
+    idempotency_key: str = Field(min_length=1, max_length=120)
+
+
+def _governance_manifest_requirements(
+    adopted: dict[str, dict[str, object]],
+) -> tuple[tuple[str, ...], dict[str, float]]:
+    dimensions: list[str] = []
+    coverage: dict[str, float] = {}
+    if RecreationArtifactKind.CULTURAL_MAPPING_SET.value in adopted:
+        dimensions.append("cultural_mapping")
+        coverage["cultural_mapping"] = 1.0
+    if RecreationArtifactKind.PROTECTION_CONFLICT_DECISION.value in adopted:
+        dimensions.append("protection_decisions")
+        coverage["protection_decisions"] = 1.0
+    return tuple(dimensions), coverage
 
 
 def _artifact(item: CrossCulturalArtifactModel) -> dict[str, object]:
@@ -140,6 +204,7 @@ def create_cross_cultural_recreation_router(
         tags=["cross-cultural-recreation"],
     )
     service = CrossCulturalRecreationService(database)
+    deliveries = CreativeDeliveryService(database)
     generator = CrossCulturalRecreationGenerator(database, AgentRuntime(database, settings))
     operations = CreativeOperationStore(database)
     run_events = PersistentRunEventLog(database)
@@ -215,6 +280,37 @@ def create_cross_cultural_recreation_router(
             project = await session.get(ProjectModel, project_id)
         if project is None:
             raise CrossCulturalRecreationError("项目不存在")
+        persisted_context = await retrieval_service(database, settings).build(
+            request=ContextRequest(
+                tenant_id=tenant_id,
+                project_id=project_id,
+                domain="recreation",
+                stage="source_analysis",
+                operation="recreation.source.analyze",
+                user_intent=body.feedback,
+                required_dimensions=(
+                    "source_structure",
+                    "source_characters",
+                    "source_causality",
+                    "source_culture",
+                    "source_protection",
+                ),
+                risk_level="high",
+                policy_ref="recreation.source_analysis.v1",
+            ),
+            policy=retrieval_policy(
+                settings,
+                allowed_sources=("workspace_source", "narrative_graph_source"),
+                coverage_requirements={
+                    "source_structure": 0.5,
+                    "source_characters": 0.5,
+                    "source_causality": 0.5,
+                    "source_culture": 0.5,
+                    "source_protection": 0.5,
+                },
+            ),
+            adapter=RecreationSourceAnalysisContextAdapter(database),
+        )
         payload = await generator.analyze_source(
             tenant_id=tenant_id,
             project=project,
@@ -225,6 +321,8 @@ def create_cross_cultural_recreation_router(
                 "target_audience": record.target_audience,
                 "distribution_context": record.distribution_context,
             },
+            context_pack=persisted_context.context_pack.model_dump(mode="json"),
+            retrieval_manifest_id=persisted_context.manifest_id,
             run_id=run_id,
         )
         records = await service.record_artifacts(
@@ -508,6 +606,145 @@ def create_cross_cultural_recreation_router(
         except CrossCulturalRecreationError as error:
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
 
+    @router.post("/by-project/{project_id}/protection-conflicts")
+    async def resolve_protection_conflicts(
+        project_id: str,
+        body: ResolveProtectionConflictsRequest,
+        access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
+        csrf_token: Annotated[str | None, Header(alias="X-CSRF-Token")] = None,
+    ) -> dict[str, object]:
+        auth_context = await context(access_token, csrf_token, write=True)
+        try:
+            record = await service.get(
+                tenant_id=str(auth_context.tenant_id),
+                project_id=project_id,
+            )
+            artifacts = await service.artifacts(recreation_id=record.id)
+            previous = next(
+                (
+                    item
+                    for item in reversed(artifacts)
+                    if str(item.kind)
+                    == RecreationArtifactKind.PROTECTION_CONFLICT_DECISION.value
+                    and str(item.status) == RecreationArtifactStatus.ADOPTED
+                ),
+                None,
+            )
+            merged = {
+                str(item["protected_element"]): dict(item)
+                for item in (
+                    list(previous.payload.get("decisions") or [])
+                    if previous is not None
+                    else []
+                )
+                if isinstance(item, dict) and item.get("protected_element")
+            }
+            for item in body.decisions:
+                merged[item.protected_element] = item.model_dump()
+            records = await service.record_artifacts(
+                recreation_id=record.id,
+                kind=RecreationArtifactKind.PROTECTION_CONFLICT_DECISION,
+                payloads=(
+                    {
+                        "decisions": list(merged.values()),
+                        "base_artifact_id": previous.id if previous else None,
+                    },
+                ),
+                idempotency_key=body.idempotency_key,
+                adopt=True,
+            )
+            return _artifact(records[0])
+        except CrossCulturalRecreationError as error:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
+
+    @router.post("/by-project/{project_id}/cultural-mappings")
+    async def confirm_cultural_mappings(
+        project_id: str,
+        body: ConfirmCulturalMappingsRequest,
+        access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
+        csrf_token: Annotated[str | None, Header(alias="X-CSRF-Token")] = None,
+    ) -> dict[str, object]:
+        auth_context = await context(access_token, csrf_token, write=True)
+        try:
+            record = await service.get(
+                tenant_id=str(auth_context.tenant_id),
+                project_id=project_id,
+            )
+            artifacts = await service.artifacts(recreation_id=record.id)
+            adopted = [
+                item
+                for item in artifacts
+                if str(item.status) == RecreationArtifactStatus.ADOPTED
+            ]
+            previous = next(
+                (
+                    item
+                    for item in reversed(adopted)
+                    if str(item.kind) == RecreationArtifactKind.CULTURAL_MAPPING_SET.value
+                ),
+                None,
+            )
+            decision_artifact = next(
+                (
+                    item
+                    for item in reversed(adopted)
+                    if str(item.kind)
+                    == RecreationArtifactKind.PROTECTION_CONFLICT_DECISION.value
+                ),
+                None,
+            )
+            decisions = {
+                str(item["protected_element"]): str(item.get("decision"))
+                for item in (
+                    list(decision_artifact.payload.get("decisions") or [])
+                    if decision_artifact is not None
+                    else []
+                )
+                if isinstance(item, dict) and item.get("protected_element")
+            }
+            unresolved = sorted(
+                {
+                    protected
+                    for mapping in body.mappings
+                    for protected in mapping.affected_protected_elements
+                    if decisions.get(protected) not in {"allow_change", "revise_mapping"}
+                }
+            )
+            if unresolved:
+                raise CrossCulturalRecreationError(
+                    "以下保护项尚未形成允许变更或修订映射的明确决策："
+                    + "、".join(unresolved)
+                )
+            merged = {
+                str(item["mapping_key"]): dict(item)
+                for item in (
+                    list(previous.payload.get("mappings") or [])
+                    if previous is not None
+                    else []
+                )
+                if isinstance(item, dict) and item.get("mapping_key")
+            }
+            for item in body.mappings:
+                merged[item.mapping_key] = item.model_dump()
+            records = await service.record_artifacts(
+                recreation_id=record.id,
+                kind=RecreationArtifactKind.CULTURAL_MAPPING_SET,
+                payloads=(
+                    {
+                        "mappings": list(merged.values()),
+                        "base_artifact_id": previous.id if previous else None,
+                        "protection_decision_artifact_id": (
+                            decision_artifact.id if decision_artifact else None
+                        ),
+                    },
+                ),
+                idempotency_key=body.idempotency_key,
+                adopt=True,
+            )
+            return _artifact(records[0])
+        except CrossCulturalRecreationError as error:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
+
     async def _generate_strategies_work(
         *,
         tenant_id: str,
@@ -526,10 +763,53 @@ def create_cross_cultural_recreation_router(
         target_contract = adopted.get(RecreationArtifactKind.TARGET_STORY_CONTRACT.value)
         if source_model is None or target_contract is None:
             raise CrossCulturalRecreationError("请先完成源作品分析并确认目标故事契约")
+        governance_dimensions, governance_coverage = (
+            _governance_manifest_requirements(adopted)
+        )
         async with database.session() as session:
             project = await session.get(ProjectModel, project_id)
         if project is None:
             raise CrossCulturalRecreationError("项目不存在")
+        persisted_context = await retrieval_service(database, settings).build(
+            request=ContextRequest(
+                tenant_id=tenant_id,
+                project_id=project_id,
+                domain="recreation",
+                stage="strategy",
+                operation="recreation.strategy.generate",
+                user_intent=body.feedback,
+                required_dimensions=(
+                    "source_genes",
+                    "source_fidelity",
+                    "target_contract",
+                    *governance_dimensions,
+                ),
+                risk_level="high",
+                policy_ref="recreation.strategy.v1",
+            ),
+            policy=retrieval_policy(
+                settings,
+                allowed_sources=(
+                    "recreation_artifact",
+                    "workspace_source",
+                    "narrative_graph_source",
+                ),
+                coverage_requirements={
+                    "source_genes": 1.0,
+                    "source_fidelity": 0.5,
+                    "target_contract": 1.0,
+                    **governance_coverage,
+                },
+            ),
+            adapter=RecreationStageContextAdapter(
+                database,
+                required_artifacts=(
+                    RecreationArtifactKind.SOURCE_STORY_MODEL,
+                    RecreationArtifactKind.TARGET_STORY_CONTRACT,
+                ),
+                token_counter=estimate_tokens,
+            ),
+        )
         payloads = await generator.generate_strategies(
             tenant_id=tenant_id,
             project=project,
@@ -543,6 +823,8 @@ def create_cross_cultural_recreation_router(
                 "distribution_context": record.distribution_context,
             },
             feedback=body.feedback,
+            context_pack=persisted_context.context_pack.model_dump(mode="json"),
+            retrieval_manifest_id=persisted_context.manifest_id,
             run_id=run_id,
         )
         return await service.record_artifacts(
@@ -1027,6 +1309,47 @@ def create_cross_cultural_recreation_router(
                 project = await session.get(ProjectModel, project_id)
             if project is None:
                 raise CrossCulturalRecreationError("项目不存在")
+            persisted_context = await retrieval_service(database, settings).build(
+                request=ContextRequest(
+                    tenant_id=tenant_id,
+                    project_id=project_id,
+                    domain="recreation",
+                    stage="pilot",
+                    operation="recreation.pilot.generate",
+                    unit_ref="representative-pilot",
+                    user_intent=body.feedback,
+                    required_dimensions=(
+                        "source_genes",
+                        "source_fidelity",
+                        "target_contract",
+                    ),
+                    risk_level="high",
+                    policy_ref="recreation.pilot.v1",
+                ),
+                policy=retrieval_policy(
+                    settings,
+                    allowed_sources=(
+                        "recreation_artifact",
+                        "workspace_source",
+                        "narrative_graph_source",
+                    ),
+                    coverage_requirements={
+                        "source_genes": 1.0,
+                        "source_fidelity": 0.5,
+                        "target_contract": 1.0,
+                    },
+                    modes=(RetrievalMode.LEXICAL, RetrievalMode.NARRATIVE_GRAPH),
+                ),
+                adapter=RecreationStageContextAdapter(
+                    database,
+                    required_artifacts=(
+                        RecreationArtifactKind.SOURCE_STORY_MODEL,
+                        RecreationArtifactKind.TARGET_STORY_CONTRACT,
+                        RecreationArtifactKind.RECREATION_STRATEGY,
+                    ),
+                    token_counter=estimate_tokens,
+                ),
+            )
             payload = await generator.generate_pilot(
                 tenant_id=tenant_id,
                 project=project,
@@ -1041,6 +1364,8 @@ def create_cross_cultural_recreation_router(
                 },
                 strategy=strategy,
                 feedback=body.feedback,
+                context_pack=persisted_context.context_pack.model_dump(mode="json"),
+                retrieval_manifest_id=persisted_context.manifest_id,
                 run_id=run_id,
             )
             records = await service.record_artifacts(
@@ -1118,10 +1443,57 @@ def create_cross_cultural_recreation_router(
                 raise CrossCulturalRecreationError(
                     "请先确认源作品模型、目标故事契约、归化策略和代表性试写"
                 )
+            governance_dimensions, governance_coverage = (
+                _governance_manifest_requirements(adopted)
+            )
             async with database.session() as session:
                 project = await session.get(ProjectModel, project_id)
             if project is None:
                 raise CrossCulturalRecreationError("项目不存在")
+            persisted_context = await retrieval_service(database, settings).build(
+                request=ContextRequest(
+                    tenant_id=tenant_id,
+                    project_id=project_id,
+                    domain="recreation",
+                    stage="scale_plan",
+                    operation="recreation.scale_plan.generate",
+                    user_intent=body.feedback,
+                    required_dimensions=(
+                        "source_genes",
+                        "source_fidelity",
+                        "target_contract",
+                        "continuity",
+                        *governance_dimensions,
+                    ),
+                    risk_level="high",
+                    policy_ref="recreation.scale_plan.v1",
+                ),
+                policy=retrieval_policy(
+                    settings,
+                    allowed_sources=(
+                        "recreation_artifact",
+                        "workspace_source",
+                        "narrative_graph_source",
+                    ),
+                    coverage_requirements={
+                        "source_genes": 1.0,
+                        "source_fidelity": 0.5,
+                        "target_contract": 1.0,
+                        "continuity": 1.0,
+                        **governance_coverage,
+                    },
+                ),
+                adapter=RecreationStageContextAdapter(
+                    database,
+                    required_artifacts=(
+                        RecreationArtifactKind.SOURCE_STORY_MODEL,
+                        RecreationArtifactKind.TARGET_STORY_CONTRACT,
+                        RecreationArtifactKind.RECREATION_STRATEGY,
+                        RecreationArtifactKind.PILOT,
+                    ),
+                    token_counter=estimate_tokens,
+                ),
+            )
             payload = await generator.generate_scale_plan(
                 tenant_id=tenant_id,
                 project=project,
@@ -1137,6 +1509,8 @@ def create_cross_cultural_recreation_router(
                 strategy=strategy,
                 pilot=pilot,
                 feedback=body.feedback,
+                context_pack=persisted_context.context_pack.model_dump(mode="json"),
+                retrieval_manifest_id=persisted_context.manifest_id,
                 run_id=run_id,
             )
             records = await service.record_artifacts(
@@ -1248,6 +1622,46 @@ def create_cross_cultural_recreation_router(
             target_contract = dict(
                 adopted_artifacts[RecreationArtifactKind.TARGET_STORY_CONTRACT.value].payload
             )
+            persisted_context = await retrieval_service(database, settings).build(
+                request=ContextRequest(
+                    tenant_id=tenant_id,
+                    project_id=project_id,
+                    domain="recreation",
+                    stage="chapter_production",
+                    operation="recreation.production_unit.generate",
+                    unit_ref=work_package_key,
+                    user_intent=body.feedback,
+                    required_dimensions=(
+                        "source_genes",
+                        "source_fidelity",
+                        "target_contract",
+                        "package_scope",
+                        "continuity",
+                    ),
+                    risk_level="high",
+                    policy_ref="recreation.production.v1",
+                ),
+                policy=retrieval_policy(
+                    settings,
+                    allowed_sources=(
+                        "recreation_artifact",
+                        "recreation_unit",
+                        "workspace_source",
+                        "narrative_graph_source",
+                    ),
+                    coverage_requirements={
+                        "source_genes": 1.0,
+                        "source_fidelity": 0.5,
+                        "target_contract": 1.0,
+                        "package_scope": 1.0,
+                        "continuity": 0.5,
+                    },
+                    modes=(RetrievalMode.LEXICAL, RetrievalMode.NARRATIVE_GRAPH),
+                ),
+                adapter=RecreationUnitContextAdapter(
+                    database, token_counter=estimate_tokens
+                ),
+            )
             context_snapshot = {
                 "scale_plan_artifact_id": scale_plan_artifact.id,
                 "scale_plan_version": scale_plan_artifact.version,
@@ -1266,6 +1680,8 @@ def create_cross_cultural_recreation_router(
                 "target_contract_artifact_id": adopted_artifacts[
                     RecreationArtifactKind.TARGET_STORY_CONTRACT.value
                 ].id,
+                "retrieval_manifest_id": persisted_context.manifest_id,
+                "retrieval_manifest_digest": persisted_context.content_digest,
             }
             unit = await service.start_production_unit(
                 recreation_id=record.id,
@@ -1300,6 +1716,8 @@ def create_cross_cultural_recreation_router(
                     work_package=work_package,
                     adopted_units=adopted_units,
                     feedback=body.feedback,
+                    context_pack=persisted_context.context_pack.model_dump(mode="json"),
+                    retrieval_manifest_id=persisted_context.manifest_id,
                     run_id=run_id,
                 )
                 unit = await service.complete_production_unit(unit_id=unit.id, payload=payload)
@@ -1656,13 +2074,124 @@ def create_cross_cultural_recreation_router(
                 }
                 for key in ordered_keys
             ]
-            return {
+            result = {
                 "project_id": project_id,
                 "target_language": record.target_language,
                 "sections": sections,
                 "content": "\n\n".join(section["content"] for section in sections),
             }
+            package_fingerprint = hashlib.sha256(
+                json.dumps(
+                    [
+                        {
+                            "work_package_key": section["work_package_key"],
+                            "version": section["version"],
+                            "content": section["content"],
+                        }
+                        for section in sections
+                    ],
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ).encode()
+            ).hexdigest()
+            await deliveries.record(
+                tenant_id=str(auth_context.tenant_id),
+                project_id=project_id,
+                domain="recreation",
+                stage="packaging",
+                kind="recreation_package",
+                idempotency_key=f"recreation-package:{package_fingerprint}",
+                payload={
+                    "target_language": record.target_language,
+                    "section_count": len(sections),
+                    "sections": [
+                        {
+                            "work_package_key": section["work_package_key"],
+                            "version": section["version"],
+                            "title": section["title"],
+                        }
+                        for section in sections
+                    ],
+                },
+            )
+            return result
         except CrossCulturalRecreationError as error:
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
+
+    @router.get("/by-project/{project_id}/export.docx")
+    async def export_recreated_work(
+        project_id: str,
+        work_package_keys: Annotated[list[str] | None, Query()] = None,
+        access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
+    ) -> Response:
+        auth_context = await context(access_token, write=False)
+        manuscript = await assembled_manuscript(
+            project_id=project_id,
+            work_package_keys=work_package_keys,
+            access_token=access_token,
+        )
+        sections = list(manuscript["sections"])
+        chapters = tuple(
+            NovelExportChapter(
+                volume_title="",
+                chapter_title=str(section["title"]),
+                blocks=(
+                    NovelBlock(
+                        block_id=f"recreation-{section['work_package_key']}",
+                        type="prose",
+                        text=str(section["content"]),
+                    ),
+                ),
+            )
+            for section in sections
+        )
+        async with database.session() as session:
+            project = await session.get(ProjectModel, project_id)
+            if project is None or project.tenant_id != str(auth_context.tenant_id):
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "项目不存在")
+        artifact = render_novel_docx(
+            project_name=project.name,
+            chapters=chapters,
+        )
+        export_fingerprint = hashlib.sha256(
+            json.dumps(
+                [
+                    {
+                        "work_package_key": section["work_package_key"],
+                        "version": section["version"],
+                    }
+                    for section in sections
+                ],
+                sort_keys=True,
+            ).encode()
+        ).hexdigest()
+        await deliveries.record(
+            tenant_id=str(auth_context.tenant_id),
+            project_id=project_id,
+            domain="recreation",
+            stage="export",
+            kind="recreation_export_manifest",
+            idempotency_key=f"recreation-export:{export_fingerprint}",
+            payload={
+                "target_language": manuscript["target_language"],
+                "section_count": len(sections),
+                "work_package_keys": [
+                    str(section["work_package_key"]) for section in sections
+                ],
+            },
+            artifact=artifact,
+        )
+        return Response(
+            artifact,
+            media_type=(
+                "application/vnd.openxmlformats-officedocument."
+                "wordprocessingml.document"
+            ),
+            headers={
+                "Content-Disposition": (
+                    f'attachment; filename="recreation-{project_id}.docx"'
+                )
+            },
+        )
 
     return router

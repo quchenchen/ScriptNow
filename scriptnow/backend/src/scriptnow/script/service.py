@@ -616,6 +616,10 @@ class ScriptService:
             )
             return {
                 "scene_id": scene_id,
+                "scene": current_scene,
+                "scene_ordinal": scene_index + 1,
+                "story_map_id": story_map.id,
+                "story_map_version": story_map.version,
                 "anchors": [
                     {
                         "id": item.anchor_key,
