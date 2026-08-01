@@ -2,6 +2,13 @@ import hashlib
 import json
 from dataclasses import asdict
 
+from agentscope.event import (
+    AgentEvent,
+    CustomEvent,
+    ToolCallEndEvent,
+    ToolCallStartEvent,
+    ToolResultEndEvent,
+)
 from sqlalchemy import and_, func, or_, select
 
 from scriptnow.novel.domain import NovelDocumentRevisionModel
@@ -106,6 +113,8 @@ class DockService:
         focus: dict[str, str] | None,
         idempotency_key: str,
         requires_confirmation: bool,
+        stage_override: str | None = None,
+        explicit_skill_keys: tuple[str, ...] = (),
     ) -> dict[str, object]:
         run = await self.runs.enqueue(
             tenant_id=tenant_id, project_id=project_id, idempotency_key=idempotency_key
@@ -141,16 +150,24 @@ class DockService:
             run_id=run.id,
             command="creative_partner.message",
             domain=project.medium,
-            stage=role,
+            stage=stage_override or role,
             idempotency_key=idempotency_key,
             policy_snapshot={
                 "requires_confirmation": requires_confirmation,
                 "role": role,
+                "stage": stage_override or role,
+                "explicit_skill_keys": list(explicit_skill_keys),
             },
         )
         input_digest = hashlib.sha256(
             json.dumps(
-                {"content": content, "quote": quote, "focus": focus},
+                {
+                    "content": content,
+                    "quote": quote,
+                    "focus": focus,
+                    "stage": stage_override or role,
+                    "explicit_skill_keys": list(explicit_skill_keys),
+                },
                 ensure_ascii=False,
                 sort_keys=True,
             ).encode()
@@ -185,23 +202,105 @@ class DockService:
             role=role,
             actor_id=actor_id,
         )
-        context_snapshot = await self._context_snapshot(
-            tenant_id=tenant_id,
-            project_id=project_id,
-            role=role,
-            focus_unit_id=str(focus.get("unit_id")) if focus and focus.get("unit_id") else None,
+        focus_unit_id = (
+            str(focus.get("unit_id")) if focus and focus.get("unit_id") else None
+        )
+        context_snapshot = (
+            await self.review_context(
+                tenant_id=tenant_id,
+                project_id=project_id,
+                focus_unit_id=focus_unit_id,
+            )
+            if role == "reviewer"
+            else await self._context_snapshot(
+                tenant_id=tenant_id,
+                project_id=project_id,
+                role=role,
+                focus_unit_id=focus_unit_id,
+            )
         )
         runtime_result: AgentRuntimeResult | None = None
         runtime_status = await self.runtime.status(tenant_id=tenant_id, project_id=project_id)
-        role_status = dict(dict(runtime_status["roles"])[role])
+        roles = dict(runtime_status["roles"])
+        if role not in roles:
+            raise DockError(f"unsupported agent role: {role}")
+        role_status = dict(roles[role])
         if role_status["connected"]:
             try:
+                runtime_sequence = 0
+                tool_names: dict[str, str] = {}
+
+                async def persist_runtime_event(event: AgentEvent) -> None:
+                    nonlocal runtime_sequence
+                    runtime_sequence += 1
+                    payload: dict[str, object]
+                    event_type: RunEventType
+                    if isinstance(event, ToolCallStartEvent):
+                        tool_names[event.tool_call_id] = event.tool_call_name
+                        payload = {
+                            "block": "tool",
+                            "phase": "start",
+                            "title": f"正在调用 {event.tool_call_name}",
+                            "tool_call_id": event.tool_call_id,
+                            "tool_name": event.tool_call_name,
+                            "runtime": "agentscope",
+                        }
+                        event_type = RunEventType.NODE
+                    elif isinstance(event, ToolCallEndEvent | ToolResultEndEvent):
+                        tool_name = tool_names.get(event.tool_call_id, "Agent 工具")
+                        payload = {
+                            "block": "tool",
+                            "phase": "end",
+                            "title": f"{tool_name} 调用完成",
+                            "tool_call_id": event.tool_call_id,
+                            "tool_name": tool_name,
+                            "state": (
+                                str(event.state)
+                                if isinstance(event, ToolResultEndEvent)
+                                else None
+                            ),
+                            "runtime": "agentscope",
+                        }
+                        event_type = RunEventType.NODE
+                    elif isinstance(event, CustomEvent) and event.name in {
+                        "scriptnow.phase",
+                        "scriptflow.phase",
+                    }:
+                        phase_value = event.value if isinstance(event.value, dict) else {}
+                        phase_content = str(phase_value.get("content") or "").strip()
+                        payload = {
+                            "block": "thinking" if phase_content else "system",
+                            "phase": (
+                                "end"
+                                if phase_content
+                                else str(phase_value.get("phase") or "planning")
+                            ),
+                            "state": str(phase_value.get("state") or ""),
+                            "title": str(phase_value.get("title") or "Agent 阶段更新"),
+                            "content": phase_content or None,
+                            "runtime": "agentscope",
+                        }
+                        event_type = RunEventType.SYSTEM
+                    else:
+                        return
+                    await self.events.append(
+                        tenant_id=tenant_id,
+                        run_id=run.id,
+                        event_key=f"dock:runtime:{runtime_sequence}",
+                        type=event_type,
+                        payload=payload,
+                        correlation_id=run.id,
+                    )
+
                 runtime_result = await self.runtime.generate(
                     tenant_id=tenant_id,
                     run_id=run.id,
                     role=role,
                     content=content,
                     context_snapshot=context_snapshot,
+                    event_sink=persist_runtime_event,
+                    stage_override=stage_override,
+                    explicit_skill_keys=explicit_skill_keys,
                 )
             except Exception as error:
                 await self.billing.release(reservation.id)
@@ -255,7 +354,7 @@ class DockService:
             role=role,
             context_snapshot=context_snapshot,
         )
-        visible_events = (
+        visible_events = [
             (
                 "data:end",
                 RunEventType.NODE,
@@ -268,19 +367,7 @@ class DockService:
                     "runtime": runtime_label,
                 },
             ),
-            ("text:start", RunEventType.CONVERSATION, {"block": "text", "phase": "start"}),
-            (
-                "text:delta",
-                RunEventType.CONVERSATION,
-                {
-                    "block": "text",
-                    "phase": "delta",
-                    "delta": response_text,
-                    "runtime": runtime_label,
-                },
-            ),
-            ("text:end", RunEventType.CONVERSATION, {"block": "text", "phase": "end"}),
-        )
+        ]
         for key, event_type, payload in visible_events:
             await self.events.append(
                 tenant_id=tenant_id,
@@ -629,10 +716,52 @@ class DockService:
         except AgentRuntimeError as error:
             raise DockError(str(error)) from error
 
+    async def reviewer_capabilities(
+        self, *, tenant_id: str, project_id: str
+    ) -> dict[str, object]:
+        async with self.database.session() as session:
+            project = await self._project(session, tenant_id, project_id)
+        medium = str(project.medium)
+        status = await self.runtime_status(tenant_id=tenant_id, project_id=project_id)
+        reviewer_status = dict(dict(status.get("roles") or {}).get("reviewer") or {})
+        coverage = {
+            "novel": ["故事承诺", "人物与关系", "结构与因果", "叙述与语言", "连续性"],
+            "script": ["戏剧目标", "场景行动", "人物与台词", "视听表达", "连续性"],
+        }
+        return {
+            "medium": medium,
+            "role": "reviewer",
+            "stage": "review",
+            "connected": bool(reviewer_status.get("connected")),
+            "reviewer_ready": bool(reviewer_status.get("model_key")),
+            "coverage": coverage.get(medium, ["结构", "表达", "连续性"]),
+            "permission": {
+                "default": "read_only",
+                "writes": "finding_proposal_only",
+                "adoption": "human_decision_required",
+            },
+        }
+
+    async def review_context(
+        self,
+        *,
+        tenant_id: str,
+        project_id: str,
+        focus_unit_id: str | None = None,
+    ) -> dict[str, object]:
+        """Return the persisted evidence available to a project-bound reviewer."""
+        return await self._context_snapshot(
+            tenant_id=tenant_id,
+            project_id=project_id,
+            role="reviewer",
+            focus_unit_id=focus_unit_id,
+        )
+
     async def _context_snapshot(
         self, *, tenant_id: str, project_id: str, role: str, focus_unit_id: str | None = None
     ) -> dict[str, object]:
         """Build the Dock context from persisted project facts, never fixtures."""
+        review_documents: list[object] = []
         async with self.database.session() as session:
             project = await self._project(session, tenant_id, project_id)
             if str(project.medium) == "novel":
@@ -675,6 +804,18 @@ class DockService:
                     if focus_unit_id
                     else None
                 )
+                if role == "reviewer":
+                    document_query = select(NovelDocumentRevisionModel).where(
+                        NovelDocumentRevisionModel.project_id == project_id,
+                        NovelDocumentRevisionModel.status == "adopted",
+                    )
+                    if focus_unit_id:
+                        document_query = document_query.where(
+                            NovelDocumentRevisionModel.chapter_id == focus_unit_id
+                        )
+                    review_documents = list(
+                        (await session.scalars(document_query)).all()
+                    )
             else:
                 plan = (
                     await session.scalars(
@@ -713,6 +854,18 @@ class DockService:
                     if focus_unit_id
                     else None
                 )
+                if role == "reviewer":
+                    document_query = select(ScriptDocumentRevisionModel).where(
+                        ScriptDocumentRevisionModel.project_id == project_id,
+                        ScriptDocumentRevisionModel.status == "adopted",
+                    )
+                    if focus_unit_id:
+                        document_query = document_query.where(
+                            ScriptDocumentRevisionModel.scene_id == focus_unit_id
+                        )
+                    review_documents = list(
+                        (await session.scalars(document_query)).all()
+                    )
             open_findings = int(
                 await session.scalar(
                     select(func.count(ReviewFindingModel.id)).where(
@@ -730,7 +883,7 @@ class DockService:
                 )
                 or 0
             )
-        return {
+        snapshot: dict[str, object] = {
             "project_id": project_id,
             "project_name": project.name,
             "medium": str(project.medium),
@@ -750,6 +903,61 @@ class DockService:
             if focused_document
             else None,
         }
+        if role == "reviewer":
+            unit_by_id = {str(unit.get("id")): unit for unit in units}
+            unit_order = {
+                str(unit.get("id")): ordinal for ordinal, unit in enumerate(units)
+            }
+            unit_id_attribute = (
+                "chapter_id" if str(project.medium) == "novel" else "scene_id"
+            )
+            review_documents.sort(
+                key=lambda item: unit_order.get(
+                    str(getattr(item, unit_id_attribute)), len(unit_order)
+                )
+            )
+            included_documents = [
+                {
+                    "unit_id": str(getattr(document, unit_id_attribute)),
+                    "title": str(
+                        unit_by_id.get(
+                            str(getattr(document, unit_id_attribute)), {}
+                        ).get("title")
+                        or getattr(document, unit_id_attribute)
+                    ),
+                    "revision_number": int(document.revision_number),
+                    "blocks": list(document.blocks),
+                }
+                for document in review_documents
+            ]
+            included_ids = {
+                str(document["unit_id"]) for document in included_documents
+            }
+            expected_ids = [
+                str(unit.get("id")) for unit in units if unit.get("id")
+            ]
+            omitted_ids = [
+                unit_id for unit_id in expected_ids if unit_id not in included_ids
+            ]
+            snapshot["evidence_manifest"] = {
+                "scope": "focused_unit" if focus_unit_id else "whole_project",
+                "coverage": (
+                    "empty"
+                    if not included_documents
+                    else "partial"
+                    if omitted_ids
+                    else "complete"
+                ),
+                "project_direction": dict(plan.direction),
+                "story_structure": {
+                    "version": int(story_map.version),
+                    "units": units,
+                },
+                "documents": included_documents,
+                "included_unit_ids": sorted(included_ids),
+                "omitted_unit_ids": omitted_ids,
+            }
+        return snapshot
 
     async def _persist_context_state(
         self,
@@ -834,7 +1042,9 @@ class DockService:
             payload={
                 "actor": "agent",
                 "role": role,
-                "title": "Agent 已完成回复",
+                "block": "text",
+                "phase": "end",
+                "title": "Agent 评审结果" if role == "reviewer" else "Agent 回复",
                 "content": response_text,
                 "runtime": runtime_label,
                 "schema_version": 1,

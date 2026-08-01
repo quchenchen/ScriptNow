@@ -192,7 +192,7 @@ async function reviseBlueprint() {
   if (!instruction || revisingBlueprint.value) return
   revisingBlueprint.value = true
   try {
-    dock.role = 'architect'
+    dock.setCreativeRole('architect')
     dock.expanded = true
     await novel.generateBlueprint(props.projectId, `${blueprintFeedbackCategory.value}: ${instruction}`)
     blueprintFeedback.value = ''
@@ -203,14 +203,14 @@ async function reviseBlueprint() {
 async function reviseStoryMap() {
   const instruction = storyMapFeedback.value.trim()
   if (!instruction) return
-  dock.role = 'architect'
+  dock.setCreativeRole('architect')
   dock.expanded = true
   storyMapFeedback.value = ''
   await novel.generateStoryMap(props.projectId, instruction)
 }
 async function generateChapterCandidate() {
   if (!focusedUnitId.value || novel.busy) return
-  dock.role = 'writer'
+  dock.setCreativeRole('writer')
   dock.expanded = true
   const chapter = focusedChapter.value
   const brief = chapter ? `生成第 ${focusedUnitId.value} 章「${chapter.title}」候选稿` : `生成章节候选稿`
@@ -228,7 +228,7 @@ async function condenseChapterCandidate() {
   if (!focusedUnitId.value || !focusedDocument.value || novel.busy) return
   const target = focusedChapter.value?.target_words
   if (!target) return
-  dock.role = 'writer'
+  dock.setCreativeRole('writer')
   dock.expanded = true
   dock.send(props.projectId, `精简第 ${focusedUnitId.value} 章候选稿`).catch(() => undefined)
   const current = focusedProgress.value.count
@@ -292,7 +292,7 @@ watch(() => novel.state?.phase, (phase) => {
   else if (phase === 'story_core_adopted') layout.setStudioView('blueprint')
   else if (phase === 'blueprint_adopted') layout.setStudioView('storymap')
   else if (phase) layout.setStudioView('writer')
-  dock.role = phase === 'seeded' ? 'director' : phase === 'story_core_adopted' || phase === 'blueprint_adopted' ? 'architect' : 'writer'
+  dock.setCreativeRole(phase === 'seeded' ? 'director' : phase === 'story_core_adopted' || phase === 'blueprint_adopted' ? 'architect' : 'writer')
   void dock.loadTransparency(props.projectId)
 }, { immediate: true })
 watch(() => novel.state?.story_map.volumes, (volumes) => {

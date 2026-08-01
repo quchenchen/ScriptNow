@@ -24,6 +24,44 @@
   font-synthesis: none;
 }
 
+.review-checkpoint-card {
+  display: grid;
+  gap: 7px;
+  margin: 0 0 12px;
+  padding: 13px 14px;
+  border: 1px solid var(--sf-line);
+  border-radius: 12px;
+  background: var(--sf-surface-soft);
+  color: var(--sf-text);
+}
+.review-checkpoint-card strong {
+  font-size: 0.9rem;
+}
+.review-checkpoint-card p {
+  margin: 0;
+  color: var(--sf-muted);
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+.review-checkpoint-card button {
+  justify-self: start;
+  border: 1px solid var(--sf-line-strong);
+  border-radius: 999px;
+  padding: 7px 11px;
+  background: var(--sf-surface);
+  color: var(--sf-text);
+  cursor: pointer;
+}
+:root[data-theme="dark"] .review-checkpoint-card {
+  border-color: #526258;
+  background: #202923;
+}
+:root[data-theme="dark"] .review-checkpoint-card button {
+  border-color: #66766c;
+  background: #18211c;
+  color: #f1eee5;
+}
+
 .contract-preset-picker {
   display: grid;
   gap: 12px;
@@ -119,7 +157,7 @@ h1, h2 { font-family: "Iowan Old Style", "Noto Serif SC", Georgia, serif; font-w
 .sidebar-brand > span:last-child, .sidebar-account > span:last-child { display: grid; gap: 2px; min-width: 0; }
 .sidebar-brand strong { font-family: Georgia, serif; font-size: 1.1rem; }.sidebar-brand small { color: #888176; font-size: .64rem; }
 .project-switch { display: grid; gap: 5px; min-width: 180px; padding: 13px 14px; border-bottom: 1px solid #e3ddd2; }.project-switch label { color: #8b8378; font-size: .63rem; font-weight: 750; letter-spacing: .08em; }.project-switch select { padding: 8px 9px; border-radius: 7px; background: #fffdf8; font-size: .76rem; }
-.shell-nav { min-width: 180px; display: grid; gap: 3px; padding: 12px 10px; overflow-y: auto; }.shell-nav p { margin: 12px 9px 4px; color: #999084; font-size: .62rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }.shell-nav a, .shell-nav button { width: 100%; border: 0; border-radius: 7px; padding: 9px 10px; background: transparent; color: #5e5951; text-align: left; font-size: .77rem; cursor: pointer; }.shell-nav a:hover, .shell-nav button:hover:not(:disabled), .shell-nav .active { background: #e5ece5; color: #29463b; }.shell-nav button:disabled { opacity: .45; cursor: default; }
+.shell-nav { min-width: 180px; display: grid; gap: 3px; padding: 12px 10px; overflow-y: auto; }.shell-nav p { margin: 12px 9px 4px; color: #999084; font-size: .62rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }.shell-nav a, .shell-nav button { width: 100%; border: 0; border-radius: 7px; padding: 9px 10px; background: transparent; color: #5e5951; text-align: left; font-size: .77rem; cursor: pointer; display: flex; align-items: center; gap: 8px; }.shell-nav a svg, .shell-nav button svg { width: 16px; height: 16px; flex: 0 0 auto; }.shell-nav a:hover, .shell-nav button:hover:not(:disabled), .shell-nav .active { background: #e5ece5; color: #29463b; }.shell-nav button:disabled { opacity: .45; cursor: default; }
 .shell-nav .project-delete-trigger { margin-top: 7px; color: var(--sf-danger); }
 .shell-nav .project-delete-trigger:hover:not(:disabled) { background: var(--sf-danger-soft); color: var(--sf-danger); }
 .create-project-btn { display: flex; align-items: center; gap: 8px; margin: 10px 12px; padding: 10px 14px; border: 2px dashed #29463b; border-radius: 10px; color: #29463b; font-weight: 700; font-size: .8rem; text-decoration: none; transition: background .15s; }.create-project-btn:hover { background: #e5ece5; }

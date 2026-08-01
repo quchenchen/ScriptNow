@@ -41,4 +41,47 @@ describe('AgentMessage', () => {
       { type: 'list', ordered: false, items: ['A：人物驱动', 'B：概念驱动'] },
     ])
   })
+
+  it('parses markdown tables into structured rows', () => {
+    expect(parseAgentMessage([
+      '| 要素 | 评估 | 说明 |',
+      '|------|------|------|',
+      '| 场景集中度 | 高 | 场景可控 |',
+      '| 特效需求 | 中等 | 石膏碎裂与幽灵视觉 |',
+      '',
+      '后续建议。',
+    ].join('\n'))).toEqual([
+      {
+        type: 'table',
+        headers: ['要素', '评估', '说明'],
+        rows: [
+          ['场景集中度', '高', '场景可控'],
+          ['特效需求', '中等', '石膏碎裂与幽灵视觉'],
+        ],
+      },
+      { type: 'paragraph', text: '后续建议。' },
+    ])
+  })
+
+  it('recovers tables collapsed by streaming or provider formatting', () => {
+    expect(parseAgentMessage(
+      '| 要素 | 评估 | 说明 | |------|------|------| | 场景集中度 | 高 | 场景可控 | | 特效需求 | 中等 | 石膏碎裂与幽灵视觉 |',
+    )).toEqual([
+      {
+        type: 'table',
+        headers: ['要素', '评估', '说明'],
+        rows: [
+          ['场景集中度', '高', '场景可控'],
+          ['特效需求', '中等', '石膏碎裂与幽灵视觉'],
+        ],
+      },
+    ])
+  })
+
+  it('renders quotes and code as semantic blocks', () => {
+    expect(parseAgentMessage('> 原文证据\n\n```text\nscene 1\n```')).toEqual([
+      { type: 'quote', text: '原文证据' },
+      { type: 'code', text: 'scene 1' },
+    ])
+  })
 })

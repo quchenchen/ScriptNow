@@ -55,6 +55,28 @@ class AgentRuntimeTimeoutError(AgentRuntimeError):
     """The configured wall-clock limit expired before AgentScope completed."""
 
 
+class AgentRuntimeIncompleteError(AgentRuntimeError):
+    """AgentScope stopped before producing a final user-facing answer."""
+
+
+AGENT_MAX_ITERATIONS_MESSAGE = (
+    "Executed maximum iterations of reasoning-acting loop without finishing the task."
+)
+
+
+def is_incomplete_agent_text(text: str) -> bool:
+    normalized = text.strip().casefold()
+    return not normalized or AGENT_MAX_ITERATIONS_MESSAGE.casefold() in normalized
+
+
+def require_completed_agent_text(text: str) -> str:
+    if is_incomplete_agent_text(text):
+        raise AgentRuntimeIncompleteError(
+            "review agent reached its execution limit before completing the review"
+        )
+    return text.strip()
+
+
 RuntimeEventSink = Callable[[AgentEvent], Awaitable[None]]
 
 
@@ -68,6 +90,10 @@ class AgentRuntimeResult:
     input_price_per_million: Decimal
     output_price_per_million: Decimal
     config_fingerprint: str = ""
+    completed: bool = True
+    stop_reason: str | None = None
+    evidence_manifest: tuple[dict[str, object], ...] = ()
+    agent_state: dict[str, object] | None = None
 
 
 class AgentRuntime:
@@ -255,7 +281,10 @@ class AgentRuntime:
             model=model,
             toolkit=Toolkit(skills_or_loaders=loaders),
             react_config=ReActConfig(
-                max_iters=min(3, self.settings.agent_runtime_hard_max_iters)
+                max_iters=min(
+                    self.settings.agent_runtime_default_max_iters,
+                    self.settings.agent_runtime_hard_max_iters,
+                )
             ),
         )
         prompt = (
@@ -289,6 +318,215 @@ class AgentRuntime:
             output_price_per_million=Decimal(str(model_record.output_price_per_million)),
             config_fingerprint=snapshot.fingerprint,
         )
+
+    async def review_source(
+        self,
+        *,
+        tenant_id: str,
+        review_domain: str,
+        document_kind: str,
+        title: str,
+        source_text: str,
+        request: str,
+        language: str = "zh-CN",
+        review_focus: str = "overall",
+        explicit_skill_keys: tuple[str, ...] = (),
+        conversation: tuple[dict[str, str], ...] = (),
+        agent_state: dict[str, object] | None = None,
+    ) -> AgentRuntimeResult:
+        """Review an uploaded work without creating or mutating a creative project."""
+        try:
+            snapshot = await self.factory.preview_for_tenant(
+                tenant_id=tenant_id,
+                role_key="reviewer",
+                medium=review_domain,
+                direction={"language": language},
+                stage="review",
+            )
+        except RuntimeConfigError as error:
+            raise AgentRuntimeError(str(error)) from error
+        values = snapshot.values
+        if values.get("provider_key") == "mock":
+            raise AgentRuntimeError("real model is not configured for the reviewer role")
+        provider_id = str(values["provider_id"])
+        try:
+            credential = await self.supply.get_credential_for_runtime(provider_id)
+        except CredentialError as error:
+            raise AgentRuntimeError(str(error)) from error
+        async with self.database.session() as session:
+            provider = await session.get(ProviderModel, provider_id)
+            model_record = await session.get(LanguageModelModel, str(values["model_id"]))
+        if provider is None or model_record is None or not provider.base_url:
+            raise AgentRuntimeError("reviewer runtime endpoint is incomplete")
+        if values.get("agentscope_class") != "OpenAIChatModel":
+            raise AgentRuntimeError("configured AgentScope model class is not supported yet")
+
+        configured_skill_keys = tuple(values.get("skill_keys") or ())
+        selected = list(
+            explicit_skill_keys
+            or self._review_skill_keys(
+                domain=review_domain,
+                configured_skill_keys=configured_skill_keys,
+                review_focus=review_focus,
+            )
+        )
+        try:
+            loaders = self.factory.skill_catalog.loaders_for_plan(
+                domain=review_domain,
+                skill_keys=selected,
+            )
+        except Exception as error:
+            raise AgentRuntimeError(str(error)) from error
+        model = self._openai_model(
+            credential=OpenAICredential(
+                api_key=SecretStr(credential),
+                base_url=provider.base_url,
+            ),
+            model_key=model_record.key,
+            stream=False,
+            thinking=False,
+        )
+        agent_kwargs = {
+            "name": "standalone-reviewer",
+            "system_prompt": self._system_prompt(
+                "reviewer",
+                str(values.get("soul") or ""),
+                language=language,
+            ),
+            "model": model,
+            "toolkit": Toolkit(skills_or_loaders=loaders),
+            "react_config": ReActConfig(
+                max_iters=min(
+                    self.settings.agent_runtime_default_max_iters,
+                    self.settings.agent_runtime_hard_max_iters,
+                )
+            ),
+        }
+        agent = Agent(**agent_kwargs)
+        if agent_state:
+            try:
+                agent = Agent(
+                    **agent_kwargs,
+                    state=agent.state.model_validate(agent_state),
+                )
+            except Exception as error:
+                raise AgentRuntimeError("saved reviewer state is not restorable") from error
+
+        from scriptnow.review.retrieval import build_review_evidence_pack
+
+        source_character_limit = self.settings.context_retrieval_token_limit * 4
+        evidence_pack = build_review_evidence_pack(
+            source_text=source_text,
+            request=request,
+            character_budget=source_character_limit,
+        )
+        prior_turns = "\n".join(
+            f"{'用户' if turn.get('actor') == 'user' else '评审 Agent'}："
+            f"{turn.get('content', '').strip()}"
+            for turn in conversation
+            if turn.get("content", "").strip()
+        )
+        prompt = (
+            "评审一份用户独立上传的作品。必须调用已加载的评审 Skill，并以原文证据为依据。"
+            "区分事实、推断与建议；指出定位证据；不得把建议写成已经发生的修改；"
+            "不得输出隐藏思维链，也不得向用户展示内部 Skill、工具、模型、字段名或技术配置。"
+            "原文已经由系统提供，不得要求用户再次粘贴或上传。把当前请求视为同一评审会话的延续："
+            "回答追问时必须沿用"
+            "此前已经确认的评审范围和证据口径，除非用户明确改变它们。"
+            "请用 Markdown 给出清晰、可执行的评审回复。\n\n"
+            f"评审领域：{review_domain}\n文档类型：{document_kind}\n标题：{title}\n"
+            f"本轮评审轴线：{review_focus}\n"
+            + (
+                f"此前对话：\n{prior_turns}\n\n"
+                if prior_turns and not agent_state
+                else ""
+            )
+            + f"用户本轮要求：{request}\n"
+            f"本轮证据说明：已读取 {evidence_pack.covered_characters} 个字符"
+            + (
+                "，证据来自开篇、中段、结尾及与本轮要求相关的段落。"
+                "引用时必须使用证据编号；证据不足时明确提出下一轮检索目标，不得猜测。"
+                if not evidence_pack.full_coverage
+                else "，已覆盖全文。引用时必须使用证据编号。"
+            )
+            + "\n\n原文证据：\n"
+            + evidence_pack.prompt_text()
+        )
+        try:
+            reply = await asyncio.wait_for(
+                agent.reply(Msg(name="creator", role="user", content=[TextBlock(text=prompt)])),
+                timeout=self.settings.agent_runtime_timeout_seconds,
+            )
+        except TimeoutError as error:
+            raise AgentRuntimeTimeoutError("standalone review timed out") from error
+        except Exception as error:
+            if is_incomplete_agent_text(str(error)):
+                return AgentRuntimeResult(
+                    text="",
+                    runtime="agentscope",
+                    model_key=model_record.key,
+                    input_tokens=0,
+                    output_tokens=0,
+                    input_price_per_million=Decimal(str(model_record.input_price_per_million)),
+                    output_price_per_million=Decimal(str(model_record.output_price_per_million)),
+                    config_fingerprint=snapshot.fingerprint,
+                    completed=False,
+                    stop_reason="max_iterations",
+                    evidence_manifest=evidence_pack.manifest(),
+                    agent_state=agent.state.model_dump(mode="json"),
+                )
+            raise AgentRuntimeError(f"standalone review failed: {error}") from error
+        usage = reply.usage
+        text = self._text_content(reply)
+        completed = not is_incomplete_agent_text(text)
+        return AgentRuntimeResult(
+            text=text.strip(),
+            runtime="agentscope",
+            model_key=model_record.key,
+            input_tokens=usage.input_tokens if usage else 0,
+            output_tokens=usage.output_tokens if usage else 0,
+            input_price_per_million=Decimal(str(model_record.input_price_per_million)),
+            output_price_per_million=Decimal(str(model_record.output_price_per_million)),
+            config_fingerprint=snapshot.fingerprint,
+            completed=completed,
+            stop_reason=None if completed else "max_iterations",
+            evidence_manifest=evidence_pack.manifest(),
+            agent_state=agent.state.model_dump(mode="json"),
+        )
+
+    def _review_skill_keys(
+        self,
+        *,
+        domain: str,
+        configured_skill_keys: tuple[str, ...],
+        review_focus: str,
+    ) -> tuple[str, ...]:
+        """Narrow configured reviewer skills by a stable user-facing review axis."""
+        if review_focus == "overall":
+            return configured_skill_keys
+        focus_terms = {
+            "structure": ("structure", "story", "plot", "graph", "continuity", "causality"),
+            "character": ("character", "relationship", "emotion", "intimacy", "voice"),
+            "pacing": ("pacing", "rhythm", "hook", "retention", "serial"),
+            "market": ("market", "platform", "audience", "commercial"),
+            "adaptation": ("screen", "adaptation", "production", "acquisition"),
+        }.get(review_focus, ())
+        if not focus_terms:
+            return configured_skill_keys
+        descriptors = {
+            skill.name: skill
+            for skill in self.factory.skill_catalog.for_domain(domain)
+        }
+        matched = tuple(
+            key
+            for key in configured_skill_keys
+            if key in descriptors
+            and any(
+                term in f"{descriptors[key].name} {descriptors[key].description}".lower()
+                for term in focus_terms
+            )
+        )
+        return matched or configured_skill_keys
 
     async def _generate(
         self,
@@ -395,13 +633,18 @@ class AgentRuntime:
                         Msg(name="creator", role="user", content=[TextBlock(text=prompt)])
                     )
                 else:
+                    phase_title = (
+                        "正在建立评审框架与证据范围"
+                        if role == "reviewer"
+                        else "正在形成创作策略"
+                    )
                     await event_sink(
                         CustomEvent(
                             name="scriptnow.phase",
                             value={
                                 "phase": "planning",
                                 "state": "start",
-                                "title": "正在形成章节创作策略",
+                                "title": phase_title,
                             },
                         )
                     )
@@ -409,16 +652,22 @@ class AgentRuntime:
                         agent=agent,
                         prompt=prompt,
                         event_sink=event_sink,
+                        role=role,
                     )
                     if not planning_text:
-                        raise RuntimeError("Agent planning completed without a writing brief.")
+                        raise RuntimeError("Agent planning completed without a usable brief.")
                     await event_sink(
                         CustomEvent(
                             name="scriptnow.phase",
                             value={
                                 "phase": "planning",
                                 "state": "end",
-                                "title": "章节策略与能力调用已完成",
+                                "title": (
+                                    "评审框架"
+                                    if role == "reviewer"
+                                    else "创作策略"
+                                ),
+                                "content": planning_text,
                             },
                         )
                     )
@@ -454,10 +703,20 @@ class AgentRuntime:
                                 content=[
                                     TextBlock(
                                         text=(
-                                            f"{prompt}\n\nAgent writing brief:\n"
+                                            f"{prompt}\n\nAgent working brief:\n"
                                             f"{planning_text}\n\n"
-                                            "Now deliver the complete chapter. Return only the requested JSON "
-                                            "object; do not mention the brief, tools, or your process."
+                                            + (
+                                                "Now deliver a concise, evidence-grounded review response. "
+                                                "Separate findings, evidence, impact and recommended next action. "
+                                                "Do not claim to have changed the work. Do not mention hidden "
+                                                "reasoning or fabricate evidence."
+                                                if role == "reviewer"
+                                                else (
+                                                    "Now deliver the requested creative artifact. Follow the "
+                                                    "output contract in the request exactly; do not mention the "
+                                                    "brief, tools, or your process."
+                                                )
+                                            )
                                         )
                                     )
                                 ],
@@ -586,20 +845,31 @@ class AgentRuntime:
         agent: Agent,
         prompt: str,
         event_sink: RuntimeEventSink,
+        role: str = "writer",
     ) -> str:
         """Run planning through AgentScope's public stream and return visible brief text."""
         visible_text: list[str] = []
+        task = (
+            "Use the available project skills and tools to prepare an evidence-grounded "
+            "review brief for the requested scope. Identify the evaluation frame, inspect "
+            "relevant artifacts, and distinguish observations from recommendations. Do not "
+            "rewrite the work and do not expose hidden chain-of-thought."
+            if role == "reviewer"
+            else (
+                "Use the available project skills and tools to prepare a compact writing "
+                "brief for the requested unit. Resolve continuity, scene movement, character "
+                "desire, setup/payoff and source evidence. Explain the decisions in concise, "
+                "user-readable terms. Do not write manuscript prose and do not expose hidden "
+                "chain-of-thought."
+            )
+        )
         request = Msg(
             name="creator",
             role="user",
             content=[
                 TextBlock(
                     text=(
-                        "Use the available project skills and tools to prepare a compact "
-                        "writing brief for the requested chapter. Resolve continuity, scene "
-                        "movement, character desire, setup/payoff and source evidence. Explain "
-                        "the decisions in concise, user-readable terms. Do not write chapter "
-                        "prose and do not expose hidden chain-of-thought.\n\n" + prompt
+                        task + "\n\n" + prompt
                     )
                 )
             ],
@@ -749,7 +1019,11 @@ class AgentRuntime:
             ),
             "reviewer": (
                 "负责诊断与审读，明确证据、影响和建议，不直接改写正文；优先识别声音趋同、"
-                "解释性写作、虚假深刻与没有改变关系风险的情感表达。"
+                "解释性写作、虚假深刻与没有改变关系风险的情感表达。服务端项目事实快照含有"
+                " evidence_manifest.documents 时，直接审读其中稿件；未指定焦点时默认审读已提供的"
+                "全部项目稿件，不得要求用户再次粘贴正文。若 coverage 为 partial，只需说明未覆盖单元，"
+                "并继续审读已有证据。面向用户只呈现自然语言结论、原文证据、影响与可执行建议；"
+                "不得展示内部 Skill、模型、工具、字段名、运行配置或隐藏思维链。"
             ),
         }.get(role, "在授权范围内协助创作。")
         return (

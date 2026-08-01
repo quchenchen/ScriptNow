@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
 
-import { appendUniqueStream, eventBody, isDockVisibleStreamBlock, isFocusEvent, parseSse } from './dock'
+import {
+  appendUniqueStream,
+  deriveReviewCheckpoint,
+  eventBody,
+  isDockVisibleStreamBlock,
+  isFocusEvent,
+  isReviewVisibleStreamBlock,
+  parseSse,
+  useDockStore,
+} from './dock'
 
 describe('Agent Dock SSE projection', () => {
   it('preserves ordered Thinking, Tool, Data and Text blocks with cursors', () => {
@@ -16,6 +26,21 @@ describe('Agent Dock SSE projection', () => {
       ['1', 'thinking', '分析'], ['2', 'tool', '读取上下文'],
       ['3', 'data', '上下文包'], ['4', 'text', '建议'],
     ])
+  })
+
+  it('projects a completed reply as one readable message', () => {
+    const blocks = parseSse(
+      'id: 9\nevent: conversation\ndata: {"block":"text","phase":"end","title":"Agent 评审结果","content":"完整评审正文"}\n\n',
+    )
+
+    expect(blocks).toHaveLength(1)
+    expect(blocks[0]).toMatchObject({
+      id: '9',
+      block: 'text',
+      phase: 'end',
+      title: 'Agent 评审结果',
+      text: '完整评审正文',
+    })
   })
 
   it('drops replayed blocks after reconnect without disturbing order', () => {
@@ -54,6 +79,31 @@ describe('Agent Dock SSE projection', () => {
     expect(result[0]).toMatchObject({ id: '21', text: 'The silver leaf remembers.' })
   })
 
+  it('coalesces legacy planning tokens and hides them from the review conversation', () => {
+    const fragments = parseSse([
+      'id: 30\nevent: system\ndata: {"block":"thinking","phase":"planning","title":"Agent 分析过程","delta":"Reading "}',
+      'id: 31\nevent: system\ndata: {"block":"thinking","phase":"planning","title":"Agent 分析过程","delta":"relevant "}',
+      'id: 32\nevent: system\ndata: {"block":"thinking","phase":"planning","title":"Agent 分析过程","delta":"skills"}',
+      '',
+    ].join('\n\n'))
+
+    const result = appendUniqueStream([], fragments)
+    expect(result).toHaveLength(1)
+    expect(result[0]?.text).toBe('Reading relevant skills')
+    expect(isReviewVisibleStreamBlock(result[0]!)).toBe(false)
+  })
+
+  it('shows only completed user-readable review briefs', () => {
+    expect(isReviewVisibleStreamBlock({
+      id: '40',
+      type: 'system',
+      block: 'thinking',
+      phase: 'end',
+      title: '评审框架',
+      text: '先核查人物目标，再按场景定位证据。',
+    })).toBe(true)
+  })
+
   it('keeps the newest cursor last when status events interleave manuscript deltas', () => {
     const blocks = parseSse([
       'id: 20\nevent: conversation\ndata: {"block":"text","phase":"delta","title":"章节候选稿只读预览","delta":"The silver "}',
@@ -79,6 +129,60 @@ describe('Agent Dock SSE projection', () => {
 })
 
 describe('Agent Dock information hierarchy', () => {
+  it('keeps the reviewer open while the studio refreshes its creative role', () => {
+    setActivePinia(createPinia())
+    const dock = useDockStore()
+    dock.setCreativeRole('architect')
+    dock.openReviewer()
+    dock.setCreativeRole('writer')
+
+    expect(dock.role).toBe('reviewer')
+    dock.returnToCreativeRole()
+    expect(dock.role).toBe('writer')
+  })
+
+  it('derives the latest unadopted decision checkpoint from project events', () => {
+    const events = [
+      {
+        id: '1', type: 'node' as const, title: '候选', payload: { action: 'novel_story_core.propose' },
+        occurred_at: '', count: 1,
+      },
+      {
+        id: '2', type: 'decision' as const, title: '采纳', payload: { action: 'novel_story_core.adopt' },
+        occurred_at: '', count: 1,
+      },
+      {
+        id: '3', type: 'node' as const, title: '章节候选', payload: {
+          action: 'novel_document.revise',
+          chapter_id: 'chapter-4',
+        },
+        occurred_at: '', count: 1,
+      },
+    ]
+
+    expect(deriveReviewCheckpoint(events)).toEqual({
+      key: 'document:3',
+      label: '正文候选决策',
+      action: 'novel_document.revise',
+      focus: { medium: 'novel', unit_id: 'chapter-4' },
+    })
+  })
+
+  it('clears a checkpoint after the corresponding artifact is adopted', () => {
+    const events = [
+      {
+        id: '1', type: 'node' as const, title: '蓝图候选', payload: { action: 'script_blueprint.propose' },
+        occurred_at: '', count: 1,
+      },
+      {
+        id: '2', type: 'decision' as const, title: '采纳蓝图', payload: { action: 'script_blueprint.adopt' },
+        occurred_at: '', count: 1,
+      },
+    ]
+
+    expect(deriveReviewCheckpoint(events)).toBeUndefined()
+  })
+
   it('keeps conversations, decisions and failures in the default focus view', () => {
     const event = (type: 'chat' | 'node' | 'decision' | 'system', status?: string) => ({
       id: type, type, title: type, payload: status ? { status } : {}, occurred_at: '', count: 1,

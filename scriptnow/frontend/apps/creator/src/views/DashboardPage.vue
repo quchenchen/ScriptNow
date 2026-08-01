@@ -39,7 +39,12 @@ onMounted(async () => {
 
 <template>
   <AppShell title="你的故事" eyebrow="创作项目">
-    <template #heading><RouterLink class="primary link-button" to="/new">新建项目</RouterLink></template>
+    <template #heading>
+      <div class="dashboard-actions">
+        <RouterLink class="secondary link-button" to="/review-agent">独立评审</RouterLink>
+        <RouterLink class="primary link-button" to="/new">新建项目</RouterLink>
+      </div>
+    </template>
     <p v-if="projects.loading" class="muted">正在读取创作现场…</p>
     <section v-else class="project-grid" aria-label="项目列表">
       <RouterLink
@@ -66,3 +71,7 @@ onMounted(async () => {
     </section>
   </AppShell>
 </template>
+
+<style scoped>
+.dashboard-actions{display:flex;gap:10px;flex-wrap:wrap}
+</style>

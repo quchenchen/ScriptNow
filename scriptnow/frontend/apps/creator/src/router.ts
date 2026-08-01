@@ -1,26 +1,26 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
-import DashboardPage from './views/DashboardPage.vue'
-import AccountPage from './views/AccountPage.vue'
-import AgentTeamPage from './views/AgentTeamPage.vue'
-import LoginPage from './views/LoginPage.vue'
-import PackagingPage from './views/PackagingPage.vue'
-import WelcomePage from './views/WelcomePage.vue'
-import WizardPage from './views/WizardPage.vue'
-import WorkspacePage from './views/WorkspacePage.vue'
 import { useSessionStore } from './stores/session'
 
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: '/login', component: LoginPage, meta: { public: true } },
-    { path: '/welcome', component: WelcomePage },
-    { path: '/', component: DashboardPage },
-    { path: '/account', component: AccountPage },
-    { path: '/new', component: WizardPage },
-    { path: '/projects/:projectId', component: WorkspacePage },
-    { path: '/projects/:projectId/agents', component: AgentTeamPage },
-    { path: '/projects/:projectId/packaging', component: PackagingPage },
+    { path: '/login', component: () => import('./views/LoginPage.vue'), meta: { public: true } },
+    { path: '/welcome', component: () => import('./views/WelcomePage.vue') },
+    { path: '/', component: () => import('./views/DashboardPage.vue') },
+    { path: '/account', component: () => import('./views/AccountPage.vue') },
+    { path: '/new', component: () => import('./views/WizardPage.vue') },
+    { path: '/review-agent', component: () => import('./views/ReviewWorkbenchPage.vue') },
+    { path: '/projects/:projectId', component: () => import('./views/WorkspacePage.vue') },
+    { path: '/projects/:projectId/agents', component: () => import('./views/AgentTeamPage.vue') },
+    { path: '/projects/:projectId/packaging', component: () => import('./views/PackagingPage.vue') },
+    {
+      path: '/projects/:projectId/review-agent',
+      redirect: (to) => ({
+        path: `/projects/${String(to.params.projectId)}`,
+        query: { ...to.query, review: 'checkpoint' },
+      }),
+    },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
 })

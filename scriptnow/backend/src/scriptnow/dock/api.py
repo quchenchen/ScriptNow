@@ -31,6 +31,12 @@ class ConfirmRequest(BaseModel):
     approved: bool
     idempotency_key: str = Field(min_length=1, max_length=120)
 
+class ReviewMessageRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    content: str = Field(min_length=1, max_length=20_000)
+    idempotency_key: str = Field(min_length=1, max_length=120)
+    focus: dict[str, str] | None = None
+
 
 def create_dock_router(
     database: Database,
@@ -94,6 +100,49 @@ def create_dock_router(
                 focus=body.focus,
                 idempotency_key=body.idempotency_key,
                 requires_confirmation=body.requires_confirmation,
+            )
+        except PaymentRequired as error:
+            raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, str(error)) from error
+        except AgentRuntimeTimeoutError as error:
+            raise HTTPException(status.HTTP_504_GATEWAY_TIMEOUT, str(error)) from error
+        except AgentRuntimeError as error:
+            raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(error)) from error
+        except (DockError, BillingError, RunTransitionError) as error:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
+
+    @router.get("/projects/{project_id}/review-agent/capabilities")
+    async def review_capabilities(
+        project_id: str,
+        access: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
+    ) -> dict[str, object]:
+        actor = await context(access)
+        try:
+            return await dock.reviewer_capabilities(
+                tenant_id=str(actor.tenant_id), project_id=project_id
+            )
+        except DockError as error:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, str(error)) from error
+
+    @router.post("/projects/{project_id}/review-agent/messages")
+    async def review_message(
+        project_id: str,
+        body: ReviewMessageRequest,
+        access: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
+        csrf: Annotated[str | None, Header(alias="X-CSRF-Token")] = None,
+    ) -> dict[str, object]:
+        actor = await context(access, csrf, write=True)
+        try:
+            return await dock.send_message(
+                tenant_id=str(actor.tenant_id),
+                project_id=project_id,
+                actor_id=str(actor.user_id),
+                role="reviewer",
+                content=body.content,
+                quote=None,
+                focus=body.focus,
+                idempotency_key=body.idempotency_key,
+                requires_confirmation=False,
+                stage_override="review",
             )
         except PaymentRequired as error:
             raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, str(error)) from error

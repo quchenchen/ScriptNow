@@ -83,7 +83,7 @@ async function reviseBlueprint() {
   if (!instruction || revisingBlueprint.value) return
   revisingBlueprint.value = true
   try {
-    dock.role = 'architect'
+    dock.setCreativeRole('architect')
     dock.expanded = true
     await script.generateBlueprint(props.projectId, `${blueprintFeedbackCategory.value}: ${instruction}`)
     await dock.load(props.projectId)
@@ -136,7 +136,7 @@ watch(() => script.state?.phase, (phase) => {
   else if (phase === 'story_core_adopted') layout.setStudioView('blueprint')
   else if (phase === 'blueprint_adopted') layout.setStudioView('storymap')
   else if (phase) layout.setStudioView('writer')
-  dock.role = phase === 'seeded' ? 'director' : phase === 'story_core_adopted' || phase === 'blueprint_adopted' ? 'architect' : 'writer'
+  dock.setCreativeRole(phase === 'seeded' ? 'director' : phase === 'story_core_adopted' || phase === 'blueprint_adopted' ? 'architect' : 'writer')
   void dock.loadTransparency(props.projectId)
 }, { immediate: true })
 watch(() => script.state?.story_map.episodes, (episodes) => {

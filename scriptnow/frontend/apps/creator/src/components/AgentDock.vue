@@ -4,7 +4,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import AgentMessage from './AgentMessage.vue'
 import { creativeRoleLabel } from '../creativeRoles'
 import { useAgentTeamStore } from '../stores/agentTeam'
-import { eventBody, isDockVisibleStreamBlock, useDockStore, type DockFilter } from '../stores/dock'
+import { eventBody, isDockVisibleStreamBlock, isReviewVisibleStreamBlock, useDockStore, type DockFilter } from '../stores/dock'
 import { useRuntimeStore } from '../stores/runtime'
 
 const props = defineProps<{ projectId: string }>()
@@ -23,8 +23,13 @@ const filters: Array<{ key: DockFilter; label: string }> = [
   { key: 'node', label: '过程' }, { key: 'system', label: '运行' },
 ]
 const activityCountLabel = computed(() => dock.filter === 'focus' ? `${dock.visibleEvents.length} 条重点动态` : `${dock.visibleEvents.length} 条${filters.find((item) => item.key === dock.filter)?.label ?? '动态'}`)
+const dockSummaryLabel = computed(() => {
+  if (dock.activeRun) return `${roleLabel.value}正在处理`
+  if (dock.reviewCheckpoint && dock.role !== 'reviewer') return `待审读 · ${dock.reviewCheckpoint.label}`
+  return activityCountLabel.value
+})
 const operationLabel = computed(() => ({ expand: '扩写', shorten: '缩写', polish: '润色', revise: '修订' })[dock.quote?.operation ?? 'revise'])
-const roleLabel = computed(() => creativeRoleLabel(dock.role))
+const roleLabel = computed(() => dock.role === 'reviewer' ? '审读编辑' : creativeRoleLabel(dock.role))
 const runtimeRole = computed(() => dock.role === 'editor' ? 'reviewer' : dock.role as 'director' | 'architect' | 'writer' | 'reviewer')
 const activeRuntime = computed(() => runtime.status?.roles[runtimeRole.value])
 const runtimeMember = computed(() => team.members.find((member) => member.role_key === runtimeRole.value))
@@ -85,7 +90,7 @@ const actionLabels: Record<string, string> = {
 const eventKindLabels: Record<string, string> = { chat: '对话', decision: '已确认', node: '执行过程', system: '运行信息' }
 const streamBlockLabels: Record<string, string> = { thinking: '思考摘要', tool: '能力调用', data: '项目上下文', text: '正文预览', system: '运行信息' }
 const visibleStream = computed(() => dock.stream
-  .filter(isDockVisibleStreamBlock)
+  .filter((block) => dock.role === 'reviewer' ? isReviewVisibleStreamBlock(block) : isDockVisibleStreamBlock(block))
   .filter((block) => dock.filter !== 'focus' || block.block === 'thinking' || block.block === 'tool' || block.block === 'system'))
 function eventTitle(event: { title: string; payload: Record<string, unknown> }) {
   const action = String(event.payload.action ?? event.title)
@@ -172,7 +177,8 @@ function onFeedScroll() {
 async function send() {
   const content = input.value
   input.value = ''
-  await dock.send(props.projectId, content, requiresConfirmation.value)
+  if (dock.role === 'reviewer') await dock.sendReview(props.projectId, content)
+  else await dock.send(props.projectId, content, requiresConfirmation.value)
   requiresConfirmation.value = false
 }
 
@@ -245,7 +251,7 @@ onUnmounted(() => {
     <button v-if="dock.expanded" class="dock-resize-grip" aria-label="拖拽调整创作搭档大小" title="拖拽调整大小" @pointerdown.prevent="startResize" />
     <button class="dock-handle" :aria-expanded="dock.expanded" @click="dock.expanded = !dock.expanded">
       <span><i :class="{ active: dock.activeRun }" /> 创作搭档</span>
-      <small>{{ dock.activeRun ? `${roleLabel}正在处理` : activityCountLabel }}</small>
+      <small>{{ dockSummaryLabel }}</small>
     </button>
     <template v-if="dock.expanded">
       <header class="dock-header">
@@ -257,6 +263,12 @@ onUnmounted(() => {
       </nav>
       <div ref="feed" class="dock-feed" aria-live="polite" @scroll="onFeedScroll">
         <button v-if="showScrollAnchor" class="scroll-anchor" aria-label="回到底部" title="回到最新消息" @click="scrollToLatest">↓ 回到最新</button>
+        <section v-if="dock.role === 'reviewer'" class="review-checkpoint-card">
+          <p class="eyebrow">项目决策检查点</p>
+          <strong>{{ dock.reviewCheckpoint?.label ?? '按需审读' }}</strong>
+          <p>审读编辑会读取当前候选、版本和项目事实，帮助你在采纳前发现问题；它不会替你修改或确认作品。</p>
+          <button type="button" @click="dock.returnToCreativeRole">返回创作搭档</button>
+        </section>
         <article v-for="event in dock.visibleEvents" :key="event.id" class="dock-event" :class="`event-${event.type}`">
           <span class="event-kind">{{ eventKindLabels[event.type] }}</span><time>{{ new Date(event.occurred_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}</time>
           <strong>{{ eventTitle(event) }}</strong>
@@ -302,7 +314,7 @@ onUnmounted(() => {
       </section>
       <form class="dock-composer" @submit.prevent="send">
         <div v-if="dock.quote" class="quote-chip"><span>{{ operationLabel }} · {{ dock.quote.medium }}</span><q>{{ dock.quote.excerpt }}</q><button type="button" aria-label="移除引用" @click="dock.clearQuote">×</button></div>
-        <textarea v-model="input" rows="3" :placeholder="dock.quote ? `补充${operationLabel}要求（可直接发送）…` : `告诉${roleLabel}你希望怎样调整…`" :disabled="dock.busy" @keydown="onKeydown" />
+        <textarea v-model="input" rows="3" :placeholder="dock.quote ? `补充${operationLabel}要求（可直接发送）…` : dock.role === 'reviewer' ? '告诉审读编辑：需要判断的问题、范围或证据标准…' : `告诉${roleLabel}你希望怎样调整…`" :disabled="dock.busy" @keydown="onKeydown" />
         <div class="composer-actions"><label><input v-model="requiresConfirmation" type="checkbox" /> 操作前确认</label><button v-if="dock.activeRun && dock.activeRun.status !== 'waiting'" type="button" @click="dock.cancel(projectId, dock.activeRun.id)">取消运行</button><button class="send-button" :disabled="dock.busy || !input.trim()">{{ dock.busy ? '处理中…' : '发送 ↵' }}</button></div>
       </form>
       <p v-if="dock.error" class="dock-error" role="alert">{{ dock.error }}</p>

@@ -1,5 +1,7 @@
 # ScriptNow 规格包 v1.1
 
+新增专题：[审读编辑与独立评审](./24-REVIEW-AGENT-WORKBENCH.md)：项目内以决策检查点和 Dock 审读编辑主动介入，项目外以持久化连续对话完成独立评审。
+
 | | |
 |---|---|
 | 版本 | `v7-spec-v1.1` |
@@ -50,6 +52,8 @@ V7 的唯一规格基线是本目录。需要核对历史决策时，先按
 - `21-UX-OPTIMIZATION-STRATEGY.md`：原型回归、沉浸式创作和响应式布局策略。
 - `22-SCRIPT-SKILL-SYSTEM.md`：剧本创作 Skill、场景思维、质量门与格式契约。
 - `23-CROSS-DOMAIN-CONTEXT-RETRIEVAL.md`：四领域创作上下文、RAG、图谱检索、证据清单与分阶段实施架构。
+- `24-REVIEW-AGENT-WORKBENCH.md`：项目决策检查点、Dock 审读编辑与独立连续评审的双轨产品契约。
+- `25-FULL-PRODUCT-USABILITY-AUDIT.md`：本轮全流程自动化、浏览器可用性与剩余边界验收记录。
 - `RELEASE-NOTES.md`：产品版本、验证门禁、真实 Provider 回放结果与已知限制。
 - `adr/`：V7 独立 ADR 编号空间，不覆盖根目录历史 ADR。
 - `references/AGENTSCOPE-2.0.4-VERIFICATION.md`：API 表面验证；其中未实测项必须在 P0 tracer bullet 中完成。

@@ -66,6 +66,13 @@ class ProjectWorkflow(StrEnum):
     CROSS_CULTURAL_RECREATION = "cross_cultural_recreation"
 
 
+class ReviewCaseStatus(StrEnum):
+    READY = "ready"
+    REVIEWING = "reviewing"
+    WAITING = "waiting"
+    FAILED = "failed"
+
+
 class RunStatus(StrEnum):
     QUEUED = "queued"
     RUNNING = "running"
@@ -479,6 +486,57 @@ class ProjectModel(Base):
     direction: Mapped[dict[str, object]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ReviewCaseModel(Base):
+    """Standalone source review, deliberately independent from a creative project."""
+
+    __tablename__ = "review_cases"
+    __table_args__ = (
+        Index("ix_review_cases_tenant_created", "tenant_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    title: Mapped[str] = mapped_column(String(240), nullable=False)
+    document_kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    review_domain: Mapped[str] = mapped_column(String(32), nullable=False)
+    source_filename: Mapped[str] = mapped_column(String(512), nullable=False)
+    source_media_type: Mapped[str] = mapped_column(String(160), nullable=False)
+    source_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_text: Mapped[str] = mapped_column(String, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default=ReviewCaseStatus.READY)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+
+class ReviewMessageModel(Base):
+    """Durable, user-readable review conversation; raw reasoning deltas never enter it."""
+
+    __tablename__ = "review_messages"
+    __table_args__ = (
+        UniqueConstraint("case_id", "sequence", name="uq_review_message_sequence"),
+        UniqueConstraint("case_id", "idempotency_key", name="uq_review_message_idempotency"),
+        Index("ix_review_messages_case_sequence", "tenant_id", "case_id", "sequence"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    case_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("review_cases.id", ondelete="CASCADE"), nullable=False
+    )
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    actor: Mapped[str] = mapped_column(String(32), nullable=False)
+    content: Mapped[str] = mapped_column(String, nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(120), nullable=False)
+    metadata_json: Mapped[dict[str, object]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
 class WorkPackageModel(Base):

@@ -29,6 +29,7 @@
       "novel-pacing-check": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["pacing-writing-positive", "wrong-stage-negative", "pacing-writing-regression"]},
       "novel-speculative-intimacy-reviewer": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["speculative-review-positive", "wrong-role-negative", "speculative-review-regression"]},
       "novel-speculative-intimacy-writer": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["speculative-write-positive", "wrong-role-negative", "speculative-write-regression"]},
+      "novel-screen-ip-review": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["novel-review-explicit", "wrong-domain-negative", "novel-review-regression"], "quality_status": "baseline_required", "benchmark_suite": "novel-genre-benchmark-v2"},
       "novel-structure-planning": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["novel-structure-positive", "wrong-stage-negative", "novel-structure-regression"]}
     },
     "script": {
@@ -36,6 +37,7 @@
       "script-storymap": {"status": "admitted", "baseline": "script-skill-baseline-v1", "cases": ["script-storymap-positive", "wrong-stage-negative", "script-storymap-regression"]},
       "script-write": {"status": "admitted", "baseline": "script-skill-baseline-v1", "cases": ["script-writing-positive", "wrong-stage-negative", "script-writing-regression"]},
       "script-review": {"status": "admitted", "baseline": "script-skill-baseline-v1", "cases": ["script-review-positive", "wrong-stage-negative", "script-review-regression"]},
+      "script-screen-creative-review": {"status": "admitted", "baseline": "script-skill-baseline-v1", "cases": ["script-review-positive", "wrong-stage-negative", "script-review-regression"]},
       "script-structure-planning": {"status": "admitted", "baseline": "script-skill-baseline-v1", "cases": ["script-structure-positive", "wrong-stage-negative", "script-structure-regression"]},
       "script-format-chinese": {"status": "admitted", "baseline": "script-skill-baseline-v1", "cases": ["chinese-format-positive", "wrong-format-negative", "chinese-format-regression"]},
       "script-format-hollywood": {"status": "admitted", "baseline": "script-skill-baseline-v1", "cases": ["hollywood-format-positive", "wrong-format-negative", "hollywood-format-regression"]}

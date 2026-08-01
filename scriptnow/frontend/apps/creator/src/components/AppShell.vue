@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useLocale, useTheme } from '@scriptnow/shared'
-import { PhMoon, PhSun } from '@phosphor-icons/vue'
+import { PhMagnifyingGlass, PhMoon, PhSealCheck, PhSun } from '@phosphor-icons/vue'
 
+import { useDockStore } from '../stores/dock'
 import { useLayoutStore } from '../stores/layout'
 import { useProjectsStore } from '../stores/projects'
 import NovelDeliveryPanel from './NovelDeliveryPanel.vue'
@@ -14,6 +15,7 @@ const route = useRoute()
 const router = useRouter()
 const projects = useProjectsStore()
 const layout = useLayoutStore()
+const dock = useDockStore()
 const { isEnglish, t, toggleLocale } = useLocale()
 const { resolvedTheme, toggleTheme } = useTheme()
 const dragging = ref(false)
@@ -37,6 +39,21 @@ async function selectRecreationStage(stage: number) {
     path: `/projects/${projectId.value}`,
     query: { ...route.query, recreationStage: String(stage) },
   })
+}
+async function openProjectReviewer() {
+  if (!projectId.value) return
+  layout.mobileOpen = false
+  if (route.path !== `/projects/${projectId.value}`) {
+    await router.push(`/projects/${projectId.value}`)
+  }
+  dock.openReviewer(dock.reviewCheckpoint)
+}
+async function consumeReviewRoute() {
+  if (!projectId.value || route.query.review !== 'checkpoint') return
+  dock.openReviewer(dock.reviewCheckpoint)
+  const query = { ...route.query }
+  delete query.review
+  await router.replace({ path: route.path, query })
 }
 function openRecreationExport() {
   window.dispatchEvent(new CustomEvent('scriptnow:recreation-export'))
@@ -113,6 +130,11 @@ onMounted(() => {
   if (!projects.items.length) void projects.load()
   window.addEventListener('keydown', onKeydown)
 })
+watch(
+  () => [route.params.projectId, route.query.review],
+  () => { void consumeReviewRoute() },
+  { immediate: true },
+)
 onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 </script>
 
@@ -133,6 +155,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
           <p>{{ t('creator.project') }}</p>
           <RouterLink to="/">◈ {{ t('creator.dashboard') }}</RouterLink>
           <RouterLink :to="`/projects/${projectId}/agents`">◎ {{ t('creator.team') }}</RouterLink>
+          <button type="button" @click="openProjectReviewer"><PhSealCheck />{{ isEnglish ? 'Review editor' : '审读编辑' }}</button>
           <button type="button" @click="openRecreationExport">↓ 导出归化稿</button>
           <button class="project-delete-trigger" type="button" @click="openDeleteDialog">⌫ 删除项目</button>
         </nav>
@@ -146,6 +169,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
           <p>{{ t('creator.project') }}</p>
           <RouterLink to="/">◈ {{ t('creator.dashboard') }}</RouterLink>
           <RouterLink :to="`/projects/${projectId}/agents`">◎ {{ t('creator.team') }}</RouterLink>
+          <button type="button" @click="openProjectReviewer"><PhSealCheck />{{ isEnglish ? 'Review editor' : '审读编辑' }}</button>
           <RouterLink :to="`/projects/${projectId}/packaging`">▣ {{ t('creator.packaging') }}</RouterLink>
           <button @click="openExport">↓ {{ t('creator.export') }}</button>
           <button @click="openHistory">↺ {{ t('creator.history') }}</button>
@@ -163,7 +187,11 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
         <RouterLink to="/new" class="create-project-btn">✦ {{ t('creator.create') }}</RouterLink>
       </template>
       <template v-else>
-        <nav class="shell-nav"><p>{{ t('creator.workspace') }}</p><RouterLink to="/">◈ {{ t('creator.dashboard') }}</RouterLink></nav>
+        <nav class="shell-nav">
+          <p>{{ t('creator.workspace') }}</p>
+          <RouterLink to="/">◈ {{ t('creator.dashboard') }}</RouterLink>
+          <RouterLink to="/review-agent"><PhMagnifyingGlass />{{ isEnglish ? 'Independent review' : '独立评审' }}</RouterLink>
+        </nav>
         <RouterLink to="/new" class="create-project-btn">✦ {{ t('creator.create') }}</RouterLink>
       </template>
       <RouterLink to="/account" class="sidebar-account"><span>帐</span><span><strong>{{ t('creator.account') }}</strong><small>{{ t('creator.accountHint') }}</small></span></RouterLink>

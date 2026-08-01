@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useLocale } from '@scriptnow/shared'
 
 import { api } from '../api'
+import { useDockStore } from '../stores/dock'
 
 type Verdict = 'pass' | 'revise' | 'block'
 interface QualityDimension {
@@ -25,8 +26,8 @@ interface QualityReport {
 
 const props = defineProps<{ projectId: string; chapterId: string; revisionId: string }>()
 const { isEnglish } = useLocale()
+const dock = useDockStore()
 const reports = ref<QualityReport[]>([])
-const busy = ref(false)
 const error = ref('')
 const current = computed(() => reports.value.find((item) => item.revision_id === props.revisionId))
 const labels: Record<string, [string, string]> = {
@@ -56,23 +57,14 @@ async function load() {
     error.value = reason instanceof Error ? reason.message : '质量报告读取失败'
   }
 }
-async function evaluate() {
-  busy.value = true
-  error.value = ''
-  try {
-    await api(
-      `/novel/projects/${props.projectId}/chapters/${props.chapterId}/quality-reports/generate`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ revision_id: props.revisionId, idempotency_key: crypto.randomUUID() }),
-      },
-    )
-    await load()
-  } catch (reason) {
-    error.value = reason instanceof Error ? reason.message : '质量评测未完成'
-  } finally {
-    busy.value = false
-  }
+function openReviewEditor() {
+  dock.setFocus('novel', props.chapterId)
+  dock.openReviewer({
+    key: `novel_document:${props.chapterId}:${props.revisionId}`,
+    label: isEnglish.value ? 'Chapter candidate decision' : '章节候选决策',
+    action: 'novel_document.review',
+    focus: { medium: 'novel', unit_id: props.chapterId },
+  })
 }
 
 watch(() => [props.projectId, props.chapterId, props.revisionId], load, { immediate: true })
@@ -81,8 +73,8 @@ watch(() => [props.projectId, props.chapterId, props.revisionId], load, { immedi
 <template>
   <section class="quality-panel">
     <header>
-      <div><p class="eyebrow">{{ isEnglish ? 'Chapter maturity' : '章节成熟度' }}</p><h3>{{ current ? `${current.maturity_score}/100` : (isEnglish ? 'Not evaluated' : '尚未评测') }}</h3></div>
-      <button class="secondary" :disabled="busy" @click="evaluate">{{ busy ? (isEnglish ? 'Reviewing…' : '审读中…') : current ? (isEnglish ? 'Re-evaluate' : '重新评测') : (isEnglish ? 'Evaluate' : '评测本稿') }}</button>
+      <div><p class="eyebrow">{{ isEnglish ? 'Review evidence' : '审读证据' }}</p><h3>{{ current ? `${current.maturity_score}/100` : (isEnglish ? 'Awaiting review' : '等待审读') }}</h3></div>
+      <button class="secondary" @click="openReviewEditor">{{ isEnglish ? 'Open review editor' : '交给审读编辑' }}</button>
     </header>
     <p v-if="error" class="quality-error" role="alert">{{ error }}</p>
     <p v-if="!current" class="quality-empty">{{ isEnglish ? 'The report is bound to this exact revision and will not alter the candidate.' : '报告只绑定当前修订，不会改写或自动采纳候选稿。' }}</p>

@@ -55,6 +55,8 @@ export interface DockRun {
 
 export interface StreamBlock {
   id: string
+  replyId?: string
+  blockId?: string
   type: string
   block: 'thinking' | 'tool' | 'data' | 'text' | 'system'
   phase?: string
@@ -72,6 +74,55 @@ export interface DockQuote {
   revision_id: string
   element_id: string
   excerpt: string
+}
+
+export interface ReviewCheckpoint {
+  key: string
+  label: string
+  action: string
+  focus?: { medium: 'script' | 'novel'; unit_id: string }
+}
+
+const reviewCheckpointLabels: Record<string, string> = {
+  story_core: '创意方向决策',
+  blueprint: '蓝图方案决策',
+  story_map: 'StoryMap 决策',
+  document: '正文候选决策',
+  source_story_model: '源作品分析决策',
+  target_story_contract: '目标故事契约决策',
+  recreation_strategy: '归化策略决策',
+  pilot: '代表性试写决策',
+  scale_plan: '整书方案决策',
+  production: '正文生产决策',
+}
+
+function checkpointFamily(action: string): string | undefined {
+  const normalized = action.replace(/^(novel|script)_/, '').replace(/^cross_cultural\./, '')
+  const [family] = normalized.split('.')
+  return reviewCheckpointLabels[family] ? family : undefined
+}
+
+export function deriveReviewCheckpoint(events: DockEvent[]): ReviewCheckpoint | undefined {
+  const pending = new Map<string, ReviewCheckpoint>()
+  for (const event of events) {
+    const action = String(event.payload.action ?? '')
+    const family = checkpointFamily(action)
+    if (!family) continue
+    if (action.endsWith('.adopt')) {
+      pending.delete(family)
+      continue
+    }
+    if (!action.endsWith('.propose') && !action.endsWith('.revise')) continue
+    const medium = action.startsWith('script_') ? 'script' : action.startsWith('novel_') ? 'novel' : undefined
+    const unitId = event.payload.scene_id ?? event.payload.chapter_id
+    pending.set(family, {
+      key: `${family}:${event.id}`,
+      label: reviewCheckpointLabels[family]!,
+      action,
+      focus: medium && unitId ? { medium, unit_id: String(unitId) } : undefined,
+    })
+  }
+  return [...pending.values()].at(-1)
 }
 
 interface Transparency {
@@ -107,10 +158,16 @@ function parseSse(raw: string): StreamBlock[] {
     return [{
       id,
       type,
+      replyId: payload.reply_id ? String(payload.reply_id) : undefined,
+      blockId: payload.block_id ? String(payload.block_id) : undefined,
       block: String(payload.block ?? 'system') as StreamBlock['block'],
       phase: payload.phase ? String(payload.phase) : undefined,
       title: payload.title ? String(payload.title) : undefined,
-      text: payload.delta ? String(payload.delta) : undefined,
+      text: payload.delta
+        ? String(payload.delta)
+        : payload.content
+          ? String(payload.content)
+          : undefined,
       data: payload.data && typeof payload.data === 'object' ? payload.data as Record<string, unknown> : undefined,
       runtime: payload.runtime ? String(payload.runtime) : undefined,
       duration_ms: typeof payload.duration_ms === 'number' ? payload.duration_ms : undefined,
@@ -124,11 +181,18 @@ function appendUniqueStream(current: StreamBlock[], incoming: StreamBlock[]): St
   for (const block of incoming) {
     if (seen.has(block.id)) continue
     seen.add(block.id)
-    if ((block.block === 'text' || block.block === 'thinking') && block.phase === 'delta') {
+    const isIncrementalContent = (
+      (block.block === 'text' && block.phase === 'delta')
+      || (block.block === 'thinking' && block.phase !== 'end')
+    )
+    if (isIncrementalContent) {
       let previousDelta = -1
       for (let index = result.length - 1; index >= 0; index -= 1) {
         const item = result[index]!
-        if (item.block === block.block && item.phase === block.phase && item.title === block.title) {
+        const sameRuntimeBlock = block.replyId && block.blockId
+          ? item.replyId === block.replyId && item.blockId === block.blockId
+          : item.title === block.title
+        if (item.block === block.block && item.phase === block.phase && sameRuntimeBlock) {
           previousDelta = index
           break
         }
@@ -166,6 +230,16 @@ export function isDockVisibleStreamBlock(block: StreamBlock): boolean {
   return !(block.block === 'text' && block.title === '章节候选稿只读预览')
 }
 
+export function isReviewVisibleStreamBlock(block: StreamBlock): boolean {
+  if (!['thinking', 'tool', 'text', 'system'].includes(block.block)) return false
+  if (!block.text && !block.title) return false
+  // Older runs persisted every AgentScope planning token as a separate event.
+  // They are transport fragments, not review messages. New runs persist one
+  // completed, user-readable planning brief instead.
+  if (block.block === 'thinking' && block.phase !== 'end') return false
+  return true
+}
+
 export const useDockStore = defineStore('agent-dock', {
   state: () => ({
     events: [] as DockEvent[],
@@ -174,6 +248,8 @@ export const useDockStore = defineStore('agent-dock', {
     streamRunId: undefined as string | undefined,
     quote: undefined as DockQuote | undefined,
     focus: undefined as { medium: 'script' | 'novel'; unit_id: string } | undefined,
+    reviewCheckpoint: undefined as ReviewCheckpoint | undefined,
+    previousRole: 'writer' as string,
     proposal: undefined as SelectionProposal | undefined,
     transparency: { context_tokens: 0, context_limit: 0, context_percent: null, memory_entries: 0, role: 'writer', connected: false } as Transparency,
     role: 'writer',
@@ -211,6 +287,23 @@ export const useDockStore = defineStore('agent-dock', {
     setFocus(medium: 'script' | 'novel', unitId: string) {
       this.focus = { medium, unit_id: unitId }
     },
+    setCreativeRole(role: 'director' | 'architect' | 'writer') {
+      this.previousRole = role
+      if (this.role !== 'reviewer') this.role = role
+    },
+    openReviewer(checkpoint?: ReviewCheckpoint) {
+      if (this.role !== 'reviewer') this.previousRole = this.role
+      this.role = 'reviewer'
+      this.reviewCheckpoint = checkpoint ?? this.reviewCheckpoint
+      if (this.reviewCheckpoint?.focus) this.focus = this.reviewCheckpoint.focus
+      this.filter = 'focus'
+      this.expanded = true
+    },
+    returnToCreativeRole() {
+      this.role = this.previousRole || 'writer'
+      this.reviewCheckpoint = undefined
+      this.filter = 'focus'
+    },
     setSize(width: number, height: number) {
       this.width = Math.max(340, Math.min(760, Math.round(width)))
       this.height = Math.max(320, Math.min(window.innerHeight - 56, Math.round(height)))
@@ -220,10 +313,19 @@ export const useDockStore = defineStore('agent-dock', {
     async load(projectId: string, incremental = false) {
       try {
         const priorActiveRunId = this.activeRun?.id
+        const previousCheckpointKey = this.reviewCheckpoint?.key
         const after = incremental ? (this.events.at(-1)?.cursor_id ?? this.events.at(-1)?.id) : undefined
         const query = after ? `?after_id=${encodeURIComponent(after)}` : ''
         const incoming = await api<DockEvent[]>(`/projects/${projectId}/events${query}`)
         this.events = incremental ? [...this.events, ...incoming.filter((event) => !this.events.some((item) => item.id === event.id))] : incoming
+        const inferredCheckpoint = deriveReviewCheckpoint(this.events)
+        if (incremental && inferredCheckpoint && inferredCheckpoint.key !== previousCheckpointKey) {
+          this.openReviewer(inferredCheckpoint)
+        } else if (incremental && !inferredCheckpoint && previousCheckpointKey && this.role === 'reviewer') {
+          this.returnToCreativeRole()
+        } else if (this.role !== 'reviewer' || !this.reviewCheckpoint) {
+          this.reviewCheckpoint = inferredCheckpoint
+        }
         await Promise.all([this.loadRuns(projectId), this.loadTransparency(projectId)])
         const active = this.runs.find((run) => ['queued', 'running', 'waiting'].includes(run.status))
         const streamRunId = active?.id ?? priorActiveRunId
@@ -279,6 +381,31 @@ export const useDockStore = defineStore('agent-dock', {
       } catch (error) {
         this.error = error instanceof ApiError && error.status === 402 ? '本周期额度不足，请前往用量中心。' : error instanceof Error ? error.message : '发送失败'
       } finally { this.busy = false }
+    },
+    async sendReview(projectId: string, content: string) {
+      if (!content.trim()) return
+      this.openReviewer(this.reviewCheckpoint)
+      this.busy = true
+      this.error = ''
+      this.stream = []
+      try {
+        const run = await api<DockRun>(`/projects/${projectId}/review-agent/messages`, {
+          method: 'POST',
+          body: JSON.stringify({
+            content: content.trim(),
+            focus: this.focus,
+            idempotency_key: crypto.randomUUID(),
+          }),
+        })
+        await this.reconnect(projectId, run.id)
+        await this.load(projectId)
+      } catch (error) {
+        this.error = error instanceof ApiError && error.status === 402
+          ? '本周期额度不足，请前往用量中心。'
+          : error instanceof Error ? error.message : '评审未完成'
+      } finally {
+        this.busy = false
+      }
     },
     async reconnect(projectId: string, runId: string) {
       if (this.streamRunId !== runId) {
