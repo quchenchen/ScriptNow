@@ -6,16 +6,15 @@ WORKDIR /src/frontend
 # Use npmmirror (Tsinghua does not provide npm registry; npmmirror is the CN standard)
 RUN npm config set registry https://registry.npmmirror.com
 
-# Install deps (package-lock.json for reproducible builds)
+# Install the complete workspace graph from the reproducible lockfile. Workspace
+# manifests must exist before npm ci or their build-time dependencies are skipped.
 COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci
-
-# Build admin + creator
 COPY frontend/apps/admin/package.json apps/admin/
 COPY frontend/apps/creator/package.json apps/creator/
 COPY frontend/packages/shared/package.json packages/shared/
-RUN npm ci --workspaces
+RUN npm ci --include=dev
 
+# Build admin + creator
 COPY frontend/ ./
 RUN npm run build
 
@@ -43,6 +42,7 @@ RUN pip install --no-cache-dir . \
 # Backend skills + migrations
 COPY backend/skills/ skills/
 COPY backend/migrations/ migrations/
+COPY backend/alembic.ini alembic.ini
 
 # Frontend static assets from build stage
 COPY --from=frontend-build /src/frontend/apps/creator/dist/ /app/static/creator/

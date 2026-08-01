@@ -5,13 +5,13 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "${PORT:-8080}:80"
+      - "${BIND_ADDRESS:-127.0.0.1}:${PORT:-8080}:80"
     environment:
       - SCRIPTNOW_ENVIRONMENT=${SCRIPTNOW_ENVIRONMENT:-production}
       - SCRIPTNOW_DATABASE_URL=sqlite+aiosqlite:///./data/scriptnow.db
       - SCRIPTNOW_ACCESS_TOKEN_SECRET=${SCRIPTNOW_ACCESS_TOKEN_SECRET:-production-change-me-please}
       - SCRIPTNOW_CREDENTIAL_MASTER_KEY=${SCRIPTNOW_CREDENTIAL_MASTER_KEY:-production-master-key-change-me-please}
-      - SCRIPTNOW_COOKIE_SECURE=false
+      - SCRIPTNOW_COOKIE_SECURE=${SCRIPTNOW_COOKIE_SECURE:-true}
     volumes:
       - scriptnow-data:/app/data
     restart: unless-stopped

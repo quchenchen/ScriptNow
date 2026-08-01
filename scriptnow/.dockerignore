@@ -19,6 +19,8 @@ backend/data/
 
 # Editor / OS
 .DS_Store
+._*
+**/._*
 .idea/
 .vscode/
 *.swp
