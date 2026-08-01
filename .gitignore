@@ -31,6 +31,7 @@ scriptnow/backend/data/workspaces/
 .env
 .env.local
 .env.*.local
+deploy.env
 *.pem
 
 # Logs

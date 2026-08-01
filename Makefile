@@ -76,19 +76,28 @@ clean:  ## 清理可重建缓存
 
 # ── Docker ─────────────────────────────────────────────────────
 
-docker-build:  ## 构建生产镜像
-	docker build -t scriptnow:latest $(APP_DIR)
+DEPLOY_ENV ?= $(APP_DIR)/deploy.env
+DOCKER_COMPOSE = docker compose --env-file $(DEPLOY_ENV) -f $(APP_DIR)/docker-compose.yml
+
+docker-build:  ## 使用 deploy.env 构建生产镜像
+	test -f $(DEPLOY_ENV) || (echo "Missing $(DEPLOY_ENV); copy $(APP_DIR)/deploy.env.example first" && exit 1)
+	$(DOCKER_COMPOSE) build --pull
 
 verify: test lint build  ## 全量验证（测试+静态+构建）
 
-docker-up:  ## 启动生产容器 (端口 8080)
-	docker compose -f $(APP_DIR)/docker-compose.yml up -d
+docker-up:  ## 使用 deploy.env 启动生产容器
+	test -f $(DEPLOY_ENV) || (echo "Missing $(DEPLOY_ENV); copy $(APP_DIR)/deploy.env.example first" && exit 1)
+	$(DOCKER_COMPOSE) up -d --remove-orphans
 
 docker-down:  ## 停止生产容器
-	docker compose -f $(APP_DIR)/docker-compose.yml down
+	test -f $(DEPLOY_ENV) || (echo "Missing $(DEPLOY_ENV); copy $(APP_DIR)/deploy.env.example first" && exit 1)
+	$(DOCKER_COMPOSE) down
 
 docker-dev:  ## 启动开发容器（热重载，三个服务）
-	docker compose -f $(APP_DIR)/docker-compose.yml --profile dev up
+	SCRIPTNOW_ACCESS_TOKEN_SECRET=development-compose-interpolation-only \
+	SCRIPTNOW_CREDENTIAL_MASTER_KEY=development-compose-interpolation-only \
+		docker compose -f $(APP_DIR)/docker-compose.yml --profile dev \
+		up backend creator admin
 
 docker-push:  ## 构建并推送镜像到 GitHub Container Registry
 	docker build -t ghcr.io/quchenchen/scriptnow:latest $(APP_DIR)

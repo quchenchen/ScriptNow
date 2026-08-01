@@ -1,10 +1,17 @@
+# Build registries default to their upstream services. Operators in restricted
+# networks can override them through Docker build arguments without baking a
+# region-specific mirror into the application image.
+ARG NODE_IMAGE=node:22-alpine
+ARG PYTHON_IMAGE=python:3.12-slim
+
 # ── Stage 1: Frontend build ──────────────────────────────────
-FROM node:22-alpine AS frontend-build
+FROM ${NODE_IMAGE} AS frontend-build
+
+ARG NPM_REGISTRY=https://registry.npmjs.org
 
 WORKDIR /src/frontend
 
-# Use npmmirror (Tsinghua does not provide npm registry; npmmirror is the CN standard)
-RUN npm config set registry https://registry.npmmirror.com
+RUN npm config set registry "${NPM_REGISTRY}"
 
 # Install the complete workspace graph from the reproducible lockfile. Workspace
 # manifests must exist before npm ci or their build-time dependencies are skipped.
@@ -19,10 +26,19 @@ COPY frontend/ ./
 RUN npm run build
 
 # ── Stage 2: Production runtime ──────────────────────────────
-FROM python:3.12-slim
+FROM ${PYTHON_IMAGE}
 
-# Use Debian CN mirrors for apt
-RUN sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/debian.sources \
+ARG DEBIAN_MIRROR=
+ARG PIP_INDEX_URL=https://pypi.org/simple
+
+# DEBIAN_MIRROR is optional because not every mirror supports every Debian
+# release. The official repository remains the safe default.
+RUN if [ -n "${DEBIAN_MIRROR}" ]; then \
+        sed -i \
+          -e "s|https://deb.debian.org/debian|${DEBIAN_MIRROR}|g" \
+          -e "s|http://deb.debian.org/debian|${DEBIAN_MIRROR}|g" \
+          /etc/apt/sources.list.d/debian.sources; \
+    fi \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
         nginx supervisor curl \
@@ -30,14 +46,10 @@ RUN sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.li
 
 WORKDIR /app
 
-# Use PyPI CN mirror
-RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
-
 # Python deps and source
 COPY backend/pyproject.toml ./
 COPY backend/src/    src/
-RUN pip install --no-cache-dir . \
-    && pip install --no-cache-dir supervisor
+RUN pip install --no-cache-dir --index-url "${PIP_INDEX_URL}" .
 
 # Backend skills + migrations
 COPY backend/skills/ skills/
@@ -57,7 +69,7 @@ RUN chmod -R 755 /app/static && \
     rm -f /etc/nginx/sites-enabled/default && \
     ln -sf /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
 
-ENV SCRIPTNOW_ENVIRONMENT=development
+ENV SCRIPTNOW_ENVIRONMENT=production
 ENV PYTHONUNBUFFERED=1
 
 EXPOSE 80

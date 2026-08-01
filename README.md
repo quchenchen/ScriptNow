@@ -1,5 +1,13 @@
 # ScriptNow
 
+## Docker production deployment
+
+The supported production setup uses Docker Compose with a loopback-only application port and an external HTTPS reverse proxy. Build registries are configurable, production secrets are mandatory, and mainland China mirrors can be enabled without modifying source files.
+
+生产环境采用 Docker Compose，应用端口仅监听本机，由宝塔或 Nginx 提供 HTTPS 反向代理。构建源可以配置，生产密钥必须显式设置，国内镜像无需修改源码即可启用。
+
+See / 查看：[Docker deployment guide / Docker 部署指南](./docs/DOCKER-DEPLOYMENT.md)
+
 **AI agent–powered creative production for novels, scripts, translation, and cross-cultural story recreation.**
 
 [简体中文](#简体中文) · [English](#english) · [日本語](#日本語) · [한국어](#한국어)

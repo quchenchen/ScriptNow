@@ -1,5 +1,8 @@
 # ScriptNow
 
+Production container installation and upgrade instructions are maintained in
+[`../docs/DOCKER-DEPLOYMENT.md`](../docs/DOCKER-DEPLOYMENT.md).
+
 当前产品版本：`0.2.0-rc.1`。
 
 V7 独立工程。产品与技术基线见 `../docs/v7-spec-v1.1/`，版本状态与验证证据见

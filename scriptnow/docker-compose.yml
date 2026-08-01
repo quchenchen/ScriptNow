@@ -4,16 +4,23 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:22-alpine}
+        PYTHON_IMAGE: ${PYTHON_IMAGE:-python:3.12-slim}
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org}
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+        DEBIAN_MIRROR: ${DEBIAN_MIRROR:-}
     ports:
       - "${BIND_ADDRESS:-127.0.0.1}:${PORT:-8080}:80"
     environment:
       - SCRIPTNOW_ENVIRONMENT=${SCRIPTNOW_ENVIRONMENT:-production}
       - SCRIPTNOW_DATABASE_URL=sqlite+aiosqlite:///./data/scriptnow.db
-      - SCRIPTNOW_ACCESS_TOKEN_SECRET=${SCRIPTNOW_ACCESS_TOKEN_SECRET:-production-change-me-please}
-      - SCRIPTNOW_CREDENTIAL_MASTER_KEY=${SCRIPTNOW_CREDENTIAL_MASTER_KEY:-production-master-key-change-me-please}
+      - SCRIPTNOW_ACCESS_TOKEN_SECRET=${SCRIPTNOW_ACCESS_TOKEN_SECRET:?set SCRIPTNOW_ACCESS_TOKEN_SECRET in deploy.env}
+      - SCRIPTNOW_CREDENTIAL_MASTER_KEY=${SCRIPTNOW_CREDENTIAL_MASTER_KEY:?set SCRIPTNOW_CREDENTIAL_MASTER_KEY in deploy.env}
       - SCRIPTNOW_COOKIE_SECURE=${SCRIPTNOW_COOKIE_SECURE:-true}
     volumes:
       - scriptnow-data:/app/data
+    init: true
     restart: unless-stopped
 
   # ── Dev backend (hot reload) ───────────────────────────────
