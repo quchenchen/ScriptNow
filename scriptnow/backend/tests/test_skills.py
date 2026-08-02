@@ -720,3 +720,25 @@ def test_instructions_for_renders_selected_skills_with_budget() -> None:
     assert "Write a novel chapter" in rendered
     assert len(rendered) <= 340
     assert "截断" in rendered
+
+
+def test_retention_and_voice_craft_skills_are_keyword_matched() -> None:
+    catalog = SkillCatalog(SKILLS_ROOT)
+    profile = CreativeProfile.from_direction(
+        medium="novel",
+        direction={
+            "genre": "现代言情/甜宠",
+            "style": "钩子密集, 爽点, 口吻差异化, 命名同质化",
+            "language": "zh-CN",
+        },
+    )
+    plan = SkillResolver(catalog, optional_limit=3).resolve(
+        profile=profile, role_key="writer", stage="writing"
+    )
+    selected = {item.skill.name for item in plan.selections}
+    assert "novel-cn-retention" in selected
+    assert "novel-voice-craft" in selected
+    retention = next(
+        item for item in plan.selections if item.skill.name == "novel-cn-retention"
+    )
+    assert any("题材关键词匹配" in reason for reason in retention.reasons)

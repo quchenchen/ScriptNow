@@ -33,7 +33,9 @@
       "novel-structure-planning": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["novel-structure-positive", "wrong-stage-negative", "novel-structure-regression"]},
       "novel-ideate": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["novel-ideate-explicit", "wrong-domain-negative", "novel-ideate-regression"]},
       "novel-plan": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["novel-plan-positive", "wrong-stage-negative", "novel-plan-regression"]},
-      "novel-write": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["novel-write-explicit", "wrong-domain-negative", "novel-write-regression"]}
+      "novel-write": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["novel-write-explicit", "wrong-domain-negative", "novel-write-regression"]},
+      "novel-cn-retention": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["retention-positive", "wrong-language-negative", "retention-regression"]},
+      "novel-voice-craft": {"status": "admitted", "baseline": "novel-skill-baseline-v1", "cases": ["voice-craft-positive", "wrong-language-negative", "voice-craft-regression"]}
     },
     "script": {
       "script-develop": {"status": "admitted", "baseline": "script-skill-baseline-v1", "cases": ["script-development-positive", "wrong-stage-negative", "script-development-regression"]},
