@@ -348,6 +348,7 @@ class SourceDistillationRunner:
         payload: dict[str, object],
         max_attempts: int = 3,
     ) -> None:
+        strict_refs = pass_key == "atomic_evidence"
         validation_feedback: list[str] = []
         for attempt in range(1, max_attempts + 1):
             request = dict(payload)
@@ -363,7 +364,9 @@ class SourceDistillationRunner:
                 parsed = EvidenceBatch.model_validate(
                     await self.analyzer.analyze(pass_key=pass_key, payload=request)
                 )
-                await self._persist_drafts(tenant_id, run, parsed.evidence)
+                await self._persist_drafts(
+                    tenant_id, run, parsed.evidence, strict_refs=strict_refs
+                )
                 return
             except (AnalyzerOutputError, ValidationError) as error:
                 validation_feedback.append(str(error))
@@ -377,6 +380,8 @@ class SourceDistillationRunner:
         tenant_id: str,
         run: SourceDistillationModel,
         drafts: list[EvidenceDraft],
+        *,
+        strict_refs: bool = True,
     ) -> None:
         chunks = {chunk.id: chunk for chunk in await self._chunks(run)}
         known = {item.evidence_key: item.id for item in await self._evidence(run.id)}
@@ -393,9 +398,13 @@ class SourceDistillationRunner:
                 raise AnalyzerOutputError(f"unknown cited chunk: {draft.chunk_id}")
             missing = set(draft.related_evidence_keys) - available_keys
             if missing:
-                raise AnalyzerOutputError(
-                    f"unknown related evidence keys: {', '.join(sorted(missing))}"
-                )
+                if strict_refs:
+                    raise AnalyzerOutputError(
+                        f"unknown related evidence keys: {', '.join(sorted(missing))}"
+                    )
+                draft.related_evidence_keys = [
+                    key for key in draft.related_evidence_keys if key in available_keys
+                ]
 
         # Materialize every row without links first so every peer has a stable database ID.
         for draft in drafts:

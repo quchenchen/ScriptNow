@@ -23,6 +23,7 @@ from scriptnow.platform.source_distillation import (
 from scriptnow.platform.source_distillation_runner import (
     AgentRuntimeDistillationAnalyzer,
     AnalyzerOutputError,
+    EvidenceDraft,
     SourceDistillationRunner,
 )
 
@@ -605,3 +606,37 @@ async def test_runner_resumes_cross_unit_synthesis_from_completed_group(
         final = await session.get(type(run), run.id)
         assert final is not None
         assert final.checkpoint["synthesis_groups_processed"] == [0, 1]
+
+
+@pytest.mark.asyncio
+async def test_synthesis_persist_drops_forward_references_while_atomic_stays_strict(
+    distillation_data,
+) -> None:
+    database, tenant, _, project, source, chunks = distillation_data
+    service = SourceDistillationService(database)
+    run = await service.start(
+        tenant_id=tenant.id,
+        project_id=project.id,
+        source_file_ids=[source.id],
+        idempotency_key="refs-test",
+    )
+    runner = SourceDistillationRunner(database, analyzer=object())
+    drafts = [
+        EvidenceDraft(
+            evidence_key="e1",
+            chunk_id=chunks[0].id,
+            source_unit="u1",
+            dimension="character_state",
+            claim="苏晚上夜班三年",
+            confidence=90,
+            inference=False,
+            related_evidence_keys=["not-yet-persisted-key"],
+        )
+    ]
+    await runner._persist_drafts(tenant.id, run, drafts, strict_refs=False)
+    async with database.session() as session:
+        rows = (await session.scalars(select(SourceEvidenceModel))).all()
+        assert len(rows) == 1
+        assert rows[0].related_evidence_ids == []
+    with pytest.raises(AnalyzerOutputError, match="unknown related evidence keys"):
+        await runner._persist_drafts(tenant.id, run, drafts, strict_refs=True)
