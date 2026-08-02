@@ -600,8 +600,6 @@ class AgentRuntime:
         mcp_clients = await self._mcp_clients(list(values.get("tool_keys") or []))
         domain_tools: list[object] = []
         if skill_domain == "novel" and role == "writer":
-            import functools
-
             from agentscope.tool import FunctionTool
 
             from scriptnow.novel.writer_tools import (
@@ -610,23 +608,37 @@ class AgentRuntime:
                 get_prior_chapter_summaries,
             )
 
-            def bind_database(fn):
-                @functools.wraps(fn)
-                async def wrapper(*args, **kwargs):
-                    return await fn(self.database, *args, **kwargs)
+            async def prior_summaries_tool(project_id: str, max_chapters: int = 6) -> str:
+                """Return condensed summaries of the most recently written chapters (project_id: novel project uuid)."""
+                return await get_prior_chapter_summaries(
+                    self.database, project_id=project_id, max_chapters=max_chapters
+                )
 
-                return wrapper
+            async def graph_entities_tool(
+                project_id: str,
+                entity_types: str | None = None,
+                max_nodes: int = 20,
+            ) -> str:
+                """Query creative-graph characters, locations, objects, events or concepts (project_id: novel project uuid)."""
+                return await get_creative_graph_entities(
+                    self.database,
+                    project_id=project_id,
+                    entity_types=entity_types,
+                    max_nodes=max_nodes,
+                )
+
+            async def quality_report_tool(project_id: str, chapter_id: str) -> str:
+                """Get the latest quality review for a chapter (project_id: novel project uuid, chapter_id: e.g. chapter-3-1)."""
+                return await get_last_quality_report(
+                    self.database, project_id=project_id, chapter_id=chapter_id
+                )
 
             domain_tools = [
-                FunctionTool(
-                    bind_database(fn),
-                    is_read_only=True,
-                    is_concurrency_safe=True,
-                )
+                FunctionTool(fn, is_read_only=True, is_concurrency_safe=True)
                 for fn in (
-                    get_prior_chapter_summaries,
-                    get_creative_graph_entities,
-                    get_last_quality_report,
+                    prior_summaries_tool,
+                    graph_entities_tool,
+                    quality_report_tool,
                 )
             ]
         prompt = self._compose_prompt(
