@@ -1,7 +1,11 @@
 ---
 name: novel-ideate
 core: true
-description: Generate and evaluate original novel concepts, premises, characters, emotional promises, genre positioning, and anti-trope alternatives before blueprint planning.
+description: Apply structured ideation to generate and evaluate original novel concepts, premises, characters, emotional promises, genre positioning, and anti-trope alternatives before blueprint planning.
+metadata:
+  scriptnow:
+    roles: [director]
+    stages: [ideation]
 ---
 
 # Ideate a novel

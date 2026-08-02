@@ -1,7 +1,11 @@
 ---
 name: novel-write
 core: true
-description: Draft or revise publishable novel chapters from accepted blueprint and canon while preserving voice, causality, continuity, emotional movement, hooks, and human texture.
+description: Write or revise publishable novel chapters from accepted blueprint and canon while preserving voice, causality, continuity, emotional movement, hooks, and human texture.
+metadata:
+  scriptnow:
+    roles: [writer]
+    stages: [writing, revision]
 ---
 
 # Write a novel chapter

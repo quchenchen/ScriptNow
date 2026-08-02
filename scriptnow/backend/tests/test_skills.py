@@ -705,6 +705,7 @@ def test_core_skills_are_role_bound_and_immune_to_optional_limit() -> None:
         "project-diagnose",
     } <= selected
     assert all(item.layer == "core" for item in plan.selections)
+    assert not {"novel-ideate", "novel-plan", "novel-review"} & selected
 
 
 def test_instructions_for_renders_selected_skills_with_budget() -> None:
