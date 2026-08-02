@@ -968,7 +968,7 @@ def create_novel_router(
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
         return _novel_export(manifest)
 
-    @router.get("/exports/{manifest_id}/download")
+    @router.get("/projects/{project_id}/exports/{manifest_id}/download")
     async def download_export(
         project_id: str,
         manifest_id: str,
