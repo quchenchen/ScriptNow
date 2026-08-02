@@ -638,5 +638,15 @@ async def test_synthesis_persist_drops_forward_references_while_atomic_stays_str
         rows = (await session.scalars(select(SourceEvidenceModel))).all()
         assert len(rows) == 1
         assert rows[0].related_evidence_ids == []
+    strict_draft = EvidenceDraft(
+        evidence_key="e2",
+        chunk_id=chunks[0].id,
+        source_unit="u1",
+        dimension="character_state",
+        claim="另一条证据",
+        confidence=90,
+        inference=False,
+        related_evidence_keys=["not-yet-persisted-key"],
+    )
     with pytest.raises(AnalyzerOutputError, match="unknown related evidence keys"):
-        await runner._persist_drafts(tenant.id, run, drafts, strict_refs=True)
+        await runner._persist_drafts(tenant.id, run, [strict_draft], strict_refs=True)
