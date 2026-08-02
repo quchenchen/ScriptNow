@@ -45,7 +45,8 @@ def create_app(
         del app
         interrupted = await RunCoordinator(resolved_database).reconcile_interrupted()
         run_events = PersistentRunEventLog(resolved_database)
-        for run in interrupted:
+        for assessment in interrupted:
+            run = assessment.run
             await run_events.append(
                 tenant_id=run.tenant_id,
                 run_id=run.id,
