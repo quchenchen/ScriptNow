@@ -311,6 +311,7 @@ def create_core_router(
                     usage_sink=record_usage,
                     skill_key=skill_key,
                 ),
+                evidence_batch_size=settings.distillation_evidence_batch_size,
             )
             result = await runner.run(tenant_id=tenant_id, distillation_id=distillation_id)
             await events.append(
