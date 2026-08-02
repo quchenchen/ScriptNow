@@ -448,6 +448,7 @@ def test_script_skills_require_executable_admission_baseline() -> None:
     routed = [skill for skill in catalog.for_domain("script") if skill.roles]
 
     assert {skill.name for skill in routed} == {
+        "script-cn-short-drama",
         "script-develop",
         "script-format-chinese",
         "script-format-hollywood",
@@ -742,3 +743,25 @@ def test_retention_and_voice_craft_skills_are_keyword_matched() -> None:
         item for item in plan.selections if item.skill.name == "novel-cn-retention"
     )
     assert any("题材关键词匹配" in reason for reason in retention.reasons)
+
+
+def test_short_drama_skill_is_keyword_matched_for_vertical_scripts() -> None:
+    catalog = SkillCatalog(SKILLS_ROOT)
+    profile = CreativeProfile.from_direction(
+        medium="script",
+        direction={
+            "genre": "都市逆袭",
+            "style": "竖屏短剧, 情绪卡点, 爽点密集",
+            "language": "zh-CN",
+            "script_format": "chinese",
+        },
+    )
+    plan = SkillResolver(catalog, optional_limit=3).resolve(
+        profile=profile, role_key="writer", stage="writing"
+    )
+    selected = {item.skill.name for item in plan.selections}
+    assert "script-cn-short-drama" in selected
+    short_drama = next(
+        item for item in plan.selections if item.skill.name == "script-cn-short-drama"
+    )
+    assert any("题材关键词匹配" in reason for reason in short_drama.reasons)

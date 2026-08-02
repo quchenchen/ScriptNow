@@ -210,7 +210,7 @@ class CreativeGraphExtractor:
                     "Return JSON only with this exact schema:\n"
                     '{"chapter_title":"...","chapter_summary":"one-paragraph summary of what happens and what remains unresolved",'
                     f'"nodes":[{{"key":"type:slug","type":"{"|".join(NODE_TYPE_VALUES)}",'
-                    '"name":"display name","aliases":[],"attributes":{"年龄":"26","身份":"辰川分析师","关键状态":"手握旧账本"},"description":"one sentence","evidence_ordinals":[0]}}],'
+                    '"name":"display name","aliases":[],"attributes":{"年龄":"值","身份":"值","关键状态":"值"},"description":"one sentence","evidence_ordinals":[0]}}],'
                     f'"edges":[{{"key":"rel-slug","type":"{"|".join(RELATION_TYPE_VALUES)}",'
                     '"source":"node-key","target":"node-key","description":"one sentence",'
                     '"evidence_ordinals":[0],"confidence":90,"inference":false}]}.\n'

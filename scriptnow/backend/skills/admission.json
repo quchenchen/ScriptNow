@@ -45,7 +45,8 @@
       "script-screen-creative-review": {"status": "admitted", "baseline": "script-skill-baseline-v1", "cases": ["script-review-positive", "wrong-stage-negative", "script-review-regression"]},
       "script-structure-planning": {"status": "admitted", "baseline": "script-skill-baseline-v1", "cases": ["script-structure-positive", "wrong-stage-negative", "script-structure-regression"]},
       "script-format-chinese": {"status": "admitted", "baseline": "script-skill-baseline-v1", "cases": ["chinese-format-positive", "wrong-format-negative", "chinese-format-regression"]},
-      "script-format-hollywood": {"status": "admitted", "baseline": "script-skill-baseline-v1", "cases": ["hollywood-format-positive", "wrong-format-negative", "hollywood-format-regression"]}
+      "script-format-hollywood": {"status": "admitted", "baseline": "script-skill-baseline-v1", "cases": ["hollywood-format-positive", "wrong-format-negative", "hollywood-format-regression"]},
+      "script-cn-short-drama": {"status": "admitted", "baseline": "script-skill-baseline-v1", "cases": ["short-drama-positive", "wrong-language-negative", "short-drama-regression"]}
     }
   }
 }
