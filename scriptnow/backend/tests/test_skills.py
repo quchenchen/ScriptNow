@@ -454,6 +454,7 @@ def test_script_skills_require_executable_admission_baseline() -> None:
         "script-format-hollywood",
         "script-review",
         "script-screen-creative-review",
+        "script-source-distiller",
         "script-storymap",
         "script-structure-planning",
         "script-write",

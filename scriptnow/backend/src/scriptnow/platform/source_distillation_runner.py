@@ -34,6 +34,11 @@ class AnalyzerOutputError(DistillationRunnerError):
     """The model response violates the evidence contract and may be retried safely."""
 
 
+def source_distiller_skill_key(medium: str) -> str:
+    """Pick the source-distiller skill matching the project medium."""
+    return "script-source-distiller" if medium == "script" else "novel-source-distiller"
+
+
 T = TypeVar("T")
 
 
@@ -95,11 +100,13 @@ class AgentRuntimeDistillationAnalyzer:
         tenant_id: str,
         run_id: str,
         usage_sink: DistillationUsageSink | None = None,
+        skill_key: str = "novel-source-distiller",
     ) -> None:
         self.runtime = runtime
         self.tenant_id = tenant_id
         self.run_id = run_id
         self.usage_sink = usage_sink
+        self.skill_key = skill_key
         self.call_index = 0
 
     async def analyze(self, *, pass_key: str, payload: dict[str, object]) -> dict[str, object]:
@@ -114,7 +121,7 @@ class AgentRuntimeDistillationAnalyzer:
             ),
             context_snapshot={"distillation_pass": pass_key, **payload},
             stage_override="source-analysis",
-            explicit_skill_keys=("novel-source-distiller",),
+            explicit_skill_keys=(self.skill_key,),
         )
         self.call_index += 1
         if self.usage_sink is not None:

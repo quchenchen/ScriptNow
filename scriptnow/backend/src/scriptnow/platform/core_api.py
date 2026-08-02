@@ -61,6 +61,7 @@ from scriptnow.platform.source_distillation import (
 from scriptnow.platform.source_distillation_runner import (
     AgentRuntimeDistillationAnalyzer,
     SourceDistillationRunner,
+    source_distiller_skill_key,
 )
 from scriptnow.platform.source_text import extract_source_text
 from scriptnow.platform.workspace import LocalWorkspaceService, StoredFile, WorkspaceViolation
@@ -296,6 +297,11 @@ def create_core_router(
                     output_price_per_million=result.output_price_per_million,
                 )
 
+            async with database.session() as session:
+                distillation_project = await session.get(ProjectModel, project_id)
+            skill_key = source_distiller_skill_key(
+                str(distillation_project.medium) if distillation_project else "novel"
+            )
             runner = SourceDistillationRunner(
                 database,
                 AgentRuntimeDistillationAnalyzer(
@@ -303,6 +309,7 @@ def create_core_router(
                     tenant_id=tenant_id,
                     run_id=run_id,
                     usage_sink=record_usage,
+                    skill_key=skill_key,
                 ),
             )
             result = await runner.run(tenant_id=tenant_id, distillation_id=distillation_id)
@@ -1013,7 +1020,7 @@ def create_core_router(
                 ),
             )
         async with database.session() as session:
-            await _tenant_project(session, tenant_id, project_id)
+            project = await _tenant_project(session, tenant_id, project_id)
             scoped_run = await session.get(SourceDistillationModel, distillation_id)
             if (
                 scoped_run is None
@@ -1021,6 +1028,7 @@ def create_core_router(
                 or scoped_run.project_id != project_id
             ):
                 raise HTTPException(status.HTTP_404_NOT_FOUND, "distillation not found")
+        skill_key = source_distiller_skill_key(str(project.medium))
         try:
             project_run = await runs.enqueue(
                 tenant_id=tenant_id,
@@ -1035,7 +1043,7 @@ def create_core_router(
                 run_id=project_run.id,
                 role_key="reviewer",
                 stage_override="source-analysis",
-                explicit_skill_keys=("novel-source-distiller",),
+                explicit_skill_keys=(skill_key,),
             )
         except RuntimeConfigError as error:
             with suppress(RunTransitionError):
