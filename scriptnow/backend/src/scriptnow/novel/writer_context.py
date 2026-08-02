@@ -98,7 +98,10 @@ async def build_character_graph(database, project_id: str, current_chapter_id: s
         for n in characters:
             name = n.get("label", n.get("name", "?"))
             ntype = n.get("type", "")
-            lines.append(f"- **{name}** [{ntype}]")
+            attrs = dict(n.get("attributes") or {})
+            attr_text = " · ".join(f"{k}:{v}" for k, v in attrs.items() if str(v).strip())
+            suffix = f" — {attr_text}" if attr_text else ""
+            lines.append(f"- **{name}** [{ntype}]{suffix}")
 
     locations = [n for n in nodes if n.get("type") == "location"][:5]
     if locations:

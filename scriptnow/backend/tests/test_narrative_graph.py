@@ -98,6 +98,7 @@ async def test_creative_graph_extraction_persists_without_source_file(
                 "type": "character",
                 "name": "林晚",
                 "aliases": [],
+                "attributes": {"年龄": "26", "身份": "追查真相的记者", "关键状态": "握有证据"},
                 "description": "追查真相的主角。",
                 "evidence_ordinals": [0],
             }
@@ -145,10 +146,79 @@ async def test_creative_graph_extraction_persists_without_source_file(
     assert index.source_file_id is None
     assert len(nodes) == 1
     assert nodes[0].node_key == "character:林晚"
+    assert nodes[0].attributes == {"年龄": "26", "身份": "追查真相的记者", "关键状态": "握有证据"}
     assert len(summaries) == 1
     compact = await read_creative_graph(database, project_id=project_id, compact=True)
     assert compact["chapters"][0]["chapter_key"].endswith("chapter-1-1")
     assert compact["chapters"][0]["summary"]
+    assert compact["nodes"][0]["attributes"]["年龄"] == "26"
+
+
+@pytest.mark.asyncio
+async def test_creative_graph_summaries_are_ordered_by_chapter_ordinal(
+    narrative_database, monkeypatch
+) -> None:
+    database = narrative_database
+    async with database.session() as session:
+        tenant = TenantModel(name="Studio", tier="plus")
+        session.add(tenant)
+        await session.flush()
+        project = ProjectModel(
+            tenant_id=tenant.id,
+            name="顺序验证",
+            medium=ProjectMedium.NOVEL,
+            direction={"language": "zh-CN"},
+        )
+        session.add(project)
+        await session.flush()
+        tenant_id, project_id = tenant.id, project.id
+    from scriptnow.platform.models import NarrativeIndexModel
+    from scriptnow.platform.narrative_graph import (
+        NarrativeGraphService,
+        NarrativeSummaryInput,
+    )
+
+    service = NarrativeGraphService(database)
+    index_key = f"creative:{project_id}"
+    async with database.session() as session:
+        session.add(
+            NarrativeIndexModel(
+                id=index_key,
+                tenant_id=tenant_id,
+                project_id=project_id,
+                source_file_id=None,
+                version=1,
+                status="ready",
+                config={"source": "creative"},
+                source_hash="",
+            )
+        )
+        await session.flush()
+    # Insert out of chapter order: chapter-1-10 first, then chapter-1-2
+    for summary_key, title in (
+        ("chapter:chapter-1-10", "第十章"),
+        ("chapter:chapter-1-2", "第二章"),
+        ("chapter:chapter-1-1", "第一章"),
+    ):
+        await service.record_summary(
+            tenant_id=tenant_id,
+            index_id=index_key,
+            item=NarrativeSummaryInput(
+                summary_key=summary_key,
+                level="chapter",
+                title=title,
+                content=f"{title}的摘要内容",
+                child_unit_ids=(),
+                evidence_node_ids=(),
+            ),
+        )
+    data = await read_creative_graph(database, project_id=project_id, compact=True)
+    keys = [ch["chapter_key"] for ch in data["chapters"]]
+    assert keys == [
+        "chapter:chapter-1-1",
+        "chapter:chapter-1-2",
+        "chapter:chapter-1-10",
+    ]
 
 def test_graph_extraction_contract_accepts_grounded_json_and_rejects_unknown_evidence() -> None:
     text = """{

@@ -53,6 +53,7 @@ class _Node(BaseModel):
     type: NarrativeNodeType
     name: str = Field(min_length=1, max_length=300)
     aliases: list[str] = Field(default_factory=list, max_length=12)
+    attributes: dict[str, str] = Field(default_factory=dict)
     description: str = Field(min_length=1, max_length=1200)
     blocks_ordinals: list[int] = Field(min_length=1, max_length=20, alias="evidence_ordinals")
 
@@ -209,10 +210,12 @@ class CreativeGraphExtractor:
                     "Return JSON only with this exact schema:\n"
                     '{"chapter_title":"...","chapter_summary":"one-paragraph summary of what happens and what remains unresolved",'
                     f'"nodes":[{{"key":"type:slug","type":"{"|".join(NODE_TYPE_VALUES)}",'
-                    '"name":"display name","aliases":[],"description":"one sentence","evidence_ordinals":[0]}}],'
+                    '"name":"display name","aliases":[],"attributes":{"年龄":"26","身份":"辰川分析师","关键状态":"手握旧账本"},"description":"one sentence","evidence_ordinals":[0]}}],'
                     f'"edges":[{{"key":"rel-slug","type":"{"|".join(RELATION_TYPE_VALUES)}",'
                     '"source":"node-key","target":"node-key","description":"one sentence",'
                     '"evidence_ordinals":[0],"confidence":90,"inference":false}]}.\n'
+                    "For character nodes, include stable attributes visible in the chapter (年龄, 身份, 关键状态/立场) "
+                    "as string values; omit attributes for other node types or leave {}.\n"
                     "Use evidence_ordinals=[0] for all entries (only one paragraph source).\n\n"
                     + chapter_text
                 ),
@@ -310,7 +313,7 @@ class CreativeGraphExtractor:
                     name=node.name,
                     aliases=tuple(node.aliases),
                     description=node.description,
-                    attributes={},
+                    attributes=dict(node.attributes),
                     evidence_unit_ids=(),  # No NarrativeTextUnit for creative
                 ),
             )
@@ -358,6 +361,12 @@ async def read_creative_graph(database: Database, *, project_id: str, compact: b
     low-confidence edges filtered, and only the most recent chapter
     summaries.
     """
+    def chapter_ordinal(summary_key: str) -> int:
+        try:
+            return int(summary_key.rsplit("-", 1)[-1])
+        except (ValueError, IndexError):
+            return 0
+
     index_key = f"creative:{project_id}"
 
     async with database.session() as session:
@@ -375,6 +384,7 @@ async def read_creative_graph(database: Database, *, project_id: str, compact: b
                 .order_by(NarrativeSummaryModel.created_at)
             )
         )
+        summaries.sort(key=lambda item: chapter_ordinal(item.summary_key))
         nodes = list(
             await session.scalars(
                 select(NarrativeNodeModel)
@@ -409,6 +419,7 @@ async def read_creative_graph(database: Database, *, project_id: str, compact: b
                     "label": n.name,
                     "summary": (n.description or "")[:200],
                     "aliases": list(n.aliases)[:4],
+                    "attributes": dict(n.attributes or {}),
                 }
                 for n in nodes
             ],
@@ -442,6 +453,7 @@ async def read_creative_graph(database: Database, *, project_id: str, compact: b
                 "label": n.name,
                 "summary": n.description,
                 "aliases": list(n.aliases),
+                "attributes": dict(n.attributes or {}),
                 "evidence_count": 0,
             }
             for n in nodes

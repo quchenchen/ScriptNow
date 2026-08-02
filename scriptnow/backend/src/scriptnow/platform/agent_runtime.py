@@ -598,6 +598,25 @@ class AgentRuntime:
                 )
             )
         mcp_clients = await self._mcp_clients(list(values.get("tool_keys") or []))
+        domain_tools: list[object] = []
+        if skill_domain == "novel" and role == "writer":
+            from functools import partial
+
+            from agentscope.tool import FunctionTool
+
+            from scriptnow.novel.writer_tools import (
+                get_creative_graph_entities,
+                get_last_quality_report,
+                get_prior_chapter_summaries,
+            )
+            domain_tools = [
+                FunctionTool(partial(fn, self.database), is_read_only=True, is_concurrency_safe=True)
+                for fn in (
+                    get_prior_chapter_summaries,
+                    get_creative_graph_entities,
+                    get_last_quality_report,
+                )
+            ]
         prompt = self._compose_prompt(
             content=content,
             creative_profile=dict(values.get("creative_profile") or {}),
@@ -621,7 +640,7 @@ class AgentRuntime:
                     skill_instructions=self._skill_instructions(values),
                 ),
                 model=model,
-                toolkit=Toolkit(skills_or_loaders=loaders, mcps=mcp_clients),
+                toolkit=Toolkit(tools=domain_tools, skills_or_loaders=loaders, mcps=mcp_clients),
                 react_config=ReActConfig(
                     max_iters=min(
                         int(
