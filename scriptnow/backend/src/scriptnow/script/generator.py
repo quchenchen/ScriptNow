@@ -9,10 +9,15 @@ from uuid import uuid4
 from json_repair import loads as repair_json
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
-from scriptnow.platform.agent_runtime import AgentRuntime, AgentRuntimeError
+from scriptnow.platform.agent_runtime import (
+    AgentRuntime,
+    AgentRuntimeError,
+    AgentRuntimeResult,
+)
+from scriptnow.platform.billing import BillingService, ReservationView
 from scriptnow.platform.config import Settings
 from scriptnow.platform.database import Database
-from scriptnow.platform.models import ProjectModel, RunStatus
+from scriptnow.platform.models import ProjectModel, RunStatus, TenantModel
 from scriptnow.platform.run_coordinator import RunCoordinator
 from scriptnow.script.contracts import ScriptBlock
 from scriptnow.script.domain import (
@@ -303,8 +308,13 @@ class ScriptCreativeGenerator:
     """Let the configured Agent own semantics; keep only user-selected bounds in code."""
 
     def __init__(self, database: Database, settings: Settings) -> None:
+        self.database = database
+        self.settings = settings
         self.runtime = AgentRuntime(database, settings)
         self.runs = RunCoordinator(database)
+        self.billing = BillingService(
+            database, enforce_limits=settings.enforce_agent_budget
+        )
 
     async def story_cores(
         self,
@@ -722,6 +732,7 @@ type 只能是 slugline、action、character、dialogue、transition。
                 run_id=run.id,
                 target=RunStatus.RUNNING,
             )
+        reservation = await self._reserve(tenant_id=tenant_id, run_id=run.id)
         try:
             result = await self.runtime.generate(
                 tenant_id=tenant_id,
@@ -736,6 +747,7 @@ type 只能是 slugline、action、character、dialogue、transition。
             except json.JSONDecodeError:
                 payload = repair_json(result.text)
             validated = validator(payload)
+            await self._settle(reservation, tenant_id, run.id, result, role)
             if manages_run:
                 await self.runs.transition(
                     tenant_id=tenant_id,
@@ -744,6 +756,7 @@ type 只能是 slugline、action、character、dialogue、transition。
                 )
             return validated
         except (ValidationError, ValueError, TypeError):
+            await self._release(reservation)
             if manages_run:
                 with suppress(Exception):
                     await self.runs.transition(
@@ -754,6 +767,7 @@ type 只能是 slugline、action、character、dialogue、transition。
                     )
             raise
         except AgentRuntimeError as error:
+            await self._release(reservation)
             if manages_run:
                 with suppress(Exception):
                     await self.runs.transition(
@@ -763,6 +777,48 @@ type 只能是 slugline、action、character、dialogue、transition。
                         error_code="script_generation_failed",
                     )
             raise ScriptGenerationError(f"Agent 返回内容无法形成有效创作候选：{error}") from error
+
+    async def _reserve(self, *, tenant_id: str, run_id: str) -> ReservationView:
+        async with self.database.session() as session:
+            tenant = await session.get(TenantModel, tenant_id)
+            if tenant is None:
+                raise ScriptGenerationError("租户不存在")
+        return await self.billing.reserve(
+            tenant_id=tenant_id,
+            run_id=run_id,
+            idempotency_key=f"script-agent:{run_id}",
+            tier=tenant.tier,
+            max_tokens=self.settings.script_agent_reserved_tokens,
+        )
+
+    async def _settle(
+        self,
+        reservation: ReservationView,
+        tenant_id: str,
+        run_id: str,
+        result: AgentRuntimeResult,
+        role: str,
+    ) -> None:
+        await self.billing.record_model_call(
+            reservation_id=reservation.id,
+            tenant_id=tenant_id,
+            run_id=run_id,
+            framework_event_id=f"script-agent:{run_id}",
+            trace_id=run_id,
+            agent_role=role,
+            model_key=result.model_key,
+            input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens,
+            input_price_per_million=result.input_price_per_million,
+            output_price_per_million=result.output_price_per_million,
+        )
+        await self.billing.finalize(reservation.id)
+
+    async def _release(self, reservation: ReservationView | None) -> None:
+        if reservation is None:
+            return
+        with suppress(Exception):
+            await self.billing.release(reservation.id)
 
     @staticmethod
     def _positive(direction: dict[str, object], key: str) -> int:

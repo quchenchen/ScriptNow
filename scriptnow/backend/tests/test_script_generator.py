@@ -1,9 +1,23 @@
+from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
 from pydantic import ValidationError
+from sqlalchemy import select
 
-from scriptnow.platform.models import RunStatus
+from scriptnow.platform.agent_runtime import AgentRuntimeResult
+from scriptnow.platform.config import Settings
+from scriptnow.platform.database import Database
+from scriptnow.platform.models import (
+    ProjectMedium,
+    ProjectModel,
+    ReservationState,
+    RunStatus,
+    TenantModel,
+    TokenAccountModel,
+    TokenUsageModel,
+    UsageReservationModel,
+)
 from scriptnow.script.generator import (
     ScriptCreativeGenerator,
     _anchor_aliases,
@@ -11,6 +25,87 @@ from scriptnow.script.generator import (
     _validate_story_map_payload,
     normalize_blueprint_kind,
 )
+
+
+def _core_candidates() -> list[dict[str, object]]:
+    return [
+        {
+            "title": f"方向 {index}",
+            "concept": "一个具体而完整的剧本方向，包含人物选择、持续升级的阻力、关系变化以及不可逆的终局代价。"
+            * 2,
+            "angles": ["欲望", "阻力", "关系变化", "终局代价", "最终选择"],
+            "narrative_engine": ["每次追查都会揭开真相，同时让主角失去一条退路。"],
+            "viewpoint_anchor": ["跟随主角限知视角"],
+            "pacing_recipe": ["发现、受阻、选择"],
+            "market_judgement": ["优势明确", "风险可控"],
+        }
+        for index in range(1, 4)
+    ]
+
+
+@pytest.mark.asyncio
+async def test_script_generation_records_usage_reservation(tmp_path, monkeypatch) -> None:
+    database = Database.create(f"sqlite+aiosqlite:///{tmp_path / 'script_billing.db'}")
+    await database.create_schema()
+    async with database.session() as session:
+        tenant = TenantModel(name="Studio", tier="plus")
+        session.add(tenant)
+        await session.flush()
+        project = ProjectModel(
+            tenant_id=tenant.id,
+            name="回声诊所",
+            medium=ProjectMedium.SCRIPT,
+            direction={"genre": "悬疑", "language": "zh-CN"},
+        )
+        session.add(project)
+        await session.flush()
+        session.add(
+            TokenAccountModel(
+                tenant_id=tenant.id,
+                tier="plus",
+                period_key="2026-08",
+                monthly_available=100_000,
+                credits_available=0,
+            )
+        )
+        await session.flush()
+        tenant_id, project_id = tenant.id, project.id
+
+    generator = ScriptCreativeGenerator(database, Settings())
+
+    async def fake_generate(**kwargs) -> AgentRuntimeResult:
+        import json
+
+        return AgentRuntimeResult(
+            text=json.dumps({"candidates": _core_candidates()}, ensure_ascii=False),
+            runtime="agentscope",
+            model_key="deepseek-v4-pro",
+            input_tokens=1200,
+            output_tokens=400,
+            input_price_per_million=Decimal("3"),
+            output_price_per_million=Decimal("6"),
+        )
+
+    monkeypatch.setattr(generator.runtime, "generate", fake_generate)
+    async with database.session() as session:
+        project = await session.get(ProjectModel, project_id)
+        drafts = await generator.story_cores(
+            tenant_id=tenant_id,
+            project=project,
+            feedback=None,
+        )
+    assert len(drafts) == 3
+
+    async with database.session() as session:
+        reservations = (await session.scalars(select(UsageReservationModel))).all()
+        usage = (await session.scalars(select(TokenUsageModel))).all()
+        assert len(reservations) == 1
+        assert reservations[0].status == ReservationState.FINALIZED
+        assert len(usage) == 1
+        assert usage[0].agent_role == "director"
+        assert usage[0].model_key == "deepseek-v4-pro"
+        assert usage[0].input_tokens == 1200
+    await database.dispose()
 
 
 @pytest.mark.asyncio
@@ -513,6 +608,18 @@ async def test_json_marks_run_failed_until_domain_contract_validates():
 
     generator.runs = FakeRuns()
     generator.runtime = FakeRuntime()
+    async def fake_reserve(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_settle(*_args, **_kwargs) -> None:
+        return None
+
+    async def fake_release(*_args, **_kwargs) -> None:
+        return None
+
+    generator._reserve = fake_reserve  # type: ignore[method-assign]
+    generator._settle = fake_settle  # type: ignore[method-assign]
+    generator._release = fake_release  # type: ignore[method-assign]
 
     with pytest.raises(ValidationError):
         await generator._json(
