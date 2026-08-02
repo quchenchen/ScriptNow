@@ -269,6 +269,10 @@ class NarrativeGraphService:
             if existing is not None:
                 existing.node_type = node_type
                 existing.aliases = list(dict.fromkeys([*existing.aliases, *item.aliases]))
+                if item.attributes:
+                    merged = dict(existing.attributes or {})
+                    merged.update(item.attributes)
+                    existing.attributes = merged
                 existing.evidence_unit_ids = list(
                     dict.fromkeys([*existing.evidence_unit_ids, *item.evidence_unit_ids])
                 )

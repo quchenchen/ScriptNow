@@ -220,6 +220,71 @@ async def test_creative_graph_summaries_are_ordered_by_chapter_ordinal(
         "chapter:chapter-1-10",
     ]
 
+
+@pytest.mark.asyncio
+async def test_record_node_merges_attributes_on_re_extraction(narrative_database) -> None:
+    database = narrative_database
+    from scriptnow.platform.models import NarrativeIndexModel
+
+    async with database.session() as session:
+        tenant = TenantModel(name="Studio", tier="plus")
+        session.add(tenant)
+        await session.flush()
+        project = ProjectModel(
+            tenant_id=tenant.id,
+            name="属性合并验证",
+            medium=ProjectMedium.NOVEL,
+            direction={"language": "zh-CN"},
+        )
+        session.add(project)
+        await session.flush()
+        index_key = f"creative:{project.id}"
+        session.add(
+            NarrativeIndexModel(
+                id=index_key,
+                tenant_id=tenant.id,
+                project_id=project.id,
+                source_file_id=None,
+                version=1,
+                status="ready",
+                config={"source": "creative"},
+                source_hash="",
+            )
+        )
+        await session.flush()
+        tenant_id = tenant.id
+
+    service = NarrativeGraphService(database)
+    first = await service.record_node(
+        tenant_id=tenant_id,
+        index_id=index_key,
+        item=NarrativeNodeInput(
+            node_key="character:林晚",
+            node_type="character",
+            name="林晚",
+            aliases=(),
+            description="初版描述",
+            attributes={},
+            evidence_unit_ids=(),
+        ),
+    )
+    second = await service.record_node(
+        tenant_id=tenant_id,
+        index_id=index_key,
+        item=NarrativeNodeInput(
+            node_key="character:林晚",
+            node_type="character",
+            name="林晚",
+            aliases=(),
+            description="更详细的描述",
+            attributes={"年龄": "26", "身份": "记者"},
+            evidence_unit_ids=(),
+        ),
+    )
+    assert second.id == first.id
+    assert second.attributes == {"年龄": "26", "身份": "记者"}
+    assert second.description == "更详细的描述"
+
 def test_graph_extraction_contract_accepts_grounded_json_and_rejects_unknown_evidence() -> None:
     text = """{
       "chapter_title": "The Moon Ball",
