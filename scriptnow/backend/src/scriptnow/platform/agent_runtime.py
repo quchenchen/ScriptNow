@@ -266,6 +266,7 @@ class AgentRuntime:
             model_key=model_record.key,
             stream=False,
             thinking=False,
+            context_size=model_record.context_window,
         )
         loaders = self.factory.skill_catalog.loaders_for_plan(
             domain=medium,
@@ -385,6 +386,7 @@ class AgentRuntime:
             model_key=model_record.key,
             stream=False,
             thinking=False,
+            context_size=model_record.context_window,
         )
         agent_kwargs = {
             "name": "standalone-reviewer",
@@ -581,6 +583,7 @@ class AgentRuntime:
             model_key=model_record.key,
             stream=event_sink is not None,
             thinking=False,
+            context_size=model_record.context_window,
         )
         skill_domain = str(values.get("skill_domain") or "")
         loaders = []
@@ -676,6 +679,7 @@ class AgentRuntime:
                         model_key=model_record.key,
                         stream=True,
                         thinking=False,
+                        context_size=model_record.context_window,
                     )
                     delivery = await delivery_model(
                         [
@@ -825,6 +829,7 @@ class AgentRuntime:
         model_key: str,
         stream: bool,
         thinking: bool,
+        context_size: int,
     ) -> OpenAIChatModel:
         """Create a phase-scoped model so thinking/tools/prose never share a channel."""
         return OpenAIChatModel(
@@ -832,7 +837,7 @@ class AgentRuntime:
             model=model_key,
             parameters=OpenAIChatModel.Parameters(thinking_enable=thinking),
             stream=stream,
-            context_size=32_768,
+            context_size=context_size,
             # AgentScope maps this to providers that implement the OpenAI-compatible
             # thinking extension. Providers that ignore extension fields still receive
             # the standard parameters above.
