@@ -600,7 +600,7 @@ class AgentRuntime:
         mcp_clients = await self._mcp_clients(list(values.get("tool_keys") or []))
         domain_tools: list[object] = []
         if skill_domain == "novel" and role == "writer":
-            from functools import partial
+            import functools
 
             from agentscope.tool import FunctionTool
 
@@ -609,8 +609,20 @@ class AgentRuntime:
                 get_last_quality_report,
                 get_prior_chapter_summaries,
             )
+
+            def bind_database(fn):
+                @functools.wraps(fn)
+                async def wrapper(*args, **kwargs):
+                    return await fn(self.database, *args, **kwargs)
+
+                return wrapper
+
             domain_tools = [
-                FunctionTool(partial(fn, self.database), is_read_only=True, is_concurrency_safe=True)
+                FunctionTool(
+                    bind_database(fn),
+                    is_read_only=True,
+                    is_concurrency_safe=True,
+                )
                 for fn in (
                     get_prior_chapter_summaries,
                     get_creative_graph_entities,
