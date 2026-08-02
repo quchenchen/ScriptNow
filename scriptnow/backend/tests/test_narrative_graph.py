@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy import select
 
-from scriptnow.novel.creative_graph import CreativeGraphExtractor
+from scriptnow.novel.creative_graph import CreativeGraphExtractor, read_creative_graph
 from scriptnow.platform.agent_runtime import AgentRuntimeResult
 from scriptnow.platform.config import Settings
 from scriptnow.platform.database import Database
@@ -146,6 +146,9 @@ async def test_creative_graph_extraction_persists_without_source_file(
     assert len(nodes) == 1
     assert nodes[0].node_key == "character:林晚"
     assert len(summaries) == 1
+    compact = await read_creative_graph(database, project_id=project_id, compact=True)
+    assert compact["chapters"][0]["chapter_key"].endswith("chapter-1-1")
+    assert compact["chapters"][0]["summary"]
 
 def test_graph_extraction_contract_accepts_grounded_json_and_rejects_unknown_evidence() -> None:
     text = """{

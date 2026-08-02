@@ -82,12 +82,12 @@ async def build_character_graph(database, project_id: str, current_chapter_id: s
     chapters = data.get("chapters", [])
     prior_chapters = [
         c for c in chapters
-        if c.get("id", "").replace("chapter:", "") != current_chapter_id
+        if str(c.get("chapter_key", c.get("id", ""))).replace("chapter:", "") != current_chapter_id
     ]
 
     lines = ["## Story So Far"]
     for ch in prior_chapters[-6:]:
-        cid = ch.get("id", "").replace("chapter:", "")
+        cid = str(ch.get("chapter_key", ch.get("id", ""))).replace("chapter:", "")
         label = ch.get("label", ch.get("title", "untitled"))
         summary = (ch.get("summary", "") or "")[:200]
         lines.append(f"- [{cid}] **{label}**: {summary}")

@@ -394,7 +394,12 @@ async def read_creative_graph(database: Database, *, project_id: str, compact: b
         high_conf_edges = [e for e in edges if e.confidence >= 60]
         return {
             "chapters": [
-                {"chapter_key": s.summary_key, "type": "chapter", "label": s.title}
+                {
+                    "chapter_key": s.summary_key,
+                    "type": "chapter",
+                    "label": s.title,
+                    "summary": (s.content or "")[:200],
+                }
                 for s in recent_summaries
             ],
             "nodes": [
