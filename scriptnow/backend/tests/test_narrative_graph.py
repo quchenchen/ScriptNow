@@ -1,10 +1,17 @@
+from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import select
 
+from scriptnow.novel.creative_graph import CreativeGraphExtractor
+from scriptnow.platform.agent_runtime import AgentRuntimeResult
+from scriptnow.platform.config import Settings
 from scriptnow.platform.database import Database
 from scriptnow.platform.models import (
+    NarrativeIndexModel,
+    NarrativeNodeModel,
+    NarrativeSummaryModel,
     NarrativeTextUnitModel,
     ProjectMedium,
     ProjectModel,
@@ -57,12 +64,88 @@ def test_semantic_segmentation_preserves_chapter_and_paragraph_boundaries() -> N
     )
 
     units = segment_novel_text(text, target_characters=700)
-
     assert [unit.chapter_key for unit in units] == ["chapter-1", "chapter-1", "chapter-2"]
     assert units[0].content.endswith("Alpha ".strip())
     assert units[1].content.startswith("Beta")
     assert all("Chapter 2" not in unit.content for unit in units)
 
+
+@pytest.mark.asyncio
+async def test_creative_graph_extraction_persists_without_source_file(
+    narrative_database, monkeypatch
+) -> None:
+    database = narrative_database
+    async with database.session() as session:
+        tenant = TenantModel(name="Studio", tier="plus")
+        session.add(tenant)
+        await session.flush()
+        project = ProjectModel(
+            tenant_id=tenant.id,
+            name="创意图谱验证",
+            medium=ProjectMedium.NOVEL,
+            direction={"language": "zh-CN"},
+        )
+        session.add(project)
+        await session.flush()
+        tenant_id, project_id = tenant.id, project.id
+
+    payload = {
+        "chapter_title": "第一章",
+        "chapter_summary": "主角在雨夜追查线索，留下未解之谜。",
+        "nodes": [
+            {
+                "key": "character:林晚",
+                "type": "character",
+                "name": "林晚",
+                "aliases": [],
+                "description": "追查真相的主角。",
+                "evidence_ordinals": [0],
+            }
+        ],
+        "edges": [],
+    }
+
+    async def fake_generate(**kwargs) -> AgentRuntimeResult:
+        import json
+
+        return AgentRuntimeResult(
+            text=json.dumps(payload, ensure_ascii=False),
+            runtime="agentscope",
+            model_key="deepseek-v4-pro",
+            input_tokens=100,
+            output_tokens=50,
+            input_price_per_million=Decimal("3"),
+            output_price_per_million=Decimal("6"),
+        )
+
+    extractor = CreativeGraphExtractor(database, Settings())
+
+    async def fake_status(**kwargs) -> dict[str, object]:
+        return {"roles": {"architect": {"connected": True, "reason": "ok"}}}
+
+    monkeypatch.setattr(extractor.runtime, "status", fake_status)
+    monkeypatch.setattr(extractor.runtime, "generate", fake_generate)
+    await extractor.extract_chapter(
+        tenant_id=tenant_id,
+        project_id=project_id,
+        chapter_id="chapter-1-1",
+        chapter_title="第一章",
+        blocks=[{"type": "heading", "text": "第一章"}, {"type": "prose", "text": "雨夜，林晚推开门。"}],
+        idempotency_key="test-v1",
+    )
+
+    async with database.session() as session:
+        index = (
+            await session.scalars(
+                select(NarrativeIndexModel).where(NarrativeIndexModel.id == f"creative:{project_id}")
+            )
+        ).one()
+        nodes = list(await session.scalars(select(NarrativeNodeModel)))
+        summaries = list(await session.scalars(select(NarrativeSummaryModel)))
+    assert index.source_file_id is None
+    assert len(nodes) == 1
+    assert nodes[0].node_key == "character:林晚"
+    assert len(summaries) == 1
 
 def test_graph_extraction_contract_accepts_grounded_json_and_rejects_unknown_evidence() -> None:
     text = """{

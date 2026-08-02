@@ -1488,8 +1488,8 @@ class NarrativeIndexModel(Base):
     project_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
     )
-    source_file_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("workspace_files.id", ondelete="RESTRICT"), nullable=False
+    source_file_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("workspace_files.id", ondelete="RESTRICT"), nullable=True
     )
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(

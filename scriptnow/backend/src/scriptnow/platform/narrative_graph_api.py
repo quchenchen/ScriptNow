@@ -136,6 +136,7 @@ def create_narrative_graph_router(
                     .where(
                         NarrativeIndexModel.tenant_id == current_tenant,
                         NarrativeIndexModel.project_id == project_id,
+                        NarrativeIndexModel.id.not_like("creative:%"),
                         NarrativeIndexModel.status == NarrativeIndexStatus.READY,
                     )
                     .order_by(NarrativeIndexModel.version.desc())

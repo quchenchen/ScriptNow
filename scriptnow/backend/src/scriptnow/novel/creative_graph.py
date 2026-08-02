@@ -290,7 +290,7 @@ class CreativeGraphExtractor:
                     id=index_key,
                     tenant_id=tenant_id,
                     project_id=project_id,
-                    source_file_id="ffffffff-ffff-ffff-ffff-ffffffffffff",  # dummy for FK
+                    source_file_id=None,  # creative graph is not tied to a source file
                     version=1,
                     status="ready",
                     config={"source": "creative", "extraction_status": "ready"},
