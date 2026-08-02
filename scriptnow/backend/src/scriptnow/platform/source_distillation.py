@@ -97,9 +97,9 @@ class SourceDistillationService:
             if (
                 project is None
                 or project.tenant_id != tenant_id
-                or project.medium != ProjectMedium.NOVEL
+                or project.medium not in {ProjectMedium.NOVEL, ProjectMedium.SCRIPT}
             ):
-                raise SourceDistillationError("novel project does not exist in tenant")
+                raise SourceDistillationError("project does not exist in tenant")
             sources = list(
                 await session.scalars(
                     select(WorkspaceFileModel).where(WorkspaceFileModel.id.in_(unique_sources))
