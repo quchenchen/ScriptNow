@@ -1,5 +1,6 @@
 ---
 name: novel-ideate
+core: true
 description: Generate and evaluate original novel concepts, premises, characters, emotional promises, genre positioning, and anti-trope alternatives before blueprint planning.
 ---
 

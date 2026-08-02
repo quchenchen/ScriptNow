@@ -1,5 +1,6 @@
 ---
 name: project-diagnose
+core: true
 description: Diagnose a ScriptNow creative project before planning, writing, review, recovery, or export; use when state may be incomplete, contradictory, stale, or blocked.
 ---
 

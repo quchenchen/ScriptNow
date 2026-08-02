@@ -8,6 +8,7 @@ metadata:
       genres: [melodramatic-romance, substitute-romance, workplace-romance, billionaire-romance, youth-sweet-romance, family-progression, contemporary-romance-concept, betrayal-romance, regret-romance]
       languages: [zh-CN]
       selection_priority: 68
+      keywords: [虐文, 替身, 追妻, 破镜重圆, 情绪流, 狗血, 重生]
 ---
 
 # 中文商业情绪与关系推进

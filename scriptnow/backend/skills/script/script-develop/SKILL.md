@@ -1,5 +1,6 @@
 ---
 name: script-develop
+core: true
 description: Use when developing original screenplay, series, short-drama, or episodic concepts into distinct filmable directions with a repeatable dramatic engine, protagonist action, opposition, audience promise, and production trade-offs.
 metadata:
   scriptnow:

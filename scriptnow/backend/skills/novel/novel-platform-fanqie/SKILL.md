@@ -8,6 +8,7 @@ metadata:
       platforms: [fanqie]
       languages: [zh-CN]
       selection_priority: 80
+      keywords: [番茄, 免费阅读, 连载, 爽文, 快节奏]
 ---
 
 # 番茄类中文连载策略

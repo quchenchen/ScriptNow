@@ -9,9 +9,15 @@ from scriptnow.platform.skills import (
     SkillCatalogError,
     SkillConflictError,
     SkillResolver,
+    resolve_skills_root,
 )
 
 SKILLS_ROOT = Path(__file__).parents[1] / "skills"
+
+
+def test_skills_root_honors_runtime_override(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("SCRIPTNOW_SKILLS_ROOT", str(tmp_path))
+    assert resolve_skills_root() == tmp_path.resolve()
 
 
 def test_catalog_is_valid_and_keeps_creative_domains_isolated() -> None:
@@ -662,3 +668,54 @@ def test_unadmitted_novel_skill_cannot_be_auto_or_explicitly_mounted(tmp_path: P
         )
     with pytest.raises(SkillCatalogError, match="unadmitted skills"):
         resolver.catalog.loaders_for_plan(domain="novel", skill_keys=["candidate-pack"])
+
+
+def test_chinese_genre_keywords_select_the_matching_style_skill() -> None:
+    catalog = SkillCatalog(SKILLS_ROOT)
+    profile = CreativeProfile.from_direction(
+        medium="novel",
+        direction={"genre": "现代奇幻/悬疑/轻言情", "world_setting": "数据世界崩塌", "language": "zh-CN"},
+    )
+    plan = SkillResolver(catalog).resolve(profile=profile, role_key="writer", stage="writing")
+    suspense = next(
+        (
+            item
+            for item in plan.selections
+            if item.skill.name == "novel-cn-suspense-survival"
+        ),
+        None,
+    )
+    assert suspense is not None
+    assert suspense.layer == "style_pack"
+    assert any("题材关键词匹配" in reason for reason in suspense.reasons)
+
+
+def test_core_skills_are_role_bound_and_immune_to_optional_limit() -> None:
+    catalog = SkillCatalog(SKILLS_ROOT)
+    profile = CreativeProfile.from_direction(medium="novel", direction={"language": "zh-CN"})
+    plan = SkillResolver(catalog, optional_limit=0).resolve(
+        profile=profile, role_key="writer", stage="writing"
+    )
+    selected = {item.skill.name for item in plan.selections}
+    assert {
+        "novel-write",
+        "novel-continuity-check",
+        "novel-emotional-depth",
+        "novel-pacing-check",
+        "project-diagnose",
+    } <= selected
+    assert all(item.layer == "core" for item in plan.selections)
+
+
+def test_instructions_for_renders_selected_skills_with_budget() -> None:
+    catalog = SkillCatalog(SKILLS_ROOT)
+    items = catalog.instructions_for(
+        domain="novel",
+        skill_keys=["novel-write", "novel-pacing-check"],
+        max_chars=300,
+    )
+    assert items and items[0][0] == "novel-write"
+    rendered = "\n".join(text for _, text in items)
+    assert "Write a novel chapter" in rendered
+    assert len(rendered) <= 340
+    assert "截断" in rendered

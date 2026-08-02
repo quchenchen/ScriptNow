@@ -8,6 +8,7 @@ metadata:
     genres: [mystery, detective, thriller, post-apocalyptic, infinite-flow, rules-horror, horror]
     languages: [zh-CN]
     selection_priority: 55
+    keywords: [悬疑, 推理, 侦探, 惊悚, 恐怖, 无限流, 规则怪谈, 末世, 逃生, 怪谈]
 ---
 
 # 中文悬疑、生存与规则叙事

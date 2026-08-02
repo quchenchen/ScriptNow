@@ -8,6 +8,7 @@ metadata:
       genres: [xuanhuan, xianxia, cultivation, eastern-fantasy, progression, system-progression]
       languages: [zh-CN]
       selection_priority: 55
+      keywords: [玄幻, 仙侠, 修仙, 升级, 东方奇幻, 系统流, 修炼, 热血]
 ---
 
 # 中文玄幻仙侠与升级
@@ -27,4 +28,3 @@ metadata:
 - 与一个平台 Skill、一个主要类型 Skill及统一质量 Skill组合；冲突时以项目约束和已采纳事实优先。
 - 不把榜单、活动、字数或收益规则固化成永久创作规律。
 - 不模仿在世作者，不把刻板印象、胁迫或伤害自动包装成类型快感。
-

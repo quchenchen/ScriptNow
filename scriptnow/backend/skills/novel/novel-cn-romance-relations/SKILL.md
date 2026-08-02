@@ -8,6 +8,7 @@ metadata:
     genres: [contemporary-romance, historical-romance, billionaire-romance, marriage-romance, sweet-romance, angst-romance, palace-intrigue, romance]
     languages: [zh-CN]
     selection_priority: 55
+    keywords: [言情, 恋爱, 甜宠, 虐恋, 宫斗, 霸总, 豪门, 婚恋, 感情线, 穿书恋爱]
 ---
 
 # 中文言情与关系成长

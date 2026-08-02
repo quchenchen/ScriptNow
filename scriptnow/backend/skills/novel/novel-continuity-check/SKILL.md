@@ -1,5 +1,6 @@
 ---
 name: novel-continuity-check
+core: true
 description: Review character names, faction affiliations, geographical details, relationship states, and established canon before drafting a chapter. Catch continuity breaks before they become canon.
 metadata:
   scriptnow:

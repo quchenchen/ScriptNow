@@ -7,6 +7,7 @@ metadata:
     stages: [writing, review]
     formats: [chinese]
     selection_priority: 90
+    keywords: [中文剧本, 中国格式, 场头, 对白]
 ---
 
 # Project a Chinese screenplay

@@ -8,6 +8,7 @@ metadata:
       genres: [zhihu-short, supernatural-mystery, suspense-concept, rules-horror]
       languages: [zh-CN]
       selection_priority: 67
+      keywords: [脑洞, 短篇, 知乎体, 超自然, 概念, 反转]
 ---
 
 # 中文脑洞短篇与规则悬疑

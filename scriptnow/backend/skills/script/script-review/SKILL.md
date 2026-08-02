@@ -1,5 +1,6 @@
 ---
 name: script-review
+core: true
 description: Use when reviewing screenplay scenes, episodes, or a full script for StoryMap fidelity, filmability, dramatic action, character tactics, subtext, pacing, continuity, runtime, production risk, and delivery-format compliance.
 metadata:
   scriptnow:

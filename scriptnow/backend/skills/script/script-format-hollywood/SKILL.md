@@ -7,6 +7,7 @@ metadata:
     stages: [writing, review]
     formats: [hollywood]
     selection_priority: 90
+    keywords: [好莱坞, hollywood, 英文剧本]
 ---
 
 # Project a Hollywood screenplay

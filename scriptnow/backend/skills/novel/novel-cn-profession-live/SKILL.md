@@ -8,6 +8,7 @@ metadata:
       genres: [gaming-sports, esports, livestream, urban-life, workplace]
       languages: [zh-CN]
       selection_priority: 63
+      keywords: [职业, 电竞, 直播, 游戏, 竞技, 娱乐圈, 医生, 律师, 体育]
 ---
 
 # 中文职业、竞技与直播叙事

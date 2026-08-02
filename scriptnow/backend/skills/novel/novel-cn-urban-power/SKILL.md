@@ -8,6 +8,7 @@ metadata:
       genres: [urban-power, urban-life, urban-martial-arts, wealth-fantasy, workplace, realist, system-progression]
       languages: [zh-CN]
       selection_priority: 55
+      keywords: [都市, 职场, 赘婿, 豪门, 商战, 系统, 现实向, 能力成长]
 ---
 
 # 中文都市与能力成长
@@ -27,4 +28,3 @@ metadata:
 - 与一个平台 Skill、一个主要类型 Skill及统一质量 Skill组合；冲突时以项目约束和已采纳事实优先。
 - 不把榜单、活动、字数或收益规则固化成永久创作规律。
 - 不模仿在世作者，不把刻板印象、胁迫或伤害自动包装成类型快感。
-

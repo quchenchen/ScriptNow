@@ -1,5 +1,6 @@
 ---
 name: novel-review
+core: true
 description: Review a novel chapter or manuscript for canon consistency, causality, character agency, pacing, emotional credibility, prose quality, repetition, and AI-like writing without directly editing accepted text.
 ---
 

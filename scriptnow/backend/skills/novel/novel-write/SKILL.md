@@ -1,5 +1,6 @@
 ---
 name: novel-write
+core: true
 description: Draft or revise publishable novel chapters from accepted blueprint and canon while preserving voice, causality, continuity, emotional movement, hooks, and human texture.
 ---
 

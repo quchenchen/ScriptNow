@@ -17,10 +17,40 @@ SKILL_NAME = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 # but are never mounted into novel or script agents unless that domain is
 # requested explicitly.
 ALLOWED_DOMAINS = frozenset({"platform", "novel", "script", "editor"})
+
+
+def resolve_skills_root() -> Path:
+    """Resolve the skill catalog for source checkouts and packaged runtimes."""
+    configured = os.getenv("SCRIPTNOW_SKILLS_ROOT")
+    if configured:
+        return Path(configured).expanduser().resolve()
+
+    candidates = (
+        Path(__file__).resolve().parents[3] / "skills",
+        Path.cwd() / "skills",
+        Path("/app/skills"),
+    )
+    for candidate in candidates:
+        if candidate.is_dir():
+            return candidate.resolve()
+    return candidates[0].resolve()
 TAG_ALIASES = {
     "奇幻": "fantasy",
     "爱情": "romance",
     "悬疑": "mystery",
+    "侦探": "mystery",
+    "怪谈": "rules-horror",
+    "言情": "romance",
+    "恋爱": "romance",
+    "霸总": "billionaire-romance",
+    "宫斗": "palace-intrigue",
+    "都市": "urban-power",
+    "赘婿": "wealth-fantasy",
+    "修仙": "cultivation",
+    "直播": "livestream",
+    "竞技": "gaming-sports",
+    "历史": "historical-fiction",
+    "民国": "republican-romance",
     "暗黑奇幻": "dark-fantasy",
     "狼人": "werewolf",
     "哥特悬疑": "gothic-mystery",
@@ -126,6 +156,8 @@ class SkillDescriptor:
     root: Path
     references: tuple[str, ...]
     digest: str
+    keywords: tuple[str, ...] = ()
+    core: bool = False
     roles: tuple[str, ...] = ()
     stages: tuple[str, ...] = ()
     genres: tuple[str, ...] = ()
@@ -261,12 +293,22 @@ class SkillResolver:
         stage: str,
         explicit_skill_keys: tuple[str, ...] = (),
     ) -> SkillPlan:
-        core = self.catalog.for_role(domain=profile.medium, role_key=role_key)
+        domain_skills = self.catalog.for_domain(profile.medium)
+        core = tuple(
+            item
+            for item in domain_skills
+            if item.core
+            and (not item.roles or role_key in item.roles)
+            and (not item.stages or stage in item.stages)
+            and (not item.languages or _language_matches(profile.language, item.languages))
+        )
+        if not core:
+            core = self.catalog.for_role(domain=profile.medium, role_key=role_key)
         core_names = {item.name for item in core}
         selections = [
             SkillSelection(item, "core", 10_000, ("角色与领域核心绑定",)) for item in core
         ]
-        available = {item.name: item for item in self.catalog.for_domain(profile.medium)}
+        available = {item.name: item for item in domain_skills}
         for key in dict.fromkeys(explicit_skill_keys):
             skill = available.get(key)
             if skill is None:
@@ -289,7 +331,7 @@ class SkillResolver:
                 )
                 core_names.add(key)
         optional: list[SkillSelection] = []
-        for skill in self.catalog.for_domain(profile.medium):
+        for skill in domain_skills:
             if skill.name in core_names or not skill.roles or role_key not in skill.roles:
                 continue
             if (
@@ -324,6 +366,25 @@ def _optional_text(value: object) -> str | None:
 def _normalise_tag(value: object) -> str:
     normalized = re.sub(r"[-_\s]+", "-", str(value).strip().lower()).strip("-")
     return TAG_ALIASES.get(normalized, normalized)
+
+
+def _raw_tags(value: object) -> tuple[str, ...]:
+    """Split tag lists without alias normalisation so Chinese compounds survive."""
+    if isinstance(value, str):
+        raw = re.split(r"[,，、;/]+", value)
+    elif isinstance(value, list | tuple | set):
+        raw = list(value)
+    elif value is None:
+        raw = []
+    else:
+        raw = [value]
+    return tuple(
+        dict.fromkeys(
+            tag
+            for item in raw
+            if (tag := re.sub(r"[-_\s]+", "-", str(item).strip()).strip("-"))
+        )
+    )
 
 
 def _normalise_language(value: str) -> str:
@@ -371,6 +432,23 @@ def _match_skill(skill: SkillDescriptor, profile: CreativeProfile) -> tuple[int,
         if matched:
             score += weight * len(matched)
             reasons.append(f"{label}匹配：{'、'.join(matched)}")
+    query_raw = set(profile.genres) | set(profile.themes) | set(profile.styles)
+    if profile.world_setting:
+        query_raw.update(_raw_tags(profile.world_setting))
+    query_norm = {_normalise_tag(tag) for tag in query_raw}
+    keyword_hits: list[str] = []
+    for keyword in skill.keywords:
+        normalized = _normalise_tag(keyword)
+        for token in query_raw:
+            if keyword == token or normalized == token or keyword in token or token in keyword:
+                keyword_hits.append(keyword)
+                break
+        else:
+            if normalized in query_norm:
+                keyword_hits.append(keyword)
+    if keyword_hits:
+        score += 45 * len(keyword_hits)
+        reasons.append("题材关键词匹配：" + "、".join(sorted(set(keyword_hits))))
     if not any(expected for _, expected, _, _ in dimensions):
         reasons.append("阶段通用能力")
     return score, tuple(reasons)
@@ -422,6 +500,33 @@ class SkillCatalog:
         post = frontmatter.loads((descriptor.root / "SKILL.md").read_text(encoding="utf-8"))
         return descriptor, post.content
 
+    def instructions_for(
+        self,
+        *,
+        domain: str,
+        skill_keys: tuple[str, ...] | list[str],
+        max_chars: int = 6_000,
+    ) -> list[tuple[str, str]]:
+        """Render selected skill instructions for prompt injection, in plan order."""
+        allowed = {item.name: item for item in self.for_domain(domain)}
+        result: list[tuple[str, str]] = []
+        budget = int(max_chars)
+        for key in dict.fromkeys(skill_keys):
+            descriptor = allowed.get(str(key))
+            if descriptor is None or budget <= 0:
+                continue
+            post = frontmatter.loads(
+                (descriptor.root / "SKILL.md").read_text(encoding="utf-8")
+            )
+            text = post.content.strip()
+            if not text:
+                continue
+            if len(text) > budget:
+                text = text[:budget] + "\n……（本节为截断，完整版本可通过技能工具读取）"
+            result.append((descriptor.name, text))
+            budget -= len(text)
+        return result
+
     def update(
         self, *, name: str, description: str, instructions: str, expected_digest: str
     ) -> SkillDescriptor:
@@ -451,6 +556,8 @@ class SkillCatalog:
                 root=path.parent,
                 references=validated.references,
                 digest=self._read(path).digest,
+                keywords=validated.keywords,
+                core=validated.core,
                 roles=validated.roles,
                 stages=validated.stages,
                 genres=validated.genres,
@@ -580,6 +687,8 @@ class SkillCatalog:
             root=resolved.parent,
             references=tuple(sorted(set(references))),
             digest=digest.hexdigest(),
+            keywords=_raw_tags(product_value("keywords")),
+            core=bool(product_value("core", False)),
             roles=_tag_values(product_value("roles")),
             stages=_tag_values(product_value("stages")),
             genres=_tag_values(product_value("genres")),

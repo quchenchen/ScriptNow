@@ -8,6 +8,7 @@ metadata:
       genres: [historical-fiction, historical-imagination, era-fiction, republican-romance, resistance-espionage, farming, realist]
       languages: [zh-CN]
       selection_priority: 64
+      keywords: [历史, 古代, 年代, 民国, 种田, 权谋, 谍战, 家国]
 ---
 
 # 中文历史、年代与社会叙事

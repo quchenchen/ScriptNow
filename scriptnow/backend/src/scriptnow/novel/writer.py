@@ -612,6 +612,8 @@ class NovelChapterGenerator:
             f"{json.dumps(context.get('retrieval_context', {}), ensure_ascii=False)[:6000]}\n"
             "\nAfter reviewing the context above, write the chapter following your loaded skills "
             "(novel-write, novel-continuity-check, novel-pacing-check, novel-emotional-depth). "
+            "The full instructions of the skills selected for this project's genre are already "
+            "injected in the system prompt under 创作手法与风格指令 and must be followed. "
             "Return JSON only with the blocks schema.\n"
             f"{source_instruction}"
             f"The creative language is {context['creative_language']}; every narrative string must use it. "

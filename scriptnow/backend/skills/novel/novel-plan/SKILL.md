@@ -1,5 +1,6 @@
 ---
 name: novel-plan
+core: true
 description: Turn an accepted novel premise into a coherent blueprint, character arcs, world rules, volume or chapter progression, continuity anchors, and measurable scene goals.
 ---
 

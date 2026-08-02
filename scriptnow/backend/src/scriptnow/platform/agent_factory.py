@@ -1,10 +1,10 @@
 import hashlib
 import json
 from dataclasses import dataclass
-from pathlib import Path
 
 from sqlalchemy import select
 
+from scriptnow.platform.config import Settings, get_settings
 from scriptnow.platform.database import Database
 from scriptnow.platform.models import (
     AgentTemplateVersionModel,
@@ -26,7 +26,12 @@ from scriptnow.platform.models import (
     TierModel,
     ToolGroupModel,
 )
-from scriptnow.platform.skills import CreativeProfile, SkillCatalog, SkillResolver
+from scriptnow.platform.skills import (
+    CreativeProfile,
+    SkillCatalog,
+    SkillResolver,
+    resolve_skills_root,
+)
 
 
 class RuntimeConfigError(RuntimeError):
@@ -41,9 +46,16 @@ class RuntimeConfig:
 
 
 class AgentFactory:
-    def __init__(self, database: Database, skill_catalog: SkillCatalog | None = None) -> None:
+    def __init__(
+        self,
+        database: Database,
+        skill_catalog: SkillCatalog | None = None,
+        *,
+        settings: Settings | None = None,
+    ) -> None:
         self.database = database
-        self.skill_catalog = skill_catalog or SkillCatalog(Path(__file__).parents[3] / "skills")
+        self.skill_catalog = skill_catalog or SkillCatalog(resolve_skills_root())
+        self.settings = settings or get_settings()
 
     async def snapshot_for_run(
         self,
@@ -176,7 +188,10 @@ class AgentFactory:
                 "reviewer": "review",
             }.get(role_key, "execution")
             skill_plan = (
-                SkillResolver(self.skill_catalog).resolve(
+                SkillResolver(
+                    self.skill_catalog,
+                    optional_limit=self.settings.skill_plan_optional_limit,
+                ).resolve(
                     profile=creative_profile,
                     role_key=role_key,
                     stage=stage,
@@ -300,7 +315,10 @@ class AgentFactory:
             ):
                 raise RuntimeConfigError("model is not available for tenant")
             profile = CreativeProfile.from_direction(medium=medium, direction=direction)
-            plan = SkillResolver(self.skill_catalog).resolve(
+            plan = SkillResolver(
+                self.skill_catalog,
+                optional_limit=self.settings.skill_plan_optional_limit,
+            ).resolve(
                 profile=profile,
                 role_key=role_key,
                 stage=stage,

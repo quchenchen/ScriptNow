@@ -1,5 +1,6 @@
 ---
 name: novel-emotional-depth
+core: true
 description: Apply emotional-depth checks so characters register as emotionally alive rather than as analytical instruments. Track emotional beats, sensory memories, and whether high-stakes moments land with feeling.
 metadata:
   scriptnow:

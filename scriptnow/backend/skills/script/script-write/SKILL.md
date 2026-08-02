@@ -1,11 +1,13 @@
 ---
 name: script-write
+core: true
 description: Use when writing or revising screenplay scenes from an accepted Script StoryMap through filmable action, playable objectives, tactics, subtext, visual and sound design opportunities, scene turns, and continuity-safe consequences.
 metadata:
   scriptnow:
     roles: [writer]
     stages: [writing]
     selection_priority: 100
+    keywords: [剧本, 竖屏剧, 短剧, 台词, 分镜, 场次, 对白]
 ---
 
 # Write screenplay scenes

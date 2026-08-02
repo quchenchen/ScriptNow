@@ -1,5 +1,6 @@
 ---
 name: script-storymap
+core: true
 description: Use when building or repairing a screenplay blueprint or StoryMap with filmable causality, character tactics, scene turns, setup-payoff links, runtime allocation, episode boundaries, and production-aware story units.
 metadata:
   scriptnow:

@@ -1,5 +1,6 @@
 ---
 name: novel-pacing-check
+core: true
 description: Review chapter structure, information density, and narrative rhythm before and after drafting. Prevent chapters that are overloaded with plot turns or lack a clear dramatic engine.
 metadata:
   scriptnow:

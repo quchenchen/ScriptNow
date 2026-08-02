@@ -194,13 +194,15 @@ async def test_snapshot_selects_style_skill_from_project_creative_profile(
     plan = snapshot.values["skill_plan"]
     assert snapshot.values["creative_profile"]["themes"] == ["人机情感", "硅基生命"]
     selected = [selection["key"] for selection in plan["selections"]]
-    assert selected[:2] == ["novel-write", "project-diagnose"]
+    assert {"novel-write", "project-diagnose"} <= set(selected)
     assert {
         "novel-platform-fanqie",
         "novel-speculative-intimacy-writer",
-        "novel-serial-quality-review",
     } <= set(selected)
-    assert all(selection["layer"] == "style_pack" for selection in plan["selections"][2:])
+    style_packs = [
+        selection for selection in plan["selections"] if selection["layer"] == "style_pack"
+    ]
+    assert len(style_packs) <= 2
     intimacy = next(
         selection
         for selection in plan["selections"]

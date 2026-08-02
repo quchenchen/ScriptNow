@@ -278,6 +278,7 @@ class AgentRuntime:
                 "director",
                 str(values.get("soul") or ""),
                 language=language,
+                skill_instructions=self._skill_instructions(values),
             ),
             model=model,
             toolkit=Toolkit(skills_or_loaders=loaders),
@@ -290,7 +291,8 @@ class AgentRuntime:
         )
         prompt = (
             "你正在协助作者把一句灵感扩展成创建项目前的候选设定。"
-            "必须调用与题材匹配的已加载 Skill。不要替作者做最终决定。\n"
+            "必须遵循系统提示【创作手法与风格指令】中按题材选定的技能要求；"
+            "必要时可调用技能工具读取完整说明。不要替作者做最终决定。\n"
             "只返回一个 JSON 对象，不要 Markdown，不要代码围栏。字段必须为："
             "title、premise、tone、world_setting、genre_suggestions、questions。"
             "genre_suggestions 和 questions 是字符串数组；其余字段是字符串。"
@@ -394,6 +396,7 @@ class AgentRuntime:
                 "reviewer",
                 str(values.get("soul") or ""),
                 language=language,
+                skill_instructions=self._skill_instructions(values),
             ),
             "model": model,
             "toolkit": Toolkit(skills_or_loaders=loaders),
@@ -615,6 +618,7 @@ class AgentRuntime:
                     language=str(
                         dict(values.get("creative_profile") or {}).get("language") or "zh-CN"
                     ),
+                    skill_instructions=self._skill_instructions(values),
                 ),
                 model=model,
                 toolkit=Toolkit(skills_or_loaders=loaders, mcps=mcp_clients),
@@ -697,6 +701,7 @@ class AgentRuntime:
                                                 )
                                                 or "zh-CN"
                                             ),
+                                            skill_instructions=self._skill_instructions(values),
                                         )
                                     )
                                 ],
@@ -1009,7 +1014,13 @@ class AgentRuntime:
             state.context_limit = context_limit
 
     @staticmethod
-    def _system_prompt(role: str, soul: str, *, language: str = "zh-CN") -> str:
+    def _system_prompt(
+        role: str,
+        soul: str,
+        *,
+        language: str = "zh-CN",
+        skill_instructions: str = "",
+    ) -> str:
         # Development seed v1 used this delivery-oriented placeholder as the
         # writer's identity. Ignore it for existing databases so it cannot
         # flatten creative behavior after richer skills are selected.
@@ -1031,11 +1042,35 @@ class AgentRuntime:
                 "不得展示内部 Skill、模型、工具、字段名、运行配置或隐藏思维链。"
             ),
         }.get(role, "在授权范围内协助创作。")
-        return (
+        body = (
             f"你是 ScriptNow 的 {role} Agent。{responsibility}\n"
             f"项目创作语言为 {language}。除非用户明确要求翻译，否则所有创意、蓝图、正文与审读输出都必须使用该语言。\n\n"
             f"{soul}"
-        ).strip()
+        )
+        if skill_instructions.strip():
+            body += (
+                "\n\n【创作手法与风格指令】系统根据本项目题材、类型、语言与平台自动选定的技能要求，"
+                "必须遵循；与正文交付契约冲突时，交付格式以契约为准，创作手法以本节为准。\n"
+                + skill_instructions.strip()
+            )
+        return body.strip()
+
+    def _skill_instructions(self, values: dict[str, object]) -> str:
+        domain = str(values.get("skill_domain") or "")
+        keys = values.get("skill_keys")
+        if not domain or not keys:
+            return ""
+        try:
+            items = self.factory.skill_catalog.instructions_for(
+                domain=domain,
+                skill_keys=tuple(keys),
+                max_chars=self.settings.skill_prompt_max_chars,
+            )
+        except Exception:
+            return ""
+        if not items:
+            return ""
+        return "\n\n".join(f"### 技能：{name}\n{text}" for name, text in items)
 
     @staticmethod
     def _reason(template: object, model: object, provider: ProviderModel | None) -> str:
