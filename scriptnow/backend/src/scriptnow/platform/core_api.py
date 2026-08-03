@@ -310,8 +310,10 @@ def create_core_router(
                     run_id=run_id,
                     usage_sink=record_usage,
                     skill_key=skill_key,
+                    selected_model_id=settings.distillation_extract_model_id,
                 ),
                 evidence_batch_size=settings.distillation_evidence_batch_size,
+                extract_concurrency=settings.distillation_extract_concurrency,
             )
             result = await runner.run(tenant_id=tenant_id, distillation_id=distillation_id)
             await events.append(

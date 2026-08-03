@@ -55,6 +55,8 @@ class Settings(BaseSettings):
     script_agent_reserved_tokens: int = Field(default=24_000, ge=1)
     script_auto_review_enabled: bool = True
     distillation_evidence_batch_size: int = Field(default=12, ge=2, le=100)
+    distillation_extract_concurrency: int = Field(default=3, ge=1, le=8)
+    distillation_extract_model_id: str | None = None
     context_retrieval_token_limit: int = Field(default=12_000, ge=1)
     context_retrieval_timeout_seconds: float = Field(default=20, ge=0.1, le=300)
     context_retrieval_max_iterations: int = Field(default=2, ge=1, le=10)

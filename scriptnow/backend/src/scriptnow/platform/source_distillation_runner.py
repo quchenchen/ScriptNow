@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
@@ -101,12 +102,14 @@ class AgentRuntimeDistillationAnalyzer:
         run_id: str,
         usage_sink: DistillationUsageSink | None = None,
         skill_key: str = "novel-source-distiller",
+        selected_model_id: str | None = None,
     ) -> None:
         self.runtime = runtime
         self.tenant_id = tenant_id
         self.run_id = run_id
         self.usage_sink = usage_sink
         self.skill_key = skill_key
+        self.selected_model_id = selected_model_id
         self.call_index = 0
 
     async def analyze(self, *, pass_key: str, payload: dict[str, object]) -> dict[str, object]:
@@ -122,6 +125,9 @@ class AgentRuntimeDistillationAnalyzer:
             context_snapshot={"distillation_pass": pass_key, **payload},
             stage_override="source-analysis",
             explicit_skill_keys=(self.skill_key,),
+            selected_model_id=(
+                self.selected_model_id if pass_key == "atomic_evidence" else None
+            ),
         )
         self.call_index += 1
         if self.usage_sink is not None:
@@ -154,14 +160,20 @@ class SourceDistillationRunner:
         *,
         chunk_batch_size: int = 6,
         evidence_batch_size: int = 40,
+        extract_concurrency: int = 3,
     ) -> None:
-        if not 1 <= chunk_batch_size <= 20 or not 5 <= evidence_batch_size <= 100:
-            raise ValueError("distillation batch size is outside safe bounds")
+        if (
+            not 1 <= chunk_batch_size <= 20
+            or not 5 <= evidence_batch_size <= 100
+            or not 1 <= extract_concurrency <= 8
+        ):
+            raise ValueError("distillation batch/concurrency is outside safe bounds")
         self.database = database
         self.analyzer = analyzer
         self.service = SourceDistillationService(database)
         self.chunk_batch_size = chunk_batch_size
         self.evidence_batch_size = evidence_batch_size
+        self.extract_concurrency = extract_concurrency
 
     async def run(self, *, tenant_id: str, distillation_id: str) -> DistillationRunResult:
         run = await self._load_run(tenant_id, distillation_id)
@@ -204,32 +216,50 @@ class SourceDistillationRunner:
         processed = list(dict(run.checkpoint).get("processed_chunk_ids") or [])
         processed_set = set(processed)
         remaining = [chunk for chunk in chunks if chunk.id not in processed_set]
-        for batch in _batches(remaining, self.chunk_batch_size):
+        batches = _batches(remaining, self.chunk_batch_size)
+        semaphore = asyncio.Semaphore(self.extract_concurrency)
+        persist_lock = asyncio.Lock()
+        checkpoint_lock = asyncio.Lock()
+
+        async def analyze_and_persist(batch: Sequence[RagChunkModel]) -> list[str]:
             payload: dict[str, object] = {
                 "chunks": [self._chunk_payload(chunk) for chunk in batch],
                 "allowed_chunk_ids": [chunk.id for chunk in batch],
                 "dimensions": sorted(EVIDENCE_DIMENSIONS),
                 "output_contract": EvidenceBatch.model_json_schema(),
             }
-            await self._analyze_and_persist_evidence(
-                tenant_id=tenant_id,
-                run=run,
-                pass_key="atomic_evidence",
-                payload=payload,
+            async with semaphore:
+                await self._analyze_and_persist_evidence(
+                    tenant_id=tenant_id,
+                    run=run,
+                    pass_key="atomic_evidence",
+                    payload=payload,
+                    persist_lock=persist_lock,
+                )
+            async with checkpoint_lock:
+                processed.extend(chunk.id for chunk in batch)
+                await self.service.checkpoint(
+                    tenant_id=tenant_id,
+                    distillation_id=run.id,
+                    next_pass="atomic_evidence",
+                    processed_chunk_ids=list(processed),
+                    coverage=await self._coverage(run.id),
+                )
+            return [chunk.id for chunk in batch]
+
+        if batches:
+            results = await asyncio.gather(
+                *(analyze_and_persist(batch) for batch in batches),
+                return_exceptions=True,
             )
-            processed.extend(chunk.id for chunk in batch)
-            run = await self.service.checkpoint(
-                tenant_id=tenant_id,
-                distillation_id=run.id,
-                next_pass="atomic_evidence",
-                processed_chunk_ids=processed,
-                coverage=await self._coverage(run.id),
-            )
+            for result in results:
+                if isinstance(result, BaseException):
+                    raise result
         return await self.service.checkpoint(
             tenant_id=tenant_id,
             distillation_id=run.id,
             next_pass="cross_unit_synthesis",
-            processed_chunk_ids=processed,
+            processed_chunk_ids=list(processed),
             coverage=await self._coverage(run.id),
         )
 
@@ -241,9 +271,15 @@ class SourceDistillationRunner:
             int(value)
             for value in list(dict(run.checkpoint).get("synthesis_groups_processed") or [])
         }
-        for index, batch in enumerate(_batches(atomic, self.evidence_batch_size)):
-            if index in completed:
-                continue
+        batches = _batches(atomic, self.evidence_batch_size)
+        pending = [
+            (index, batch) for index, batch in enumerate(batches) if index not in completed
+        ]
+        semaphore = asyncio.Semaphore(self.extract_concurrency)
+        persist_lock = asyncio.Lock()
+        checkpoint_lock = asyncio.Lock()
+
+        async def synthesize_group(index: int, batch: Sequence[SourceEvidenceModel]) -> None:
             payload = {
                 "group": index,
                 "evidence": [self._evidence_payload(item) for item in batch],
@@ -251,23 +287,35 @@ class SourceDistillationRunner:
                 "dimensions": sorted(EVIDENCE_DIMENSIONS),
                 "output_contract": EvidenceBatch.model_json_schema(),
             }
-            await self._analyze_and_persist_evidence(
-                tenant_id=tenant_id,
-                run=run,
-                pass_key="cross_unit_synthesis",
-                payload=payload,
+            async with semaphore:
+                await self._analyze_and_persist_evidence(
+                    tenant_id=tenant_id,
+                    run=run,
+                    pass_key="cross_unit_synthesis",
+                    payload=payload,
+                    persist_lock=persist_lock,
+                )
+            async with checkpoint_lock:
+                completed.add(index)
+                await self.service.checkpoint(
+                    tenant_id=tenant_id,
+                    distillation_id=run.id,
+                    next_pass="cross_unit_synthesis",
+                    processed_chunk_ids=list(
+                        dict(run.checkpoint).get("processed_chunk_ids") or []
+                    ),
+                    coverage=await self._coverage(run.id),
+                    checkpoint_extra={"synthesis_groups_processed": sorted(completed)},
+                )
+
+        if pending:
+            results = await asyncio.gather(
+                *(synthesize_group(index, batch) for index, batch in pending),
+                return_exceptions=True,
             )
-            completed.add(index)
-            run = await self.service.checkpoint(
-                tenant_id=tenant_id,
-                distillation_id=run.id,
-                next_pass="cross_unit_synthesis",
-                processed_chunk_ids=list(
-                    dict(run.checkpoint).get("processed_chunk_ids") or []
-                ),
-                coverage=await self._coverage(run.id),
-                checkpoint_extra={"synthesis_groups_processed": sorted(completed)},
-            )
+            for result in results:
+                if isinstance(result, BaseException):
+                    raise result
         return await self.service.checkpoint(
             tenant_id=tenant_id,
             distillation_id=run.id,
@@ -347,6 +395,7 @@ class SourceDistillationRunner:
         pass_key: str,
         payload: dict[str, object],
         max_attempts: int = 3,
+        persist_lock: asyncio.Lock | None = None,
     ) -> None:
         strict_refs = pass_key == "atomic_evidence"
         validation_feedback: list[str] = []
@@ -364,9 +413,18 @@ class SourceDistillationRunner:
                 parsed = EvidenceBatch.model_validate(
                     await self.analyzer.analyze(pass_key=pass_key, payload=request)
                 )
-                await self._persist_drafts(
-                    tenant_id, run, parsed.evidence, strict_refs=strict_refs
-                )
+                if persist_lock is None:
+                    await self._persist_drafts(
+                        tenant_id, run, parsed.evidence, strict_refs=strict_refs
+                    )
+                else:
+                    # Persist is sequential so every batch observes a stable evidence
+                    # map and duplicate/relation handling stays deterministic even
+                    # while model calls run concurrently.
+                    async with persist_lock:
+                        await self._persist_drafts(
+                            tenant_id, run, parsed.evidence, strict_refs=strict_refs
+                        )
                 return
             except (AnalyzerOutputError, ValidationError) as error:
                 validation_feedback.append(str(error))

@@ -204,6 +204,7 @@ class AgentRuntime:
         stage_override: str | None = None,
         explicit_skill_keys: tuple[str, ...] = (),
         skills_enabled: bool = True,
+        selected_model_id: str | None = None,
     ) -> AgentRuntimeResult:
         try:
             return await asyncio.wait_for(
@@ -217,6 +218,7 @@ class AgentRuntime:
                     stage_override=stage_override,
                     explicit_skill_keys=explicit_skill_keys,
                     skills_enabled=skills_enabled,
+                    selected_model_id=selected_model_id,
                 ),
                 timeout=self.settings.agent_runtime_timeout_seconds,
             )
@@ -545,6 +547,7 @@ class AgentRuntime:
         stage_override: str | None = None,
         explicit_skill_keys: tuple[str, ...] = (),
         skills_enabled: bool = True,
+        selected_model_id: str | None = None,
     ) -> AgentRuntimeResult:
         try:
             snapshot = await self.factory.snapshot_for_run(
@@ -554,6 +557,7 @@ class AgentRuntime:
                 stage_override=stage_override,
                 explicit_skill_keys=explicit_skill_keys,
                 skills_enabled=skills_enabled,
+                selected_model_id=selected_model_id,
             )
         except RuntimeConfigError as error:
             raise AgentRuntimeError(str(error)) from error

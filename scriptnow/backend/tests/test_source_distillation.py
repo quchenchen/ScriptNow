@@ -1,3 +1,4 @@
+import asyncio
 from decimal import Decimal
 
 import pytest
@@ -506,13 +507,86 @@ async def test_runtime_analyzer_mounts_only_distiller_and_reports_usage() -> Non
         tenant_id="tenant-1",
         run_id="run-1",
         usage_sink=sink,
+        selected_model_id="flash-extract",
     )
     assert await analyzer.analyze(pass_key="atomic_evidence", payload={"chunks": []}) == {
         "evidence": []
     }
     assert runtime.kwargs["stage_override"] == "source-analysis"
     assert runtime.kwargs["explicit_skill_keys"] == ("novel-source-distiller",)
+    assert runtime.kwargs["selected_model_id"] == "flash-extract"
     assert usage == [("atomic_evidence", 1, 18)]
+    await analyzer.analyze(pass_key="candidate_profile", payload={})
+    assert runtime.kwargs["selected_model_id"] is None
+
+
+class _SlowAtomicAnalyzer(_DeterministicAnalyzer):
+    def __init__(self) -> None:
+        super().__init__()
+        self.in_flight: dict[str, int] = {}
+        self.max_in_flight: dict[str, int] = {}
+        self.lock = asyncio.Lock()
+
+    async def analyze(self, *, pass_key: str, payload: dict[str, object]) -> dict[str, object]:
+        if pass_key not in {"atomic_evidence", "cross_unit_synthesis"}:
+            return await super().analyze(pass_key=pass_key, payload=payload)
+        async with self.lock:
+            in_flight = self.in_flight.get(pass_key, 0) + 1
+            self.in_flight[pass_key] = in_flight
+            self.max_in_flight[pass_key] = max(
+                self.max_in_flight.get(pass_key, 0), in_flight
+            )
+        try:
+            await asyncio.sleep(0.05)
+            return await super().analyze(pass_key=pass_key, payload=payload)
+        finally:
+            async with self.lock:
+                self.in_flight[pass_key] -= 1
+
+
+@pytest.mark.asyncio
+async def test_runner_extracts_atomic_batches_concurrently_within_bound(
+    distillation_data,
+) -> None:
+    database, tenant, _, project, source, _ = distillation_data
+    async with database.session() as session:
+        session.add_all(
+            [
+                RagChunkModel(
+                    tenant_id=tenant.id,
+                    project_id=project.id,
+                    source_file_id=source.id,
+                    ordinal=index,
+                    content=f"Concurrent source {index}",
+                    content_hash=f"c{index:063d}",
+                )
+                for index in range(2, 15)
+            ]
+        )
+    run = await SourceDistillationService(database).start(
+        tenant_id=tenant.id,
+        project_id=project.id,
+        source_file_ids=[source.id],
+        idempotency_key="concurrent-atomic",
+    )
+    analyzer = _SlowAtomicAnalyzer()
+
+    result = await SourceDistillationRunner(
+        database,
+        analyzer,
+        chunk_batch_size=1,
+        evidence_batch_size=5,
+        extract_concurrency=3,
+    ).run(tenant_id=tenant.id, distillation_id=run.id)
+
+    assert result.processed_chunks == 15
+    assert analyzer.max_in_flight["atomic_evidence"] == 3
+    assert analyzer.max_in_flight["cross_unit_synthesis"] == 3
+    assert analyzer.calls.count("atomic_evidence") == 15
+    async with database.session() as session:
+        stored = await session.get(type(run), run.id)
+        assert stored is not None
+        assert stored.pass_key == "human_decision"
 
 
 class _FailingSynthesisAnalyzer(_DeterministicAnalyzer):
