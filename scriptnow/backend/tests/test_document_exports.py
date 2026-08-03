@@ -1,8 +1,8 @@
 import io
-from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 import pytest
 from docx import Document
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 from scriptnow.novel.contracts import NovelBlock
 from scriptnow.novel.export import NovelExportChapter, render_novel_docx
