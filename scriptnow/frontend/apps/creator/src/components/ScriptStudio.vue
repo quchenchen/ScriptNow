@@ -4,6 +4,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import ReviewPanel from './ReviewPanel.vue'
 import ScriptDeliveryPanel from './ScriptDeliveryPanel.vue'
 import ScriptStoryMapEditor from './ScriptStoryMapEditor.vue'
+import { api } from '../api'
 import { fieldDisplayLabel, scriptBlueprintCategory } from '../semanticLabels'
 import SourceCitations from './SourceCitations.vue'
 import { pickCreativeCopy } from '../creativeCopy'
@@ -15,6 +16,31 @@ import { useScriptStore, type ScriptState } from '../stores/script'
 const props = defineProps<{ projectId: string; sourceMode?: 'original' | 'adaptation' }>()
 const script = useScriptStore()
 const review = useReviewStore()
+const sceneQuality = ref<{ total: number; blocker: number; major: number; minor: number; updatedAt: string | null } | null>(null)
+
+async function loadSceneQuality() {
+  const unitId = focusedUnitId.value
+  if (!unitId) {
+    sceneQuality.value = null
+    return
+  }
+  try {
+    const items = await api<Array<{ severity: 'blocker' | 'major' | 'minor'; status: string; created_at: string }>>(
+      `/projects/${props.projectId}/findings?unit_id=${encodeURIComponent(unitId)}`,
+    )
+    const open = items.filter((item) => item.status === 'open')
+    sceneQuality.value = {
+      total: open.length,
+      blocker: open.filter((item) => item.severity === 'blocker').length,
+      major: open.filter((item) => item.severity === 'major').length,
+      minor: open.filter((item) => item.severity === 'minor').length,
+      updatedAt: items.length ? items[items.length - 1].created_at : null,
+    }
+  } catch {
+    sceneQuality.value = null
+  }
+}
+
 const dock = useDockStore()
 const layout = useLayoutStore()
 const feedback = ref('')
@@ -40,6 +66,8 @@ const adoptedDocuments = computed(
 )
 const adoptedSceneIds = computed(() => new Set(adoptedDocuments.value.map((item) => item.scene_id)))
 const focusedUnitId = ref('scene-1')
+watch(focusedUnitId, loadSceneQuality, { immediate: true })
+watch(() => review.items.length, loadSceneQuality)
 const focusedDocument = computed(() => adoptedDocuments.value.find((item) => item.scene_id === focusedUnitId.value))
 const focusedCandidate = computed(() =>
   script.state?.documents
@@ -211,7 +239,7 @@ watch(() => script.state?.story_map.episodes, (episodes) => {
       <aside v-else class="writer-sidecar">
         <nav class="sidecar-tabs" aria-label="写作辅助"><button :class="{ active: sideTab === 'context' }" @click="sideTab = 'context'">上下文</button><button :class="{ active: sideTab === 'review' }" @click="sideTab = 'review'">审读</button><button class="sidecar-hide" aria-label="隐藏上下文与审读面板" @click="layout.setWriterSidecarHidden(true)">隐藏</button></nav>
         <section v-if="sideTab === 'context'" class="context-sidecar"><p class="eyebrow">当前场</p><h3>{{ focusedScene?.title ?? focusedUnitId }}</h3><dl><div><dt>目标时长</dt><dd>{{ focusedScene?.duration_seconds_target ?? '—' }} 秒</dd></div><div><dt>正文修订</dt><dd>v{{ focusedDocument?.revision_number ?? 0 }}</dd></div><div><dt>剧本格式</dt><dd>{{ ({ chinese: '中文剧本', 'chinese-short': '竖屏短剧', hollywood: 'Hollywood' } as Record<string, string>)[script.state.script_format] ?? script.state.script_format }}</dd></div></dl><p class="eyebrow">蓝图锚点</p><div class="sidecar-anchors"><span v-for="anchor in script.state.blueprint?.anchors.slice(0, 8)" :key="anchor.id">{{ anchor.name }}</span></div><SourceCitations v-if="sourceMode === 'adaptation'" :project-id="projectId" :query="focusedScene?.title" /></section>
-        <ReviewPanel v-else-if="focusedDocument" medium="script" :project-id="projectId" :unit-id="focusedDocument.scene_id" :revision-id="focusedDocument.id" :elements="reviewElements" :anchors="script.state.blueprint?.anchors ?? []" :selection="reviewSelection" @locate="locate" @changed="script.load(projectId)" />
+        <section v-else-if="focusedDocument" class="context-sidecar"><p class="eyebrow">自动质量审读</p><div v-if="sceneQuality" class="scene-quality"><strong>{{ sceneQuality.total }} 条待处理</strong><span v-if="sceneQuality.blocker" class="q-blocker">{{ sceneQuality.blocker }} blocker</span><span v-if="sceneQuality.major" class="q-major">{{ sceneQuality.major }} major</span><span v-if="sceneQuality.minor" class="q-minor">{{ sceneQuality.minor }} minor</span><small v-if="sceneQuality.updatedAt">最近审读：{{ new Date(sceneQuality.updatedAt).toLocaleString() }}</small></div><p v-else class="quality-empty">采纳本场后自动审读，结果会显示在这里。</p><ReviewPanel medium="script" :project-id="projectId" :unit-id="focusedDocument.scene_id" :revision-id="focusedDocument.id" :elements="reviewElements" :anchors="script.state.blueprint?.anchors ?? []" :selection="reviewSelection" @locate="locate" @changed="script.load(projectId)" /></section>
         <section v-else class="context-sidecar"><p>生成当前场后即可开始审读。</p></section>
       </aside>
       <div v-if="selection" class="selection-popover" :style="{ left: `${selection.x}px`, top: `${selection.y}px` }"><button @click="useSelection('expand')">扩写</button><button @click="useSelection('shorten')">缩写</button><button @click="useSelection('polish')">润色</button><button @click="useSelection('revise')">修订</button></div>

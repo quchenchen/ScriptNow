@@ -1141,6 +1141,33 @@ async def test_script_api_story_core_blueprint_story_map_writer_full_slice(
     platform_api, source_mode: str, monkeypatch
 ) -> None:
     client, other_client, database = platform_api
+    from scriptnow.review.domain import FindingSource
+    from scriptnow.script.review import create_script_review_service, script_scan_input
+
+    async def fake_review(database, runtime, *, tenant_id, project_id, scene_id, run_id):
+        revision_id, draft = await script_scan_input(database, project_id, scene_id)
+        service = create_script_review_service(database)
+        await service.create(
+            tenant_id=tenant_id,
+            project_id=project_id,
+            unit_id=scene_id,
+            base_revision_id=revision_id,
+            draft=draft,
+            source=FindingSource.AI,
+            author="Script Editor",
+            idempotency_key=f"test-review:{scene_id}",
+        )
+        return AgentRuntimeResult(
+            text="{}",
+            runtime="agentscope",
+            model_key="mock-v1",
+            input_tokens=10,
+            output_tokens=10,
+            input_price_per_million=Decimal("0"),
+            output_price_per_million=Decimal("0"),
+        )
+
+    monkeypatch.setattr("scriptnow.review.api.script_ai_review_scene", fake_review)
     csrf = await login(client, "a@example.com")
     await login(other_client, "b@example.com")
     project = await client.post(
@@ -1420,10 +1447,14 @@ async def test_script_api_story_core_blueprint_story_map_writer_full_slice(
         headers={"X-CSRF-Token": csrf},
         json={"idempotency_key": "scan-scene-1"},
     )
-    assert finding.status_code == 200 and finding.json()["source"] == "ai"
+    assert finding.status_code == 200 and finding.json()["count"] >= 1
     assert (await other_client.get(f"/projects/{project_id}/findings")).status_code == 404
+    listed = (
+        await client.get(f"/projects/{project_id}/findings?unit_id=scene-1")
+    ).json()
+    assert listed and listed[0]["id"]
     accepted = await client.post(
-        f"/projects/{project_id}/findings/{finding.json()['id']}/accept",
+        f"/projects/{project_id}/findings/{listed[0]['id']}/accept",
         headers={"X-CSRF-Token": csrf},
     )
     assert accepted.status_code == 200 and accepted.json()["status"] == "accepted"
@@ -1435,7 +1466,7 @@ async def test_script_api_story_core_blueprint_story_map_writer_full_slice(
         for item in revised["documents"]
     )
     rolled_back = await client.post(
-        f"/projects/{project_id}/findings/{finding.json()['id']}/rollback",
+        f"/projects/{project_id}/findings/{listed[0]['id']}/rollback",
         headers={"X-CSRF-Token": csrf},
     )
     assert rolled_back.status_code == 200

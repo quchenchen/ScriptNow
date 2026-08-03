@@ -12,7 +12,7 @@ from scriptnow.platform.database import Database
 from scriptnow.platform.models import ProjectEventModel, ProjectModel, UserModel
 from scriptnow.review.domain import FindingDomain, FindingDraft, FindingSeverity, FindingSource
 from scriptnow.review.service import ReviewConflict, ReviewError
-from scriptnow.script.review import create_script_review_service, script_scan_input
+from scriptnow.script.review import create_script_review_service, script_ai_review_scene
 
 
 class ScanRequest(BaseModel):
@@ -36,7 +36,7 @@ class HumanFindingRequest(BaseModel):
     idempotency_key: str = Field(min_length=1, max_length=120)
 
 
-def create_review_router(database: Database, auth: AuthService) -> APIRouter:
+def create_review_router(database: Database, auth: AuthService, settings) -> APIRouter:
     router = APIRouter(tags=["review"])
     deliveries = CreativeDeliveryService(database)
 
@@ -76,11 +76,74 @@ def create_review_router(database: Database, auth: AuthService) -> APIRouter:
         actor = await context(access, csrf, write=True)
         project, service = await project_service(str(actor.tenant_id), project_id)
         try:
-            revision_id, draft = await (
-                script_scan_input(database, project_id, unit_id)
-                if project.medium == "script"
-                else novel_scan_input(database, project_id, unit_id)
-            )
+            if project.medium == "script":
+                from scriptnow.platform.agent_runtime import AgentRuntime
+                from scriptnow.platform.billing import BillingService
+                from scriptnow.platform.models import RunStatus, TenantModel
+                from scriptnow.platform.run_coordinator import RunCoordinator
+                tenant_id = str(actor.tenant_id)
+                async with database.session() as session:
+                    review_tenant = await session.get(TenantModel, tenant_id)
+                    tier = review_tenant.tier if review_tenant is not None else "plus"
+                runtime = AgentRuntime(database, settings)
+                runs = RunCoordinator(database)
+                billing = BillingService(
+                    database, enforce_limits=settings.enforce_agent_budget
+                )
+                run = await runs.enqueue(
+                    tenant_id=tenant_id,
+                    project_id=project_id,
+                    idempotency_key=f"manual-quality-review:{unit_id}:{body.idempotency_key}",
+                )
+                await runs.transition(
+                    tenant_id=tenant_id, run_id=run.id, target=RunStatus.RUNNING
+                )
+                reservation = await billing.reserve(
+                    tenant_id=tenant_id,
+                    run_id=run.id,
+                    idempotency_key=f"manual-quality-review:{unit_id}:{body.idempotency_key}",
+                    tier=tier,
+                    max_tokens=settings.script_agent_reserved_tokens,
+                )
+                result = await script_ai_review_scene(
+                    database,
+                    runtime,
+                    tenant_id=tenant_id,
+                    project_id=project_id,
+                    scene_id=unit_id,
+                    run_id=run.id,
+                )
+                await billing.record_model_call(
+                    reservation_id=reservation.id,
+                    tenant_id=tenant_id,
+                    run_id=run.id,
+                    framework_event_id=f"manual-quality-review:{unit_id}",
+                    trace_id=run.id,
+                    agent_role="reviewer",
+                    model_key=result.model_key,
+                    input_tokens=result.input_tokens,
+                    output_tokens=result.output_tokens,
+                    input_price_per_million=result.input_price_per_million,
+                    output_price_per_million=result.output_price_per_million,
+                )
+                await billing.finalize(reservation.id)
+                await runs.transition(
+                    tenant_id=tenant_id, run_id=run.id, target=RunStatus.SUCCEEDED
+                )
+                findings = await service.list(
+                    tenant_id=tenant_id,
+                    project_id=project_id,
+                    filters={"unit_id": unit_id},
+                )
+                return {
+                    "count": len(findings),
+                    "severity_counts": {
+                        "blocker": sum(1 for f in findings if f.severity == "blocker"),
+                        "major": sum(1 for f in findings if f.severity == "major"),
+                        "minor": sum(1 for f in findings if f.severity == "minor"),
+                    },
+                }
+            revision_id, draft = await novel_scan_input(database, project_id, unit_id)
             hallucinated = draft.model_copy(update={"anchor_id": "invalid:hallucinated"})
             item = await service.scan_with_retry(
                 tenant_id=str(actor.tenant_id),

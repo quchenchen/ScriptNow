@@ -96,7 +96,7 @@ def create_app(
         )
     )
     app.include_router(create_narrative_graph_router(resolved_database, auth, resolved_settings))
-    app.include_router(create_review_router(resolved_database, auth))
+    app.include_router(create_review_router(resolved_database, auth, resolved_settings))
     app.include_router(
         create_review_workbench_router(resolved_database, auth, resolved_settings)
     )
