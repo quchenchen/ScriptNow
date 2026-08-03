@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import re
 import urllib.request
@@ -38,6 +39,8 @@ from scriptnow.script.domain import (
     ScriptBlueprintModel,
     ScriptStoryCoreCandidateModel,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class WorkPackageError(RuntimeError):
@@ -362,8 +365,11 @@ class WorkPackageService:
                     urllib.request.urlretrieve(local_url, filepath)
                     if os.path.getsize(filepath) > 0:
                         local_url = f"/files/covers/{project_id}/{filename}"
-                except Exception:
-                    pass  # fallback: keep external URL
+                except Exception as error:
+                    logger.warning(
+                        "cover download to local storage failed, keeping provider URL: %s",
+                        error,
+                    )
 
                 artifact = CoverArtifactModel(
                     tenant_id=tenant_id,
