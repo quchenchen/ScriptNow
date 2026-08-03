@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import json
+import logging
 from contextlib import suppress
 from typing import Annotated, Literal
 
@@ -52,6 +53,8 @@ from scriptnow.script.project import ScriptPlanModel, ScriptStoryMapModel
 from scriptnow.script.review import script_ai_review_scene
 from scriptnow.script.service import ScriptConflict, ScriptDomainError, ScriptService
 from scriptnow.script.story_map import Episode
+
+logger = logging.getLogger(__name__)
 
 
 class GenerateRequest(BaseModel):
@@ -244,21 +247,40 @@ def create_script_router(
             )
             if scene is None:
                 raise ScriptConflict("scene is outside the adopted StoryMap")
-            blocks = await generator.scene_document(
-                tenant_id=tenant_id,
-                project=project,
-                scene=scene,
-                context=persisted_context.context_pack.model_dump(mode="json"),
-                feedback=feedback,
-                run_id=run_id,
-            )
-            revision = await service.propose_document(
-                tenant_id=tenant_id,
-                project_id=project_id,
-                scene_id=scene_id,
-                blocks=blocks,
-                idempotency_key=idempotency_key,
-            )
+            revision: ScriptDocumentRevisionModel | None = None
+            generation_feedback = feedback
+            for _attempt in range(1, 4):
+                blocks = await generator.scene_document(
+                    tenant_id=tenant_id,
+                    project=project,
+                    scene=scene,
+                    context=persisted_context.context_pack.model_dump(mode="json"),
+                    feedback=generation_feedback,
+                    run_id=run_id,
+                )
+                try:
+                    revision = await service.propose_document(
+                        tenant_id=tenant_id,
+                        project_id=project_id,
+                        scene_id=scene_id,
+                        blocks=blocks,
+                        idempotency_key=idempotency_key,
+                    )
+                    break
+                except ScriptDomainError as structure_error:
+                    if _attempt >= 3:
+                        raise
+                    logger.warning(
+                        "script scene %s failed structure validation, regenerating: %s",
+                        scene_id,
+                        structure_error,
+                    )
+                    generation_feedback = (
+                        f"{generation_feedback or '无'}\n\n"
+                        f"[结构校验反馈] 上一稿被拒绝：{structure_error}\n"
+                        "请修复段落结构后重新生成完整场景（不要只返回差异）。"
+                    )
+            assert revision is not None
             artifact_ref_id = await operations.register_artifact(
                 tenant_id=tenant_id,
                 operation_id=operation_id,
