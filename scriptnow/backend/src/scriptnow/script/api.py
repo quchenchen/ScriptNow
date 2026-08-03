@@ -49,6 +49,7 @@ from scriptnow.script.history import (
     ScriptHistoryService,
 )
 from scriptnow.script.project import ScriptPlanModel, ScriptStoryMapModel
+from scriptnow.script.review import script_ai_review_scene
 from scriptnow.script.service import ScriptConflict, ScriptDomainError, ScriptService
 from scriptnow.script.story_map import Episode
 
@@ -368,6 +369,65 @@ def create_script_router(
                     status=CreativeStageStatus.FAILED,
                     error={"code": "script_scene_failed", "message": str(error)},
                 )
+
+    async def background_script_quality_review(
+        *,
+        tenant_id: str,
+        project_id: str,
+        scene_id: str,
+        revision_id: str,
+    ) -> None:
+        """Auto quality gate: real AI review after a scene is adopted."""
+        run_id = None
+        reservation = None
+        try:
+            run = await generator.runs.enqueue(
+                tenant_id=tenant_id,
+                project_id=project_id,
+                idempotency_key=f"script-quality-review:{scene_id}:{revision_id}",
+            )
+            run_id = run.id
+            await generator.runs.transition(
+                tenant_id=tenant_id, run_id=run.id, target=RunStatus.RUNNING
+            )
+            reservation = await generator._reserve(tenant_id=tenant_id, run_id=run.id)
+            result = await script_ai_review_scene(
+                database,
+                generator.runtime,
+                tenant_id=tenant_id,
+                project_id=project_id,
+                scene_id=scene_id,
+                run_id=run.id,
+            )
+            await generator.billing.record_model_call(
+                reservation_id=reservation.id,
+                tenant_id=tenant_id,
+                run_id=run.id,
+                framework_event_id=f"script-quality-review:{scene_id}",
+                trace_id=run.id,
+                agent_role="reviewer",
+                model_key=result.model_key,
+                input_tokens=result.input_tokens,
+                output_tokens=result.output_tokens,
+                input_price_per_million=result.input_price_per_million,
+                output_price_per_million=result.output_price_per_million,
+            )
+            await generator.billing.finalize(reservation.id)
+            await generator.runs.transition(
+                tenant_id=tenant_id, run_id=run.id, target=RunStatus.SUCCEEDED
+            )
+        except Exception:
+            if reservation is not None:
+                with suppress(Exception):
+                    await generator.billing.release(reservation.id)
+            if run_id is not None:
+                with suppress(Exception):
+                    await generator.runs.transition(
+                        tenant_id=tenant_id,
+                        run_id=run_id,
+                        target=RunStatus.FAILED,
+                        error_code="script_quality_review_failed",
+                    )
 
     async def action_context(access_token: str | None, csrf_token: str | None):
         if access_token is None:
@@ -795,12 +855,20 @@ def create_script_router(
         access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
         csrf_token: Annotated[str | None, Header(alias="X-CSRF-Token")] = None,
     ) -> AdoptResponse:
-        del scene_id
         context = await action_context(access_token, csrf_token)
         try:
             revision = await service.adopt_document(
                 tenant_id=str(context.tenant_id), project_id=project_id, revision_id=revision_id
             )
+            if settings.script_auto_review_enabled:
+                asyncio.create_task(
+                    background_script_quality_review(
+                        tenant_id=str(context.tenant_id),
+                        project_id=project_id,
+                        scene_id=scene_id,
+                        revision_id=revision.id,
+                    )
+                )
             return AdoptResponse(id=revision.id, status="adopted")
         except (ScriptConflict, ScriptDomainError) as error:
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
