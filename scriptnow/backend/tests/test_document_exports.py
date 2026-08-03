@@ -51,8 +51,8 @@ def test_script_golden_document_has_distinct_china_and_hollywood_layouts() -> No
     short_text = [p.text for p in short.paragraphs]
     assert "1-1 内景 客厅 夜" in short_text
     assert "出场人物：林夏" in short_text
-    assert "▲她拆开信封。" in short_text
-    assert "△她拆开信封。" in china_text
+    assert "她拆开信封。" in short_text
+    assert "她拆开信封。" in china_text
     assert "林夏：这不可能。" in china_text
     assert "Golden" in hollywood_text
     assert "INT. APARTMENT - NIGHT" not in hollywood_text

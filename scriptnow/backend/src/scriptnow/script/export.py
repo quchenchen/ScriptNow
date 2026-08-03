@@ -96,8 +96,7 @@ def _render_chinese_scene(document, scene: ScriptExportScene, script_format: str
             text = f"{pending_character or '人物'}：{block.text}"
             pending_character = None
         elif block.type == "action":
-            marker = "▲" if short_form else "△"
-            text = block.text if block.text.startswith(marker) else f"{marker}{block.text}"
+            text = block.text
         else:
             text = block.text
         paragraph = document.add_paragraph(text)
