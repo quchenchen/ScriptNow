@@ -146,6 +146,136 @@ async def test_story_cores_accepts_one_complete_narrative_engine(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_story_cores_accepts_per_episode_pacing_for_ten_episode_project(monkeypatch):
+    generator = ScriptCreativeGenerator.__new__(ScriptCreativeGenerator)
+    candidates = [
+        {
+            "title": f"方向 {index}",
+            "concept": "一个具体而完整的剧本方向，包含人物选择、持续升级的阻力、关系变化以及不可逆的终局代价。"
+            * 2,
+            "angles": ["欲望", "阻力", "关系变化", "终局代价", "最终选择"],
+            "narrative_engine": ["每次追查都会揭开真相，同时让主角失去一条退路。"],
+            "viewpoint_anchor": ["跟随主角限知视角"],
+            "pacing_recipe": [f"第{i}集钩子：反转+付费卡点" for i in range(1, 11)],
+            "market_judgement": ["优势明确", "风险可控"],
+        }
+        for index in range(1, 4)
+    ]
+
+    async def fake_json(*_args, validator, **_kwargs):
+        return validator({"candidates": candidates})
+
+    monkeypatch.setattr(generator, "_json", fake_json)
+    project = SimpleNamespace(
+        id="project-id",
+        name="十集短剧",
+        direction={"medium": "script", "volume_one": "10", "language": "zh-CN"},
+    )
+
+    result = await generator.story_cores(
+        tenant_id="tenant-id",
+        project=project,
+        feedback=None,
+    )
+
+    assert len(result) == 3
+    assert len(result[0].details.pacing_recipe) == 10
+
+
+@pytest.mark.asyncio
+async def test_story_cores_rejects_pacing_beyond_episode_budget(monkeypatch):
+    generator = ScriptCreativeGenerator.__new__(ScriptCreativeGenerator)
+    candidates = [
+        {
+            "title": f"方向 {index}",
+            "concept": "一个具体而完整的剧本方向，包含人物选择、持续升级的阻力、关系变化以及不可逆的终局代价。"
+            * 2,
+            "angles": ["欲望", "阻力", "关系变化", "终局代价", "最终选择"],
+            "narrative_engine": ["每次追查都会揭开真相，同时让主角失去一条退路。"],
+            "viewpoint_anchor": ["跟随主角限知视角"],
+            "pacing_recipe": [f"第{i}集钩子" for i in range(1, 12)],
+            "market_judgement": ["优势明确", "风险可控"],
+        }
+        for index in range(1, 4)
+    ]
+
+    async def fake_json(*_args, validator, **_kwargs):
+        return validator({"candidates": candidates})
+
+    monkeypatch.setattr(generator, "_json", fake_json)
+    project = SimpleNamespace(
+        id="project-id",
+        name="十集短剧",
+        direction={"medium": "script", "volume_one": "10", "language": "zh-CN"},
+    )
+
+    with pytest.raises(ValueError, match="episode budget"):
+        await generator.story_cores(
+            tenant_id="tenant-id",
+            project=project,
+            feedback=None,
+        )
+
+
+@pytest.mark.asyncio
+async def test_json_retries_contract_violation_with_feedback() -> None:
+    generator = ScriptCreativeGenerator.__new__(ScriptCreativeGenerator)
+
+    class FakeRuns:
+        async def enqueue(self, **_kwargs):
+            return SimpleNamespace(id="run-id")
+
+        async def transition(self, **_kwargs):
+            return None
+
+    class FakeRuntime:
+        def __init__(self) -> None:
+            self.calls = 0
+            self.prompts: list[str] = []
+
+        async def generate(self, *, content, **_kwargs) -> SimpleNamespace:
+            self.calls += 1
+            self.prompts.append(content)
+            if self.calls == 1:
+                return SimpleNamespace(text='{"bad": true}')
+            return SimpleNamespace(text='{"ok": true}')
+
+    generator.runs = FakeRuns()
+    generator.runtime = FakeRuntime()
+
+    async def fake_reserve(*_args, **_kwargs):
+        return None
+
+    async def fake_settle(*_args, **_kwargs):
+        return None
+
+    async def fake_release(*_args, **_kwargs):
+        return None
+
+    generator._reserve = fake_reserve  # type: ignore[method-assign]
+    generator._settle = fake_settle  # type: ignore[method-assign]
+    generator._release = fake_release  # type: ignore[method-assign]
+
+    def validator(payload: object) -> dict[str, object]:
+        if not dict(payload).get("ok"):
+            raise ValueError("contract rejected")
+        return dict(payload)
+
+    value = await generator._json(
+        "tenant-id",
+        "project-id",
+        "architect",
+        "prompt",
+        {},
+        validator=validator,
+    )
+
+    assert value == {"ok": True}
+    assert generator.runtime.calls == 2
+    assert "[契约校验反馈]" in generator.runtime.prompts[1]
+
+
+@pytest.mark.asyncio
 async def test_blueprint_revision_includes_current_candidate_as_revision_base(monkeypatch):
     generator = ScriptCreativeGenerator.__new__(ScriptCreativeGenerator)
     captured: dict[str, object] = {}

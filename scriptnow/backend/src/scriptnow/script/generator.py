@@ -66,9 +66,12 @@ class _Core(BaseModel):
     title: str = Field(min_length=2, max_length=160)
     concept: str = Field(min_length=80)
     angles: tuple[str, ...] = Field(min_length=5, max_length=5)
-    narrative_engine: tuple[str, ...] = Field(min_length=1, max_length=8)
+    # Per-episode hook lists are budgeted against the adopted episode count by the
+    # project-aware validator (_core_payload_validator). The 40-item ceiling is only
+    # a runaway guard, not a format constraint.
+    narrative_engine: tuple[str, ...] = Field(min_length=1, max_length=40)
     viewpoint_anchor: tuple[str, ...] = Field(min_length=1, max_length=6)
-    pacing_recipe: tuple[str, ...] = Field(min_length=1, max_length=8)
+    pacing_recipe: tuple[str, ...] = Field(min_length=1, max_length=40)
     market_judgement: tuple[str, ...] = Field(min_length=1, max_length=6)
 
 
@@ -82,6 +85,33 @@ class _CorePayload(BaseModel):
         if len({item.title.casefold().strip() for item in self.candidates}) != 3:
             raise ValueError("three distinct creative directions are required")
         return self
+
+
+def _episode_hook_cap(project: ProjectModel) -> int:
+    """Episode-shaped hook lists must fit the adopted episode count, never a fixed 8."""
+    raw = dict(project.direction or {}).get("volume_one")
+    try:
+        episode_count = max(1, int(raw))
+    except (TypeError, ValueError):
+        return 8
+    return max(8, min(episode_count, 40))
+
+
+def _core_payload_validator(
+    episode_hook_cap: int,
+) -> Callable[[object], _CorePayload]:
+    def validate(payload: object) -> _CorePayload:
+        parsed = _CorePayload.model_validate(payload)
+        for item in parsed.candidates:
+            for field_name in ("narrative_engine", "pacing_recipe"):
+                if len(getattr(item, field_name)) > episode_hook_cap:
+                    raise ValueError(
+                        f"{field_name} exceeds the {episode_hook_cap} episode budget; "
+                        "merge per-episode hooks into structural beats"
+                    )
+        return parsed
+
+    return validate
 
 
 class _Anchor(BaseModel):
@@ -343,7 +373,7 @@ class ScriptCreativeGenerator:
                 "director",
                 prompt,
                 dict(project.direction),
-                validator=_CorePayload.model_validate,
+                validator=_core_payload_validator(_episode_hook_cap(project)),
             )
         except ValidationError as error:
             logger.warning("invalid script StoryCore payload: %s", error)
@@ -713,6 +743,7 @@ type 只能是 slugline、action、character、dialogue、transition。
         skills_enabled: bool = True,
         run_id: str | None = None,
         validator: Callable[[object], ValidatedPayload],
+        max_attempts: int = 3,
     ) -> ValidatedPayload:
         manages_run = run_id is None
         run = (
@@ -733,20 +764,58 @@ type 只能是 slugline、action、character、dialogue、transition。
                 target=RunStatus.RUNNING,
             )
         reservation = await self._reserve(tenant_id=tenant_id, run_id=run.id)
-        try:
-            result = await self.runtime.generate(
-                tenant_id=tenant_id,
-                run_id=run.id,
-                role=role,
-                content=prompt,
-                context_snapshot=context,
-                skills_enabled=skills_enabled,
-            )
+        for attempt in range(1, max_attempts + 1):
+            try:
+                result = await self.runtime.generate(
+                    tenant_id=tenant_id,
+                    run_id=run.id,
+                    role=role,
+                    content=prompt,
+                    context_snapshot=context,
+                    skills_enabled=skills_enabled,
+                )
+            except AgentRuntimeError as error:
+                await self._release(reservation)
+                if manages_run:
+                    with suppress(Exception):
+                        await self.runs.transition(
+                            tenant_id=tenant_id,
+                            run_id=run.id,
+                            target=RunStatus.FAILED,
+                            error_code="script_generation_failed",
+                        )
+                raise ScriptGenerationError(
+                    f"Agent 返回内容无法形成有效创作候选：{error}"
+                ) from error
             try:
                 payload = json.loads(result.text)
             except json.JSONDecodeError:
                 payload = repair_json(result.text)
-            validated = validator(payload)
+            try:
+                validated = validator(payload)
+            except (ValidationError, ValueError, TypeError) as error:
+                if attempt >= max_attempts:
+                    await self._release(reservation)
+                    if manages_run:
+                        with suppress(Exception):
+                            await self.runs.transition(
+                                tenant_id=tenant_id,
+                                run_id=run.id,
+                                target=RunStatus.FAILED,
+                                error_code="script_contract_invalid",
+                            )
+                    raise
+                logger.warning(
+                    "script JSON contract invalid, retrying with feedback: %s", error
+                )
+                prompt = (
+                    prompt
+                    + "\n\n[契约校验反馈] 上次返回未通过结构化校验，错误：\n"
+                    + f"{str(error)[:1_500]}\n"
+                    + "请修复后返回完整 JSON（不要只返回差异），严格匹配 output contract "
+                    + "中每个数组的元素数量与类型约束。"
+                )
+                continue
             await self._settle(reservation, tenant_id, run.id, result, role)
             if manages_run:
                 await self.runs.transition(
@@ -755,28 +824,7 @@ type 只能是 slugline、action、character、dialogue、transition。
                     target=RunStatus.SUCCEEDED,
                 )
             return validated
-        except (ValidationError, ValueError, TypeError):
-            await self._release(reservation)
-            if manages_run:
-                with suppress(Exception):
-                    await self.runs.transition(
-                        tenant_id=tenant_id,
-                        run_id=run.id,
-                        target=RunStatus.FAILED,
-                        error_code="script_contract_invalid",
-                    )
-            raise
-        except AgentRuntimeError as error:
-            await self._release(reservation)
-            if manages_run:
-                with suppress(Exception):
-                    await self.runs.transition(
-                        tenant_id=tenant_id,
-                        run_id=run.id,
-                        target=RunStatus.FAILED,
-                        error_code="script_generation_failed",
-                    )
-            raise ScriptGenerationError(f"Agent 返回内容无法形成有效创作候选：{error}") from error
+        raise ScriptGenerationError("script contract validation exhausted")
 
     async def _reserve(self, *, tenant_id: str, run_id: str) -> ReservationView:
         async with self.database.session() as session:
