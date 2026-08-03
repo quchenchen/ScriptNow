@@ -125,6 +125,8 @@ def _format_script_paragraph(paragraph, block_type: str, script_format: ScriptFo
     elif block_type == "dialogue":
         fmt.left_indent = Cm(0 if script_format == "chinese-short" else (3.8 if script_format == "hollywood" else 3.0))
         fmt.right_indent = Cm(0 if script_format == "chinese-short" else (3.8 if script_format == "hollywood" else 3.0))
+        if script_format in {"chinese", "chinese-short"}:
+            paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
     elif block_type == "transition":
         paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         paragraph.runs[0].bold = True

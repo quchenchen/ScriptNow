@@ -1,4 +1,5 @@
 import io
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 import pytest
 from docx import Document
@@ -58,6 +59,9 @@ def test_script_golden_document_has_distinct_china_and_hollywood_layouts() -> No
     assert "内景 客厅 夜" in hollywood_text
     assert "第 1 集" not in hollywood_text
     assert "人物：林夏" not in hollywood_text
+    for document in (china, short):
+        dialogue = next(p for p in document.paragraphs if p.text == "林夏：这不可能。")
+        assert dialogue.alignment in (None, WD_ALIGN_PARAGRAPH.LEFT)
 
     china_character = next(p for p in china.paragraphs if p.text == "林夏：这不可能。")
     hollywood_character = next(p for p in hollywood.paragraphs if p.text == "林夏")
