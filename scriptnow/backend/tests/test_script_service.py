@@ -396,6 +396,48 @@ async def test_writer_candidate_adoption_stale_base_format_and_context_pack(scri
 
 
 @pytest.mark.asyncio
+async def test_propose_document_merges_same_speaker_dialogue_fragments(
+    script_data,
+) -> None:
+    service, _, tenant, _, project = script_data
+    await adopt_core_blueprint(service, tenant, project)
+    structure = await service.propose_structure(
+        tenant_id=tenant.id,
+        project_id=project.id,
+        expected_version=1,
+        episodes=episodes(),
+        idempotency_key="structure-merge",
+    )
+    await service.adopt_structure(
+        tenant_id=tenant.id, project_id=project.id, candidate_id=structure.id
+    )
+    revision = await service.propose_document(
+        tenant_id=tenant.id,
+        project_id=project.id,
+        scene_id="scene-1",
+        blocks=(
+            ScriptBlock(para_id="p1", type="slugline", text="内景 灯塔 夜"),
+            ScriptBlock(para_id="p2", type="action", text="Lin faces the buyer."),
+            ScriptBlock(para_id="c1", type="character", text="宋晚"),
+            ScriptBlock(para_id="d1", type="dialogue", text="下调后的价格"),
+            ScriptBlock(para_id="c2", type="character", text="宋晚"),
+            ScriptBlock(para_id="d2", type="dialogue", text="刚好落在出价区间。"),
+        ),
+        idempotency_key="merged-draft",
+    )
+
+    async with service.database.session() as session:
+        stored = await session.get(type(revision), revision.id)
+        assert stored is not None
+        blocks = stored.blocks
+    dialogues = [item for item in blocks if item["type"] == "dialogue"]
+    characters = [item for item in blocks if item["type"] == "character"]
+    assert len(dialogues) == 1
+    assert len(characters) == 1
+    assert dialogues[0]["text"] == "下调后的价格，刚好落在出价区间。"
+
+
+@pytest.mark.asyncio
 async def test_script_context_adapter_keeps_scene_contract_and_blueprint_traceable(
     script_data,
 ) -> None:

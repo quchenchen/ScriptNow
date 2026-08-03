@@ -21,7 +21,10 @@ from scriptnow.script.domain import (
     ScriptStructureCandidateModel,
     StoryCoreDraft,
 )
-from scriptnow.script.format_profiles import validate_script_structure
+from scriptnow.script.format_profiles import (
+    merge_same_speaker_dialogue,
+    validate_script_structure,
+)
 from scriptnow.script.project import ScriptPlanModel, ScriptStoryMapModel
 from scriptnow.script.story_map import Episode
 
@@ -459,6 +462,7 @@ class ScriptService:
     ) -> ScriptDocumentRevisionModel:
         async with self.database.session() as session:
             await self._project(session, tenant_id, project_id)
+            blocks = merge_same_speaker_dialogue(blocks)
             self._validate_blocks(blocks)
             existing = (
                 await session.scalars(

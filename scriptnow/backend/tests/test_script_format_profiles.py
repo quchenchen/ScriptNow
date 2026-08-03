@@ -3,6 +3,7 @@ import pytest
 from scriptnow.script.contracts import ScriptBlock
 from scriptnow.script.format_profiles import (
     generation_instructions,
+    merge_same_speaker_dialogue,
     scene_craft_instructions,
     validate_script_blocks,
     validate_script_structure,
@@ -56,6 +57,8 @@ def test_generation_profiles_do_not_mix_numbered_chinese_and_hollywood_rules() -
     assert "出场人物" in short_instructions
     assert "OS" in short_instructions and "VO" in short_instructions
     assert "15 字" in short_instructions
+    assert "拆成多段" not in short_instructions
+    assert "合并为一条" in short_instructions
     chinese = generation_instructions("chinese")
     hollywood = generation_instructions("hollywood")
     assert "人物（情绪）" in chinese
@@ -112,6 +115,52 @@ def test_chinese_short_golden_structure_matches_storyboard_convention() -> None:
     assert "出场人物" in blocks[1].text
     assert all(b.text.startswith("▲") for b in blocks[1:4])
     assert len(blocks[5].text) <= 15
+
+
+def test_merge_same_speaker_dialogue_joins_fragmented_utterance() -> None:
+    blocks = (
+        ScriptBlock(para_id="s1", type="slugline", text="1-1 宴会厅 夜 内"),
+        ScriptBlock(para_id="a1", type="action", text="▲ 众人屏息。"),
+        ScriptBlock(para_id="c1", type="character", text="宋晚"),
+        ScriptBlock(para_id="d1", type="dialogue", text="下调后的价格"),
+        ScriptBlock(para_id="c2", type="character", text="宋晚"),
+        ScriptBlock(para_id="d2", type="dialogue", text="刚好落在B轮买方"),
+        ScriptBlock(para_id="c3", type="character", text="宋晚（稳）"),
+        ScriptBlock(para_id="d3", type="dialogue", text="出价区间。"),
+    )
+
+    merged = merge_same_speaker_dialogue(blocks)
+
+    speakers = [block for block in merged if block.type == "character"]
+    dialogues = [block for block in merged if block.type == "dialogue"]
+    assert len(speakers) == 1
+    assert len(dialogues) == 1
+    assert dialogues[0].text == "下调后的价格，刚好落在B轮买方，出价区间。"
+
+
+def test_merge_same_speaker_dialogue_keeps_distinct_speakers_untouched() -> None:
+    blocks = (
+        ScriptBlock(para_id="s1", type="slugline", text="1-1 宴会厅 夜 内"),
+        ScriptBlock(para_id="c1", type="character", text="宋晚"),
+        ScriptBlock(para_id="d1", type="dialogue", text="下调后的价格。"),
+        ScriptBlock(para_id="c2", type="character", text="沈聿"),
+        ScriptBlock(para_id="d2", type="dialogue", text="继续。"),
+        ScriptBlock(para_id="c3", type="character", text="宋晚（稳）"),
+        ScriptBlock(para_id="d3", type="dialogue", text="出价区间。"),
+    )
+
+    merged = merge_same_speaker_dialogue(blocks)
+
+    assert [block.text for block in merged if block.type == "character"] == [
+        "宋晚",
+        "沈聿",
+        "宋晚（稳）",
+    ]
+    assert [block.text for block in merged if block.type == "dialogue"] == [
+        "下调后的价格。",
+        "继续。",
+        "出价区间。",
+    ]
 
 
 def test_provider_json_repair_can_restore_an_exact_embedded_block_tail() -> None:

@@ -7,6 +7,8 @@ from scriptnow.script.contracts import ScriptBlock
 
 ScriptFormat = Literal["chinese", "chinese-short", "hollywood"]
 
+_DIALOGUE_JOINER = "，"
+
 _CHINESE_TIME = re.compile(
     r"(?:^|[\s·-])(?:日|夜|晨|黄昏)(?=$|[\s·\-（(])"
 )
@@ -24,7 +26,7 @@ def generation_instructions(script_format: str) -> str:
 1. slugline 只写“场号-分镜号 地点·细地点 时间 内/外”，如“1-1 相府偏院·院墙外 清晨 外”；不要重复集数。
 2. action 是单个可拍画面，用“▲”开头（如“▲她攥紧账本，指尖发白”）；关键画面可用“【特写】”“【闪回·画面一闪而过】”标记。
 3. 每段 dialogue 前必须紧邻 character；character 写“人物（情绪/动作）”，如“林昭宁（OS，迷糊）”。OS=内心独白，VO=画外旁白；旁白每 25-35 个分镜才出现一次，单段不超过 30 字。
-4. 每个分镜组画面描述控制在 20-30 字以内；单人对白一次不超过 15 字，超过则拆成多段。
+4. 每个分镜组画面描述控制在 20-30 字以内；单句对白建议不超过 15 字，但同一人物的一段完整台词必须合并为一条 dialogue（人名只出现一次），严禁拆分后重复人名；确需停顿/转折时写成两条各自完整独立的台词。
 5. 场景开头用 action 块输出“出场人物：×××、×××”。
 6. 全集开头如有新人物，用 action 块输出“人设/声线”要点（角色名 + 关键视觉/声音特征）。
 7. 不要输出 Markdown、解释或小说式心理分析；心理只能通过动作、神态、OS 或旁白呈现。
@@ -82,6 +84,53 @@ def validate_script_structure(blocks: tuple[ScriptBlock, ...]) -> tuple[str, ...
         ):
             issues.append("每段台词前必须紧邻说话人物")
     return tuple(dict.fromkeys(issues))
+
+
+def _speaker_key(text: str) -> str:
+    """Extract the speaker name from a character block, ignoring emotion/action notes."""
+    name = text.strip()
+    for marker in ("（", "(", "："):
+        name = name.split(marker, 1)[0]
+    return name.strip()
+
+
+def merge_same_speaker_dialogue(
+    blocks: tuple[ScriptBlock, ...],
+) -> tuple[ScriptBlock, ...]:
+    """Join one speaker's consecutive fragments into a single complete dialogue line.
+
+    The platform parser requires “人名：完整台词”. Models sometimes split one
+    utterance into short fragments, each preceded by its own character block
+    (…character A, dialogue X, character A, dialogue Y…). This normalization
+    merges X and Y into one dialogue block under A so every line is a complete,
+    parseable utterance.
+    """
+    result = list(blocks)
+    index = 0
+    while index + 3 < len(result):
+        c1, d1, c2, d2 = (
+            result[index],
+            result[index + 1],
+            result[index + 2],
+            result[index + 3],
+        )
+        if (
+            c1.type == "character"
+            and d1.type == "dialogue"
+            and c2.type == "character"
+            and d2.type == "dialogue"
+            and _speaker_key(c1.text) == _speaker_key(c2.text)
+        ):
+            tail = d2.text
+            if not d1.text.rstrip().endswith(("。", "！", "？", "…", "：", "，", "、", ";")):
+                tail = _DIALOGUE_JOINER + tail
+            result[index + 1] = d1.model_copy(
+                update={"text": d1.text.rstrip() + tail}
+            )
+            del result[index + 2 : index + 4]
+            continue
+        index += 1
+    return tuple(result)
 
 
 def validate_script_blocks(
