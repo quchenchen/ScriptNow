@@ -167,7 +167,7 @@ class ScriptExportService:
                     for unit in translated
                 ]
             script_format = str(plan.direction.get("script_format") or "")
-            if script_format not in {"chinese", "hollywood"}:
+            if script_format not in {"chinese", "chinese-short", "hollywood"}:
                 raise ScriptDeliveryError("project Script format is invalid")
             manifest = existing or ScriptExportManifestModel(
                 project_id=project_id,
