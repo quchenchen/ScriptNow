@@ -450,6 +450,7 @@ def test_script_skills_require_executable_admission_baseline() -> None:
     assert {skill.name for skill in routed} == {
         "script-cn-short-drama",
         "script-develop",
+        "script-doctor-roundtable",
         "script-format-chinese",
         "script-format-hollywood",
         "script-review",
@@ -766,3 +767,21 @@ def test_short_drama_skill_is_keyword_matched_for_vertical_scripts() -> None:
         item for item in plan.selections if item.skill.name == "script-cn-short-drama"
     )
     assert any("题材关键词匹配" in reason for reason in short_drama.reasons)
+
+
+def test_roundtable_doctor_skill_is_keyword_matched_for_review() -> None:
+    catalog = SkillCatalog(SKILLS_ROOT)
+    profile = CreativeProfile.from_direction(
+        medium="script",
+        direction={
+            "genre": "都市逆袭",
+            "style": "剧本医生, 圆桌会诊, 多视角评估",
+            "language": "zh-CN",
+            "script_format": "chinese-short",
+        },
+    )
+    plan = SkillResolver(catalog, optional_limit=3).resolve(
+        profile=profile, role_key="reviewer", stage="review"
+    )
+    selected = {item.skill.name for item in plan.selections}
+    assert "script-doctor-roundtable" in selected

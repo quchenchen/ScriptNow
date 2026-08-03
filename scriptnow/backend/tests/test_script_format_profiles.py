@@ -90,6 +90,30 @@ def test_creation_structure_rejects_serialized_blocks_embedded_in_prose() -> Non
     )
 
 
+def test_chinese_short_golden_structure_matches_storyboard_convention() -> None:
+    import re
+
+    from scriptnow.script.contracts import ScriptBlock
+
+    blocks = (
+        ScriptBlock(para_id="s1", type="slugline", text="1-1-1 酒店宴会厅·主舞台 傍晚 内"),
+        ScriptBlock(para_id="a1", type="action", text="▲ 出场人物：顾念、宋司衡、陆沉。"),
+        ScriptBlock(para_id="a2", type="action", text="▲ 宴会厅水晶灯璀璨，宾客满座。"),
+        ScriptBlock(para_id="a3", type="action", text="▲【特写】顾念手中紧攥订婚戒指盒。"),
+        ScriptBlock(para_id="c1", type="character", text="宋司衡（冷声）"),
+        ScriptBlock(para_id="d1", type="dialogue", text="取消。"),
+    )
+    assert validate_script_structure(blocks) == ()
+    slugline = blocks[0].text
+    assert re.match(
+        r"^\d+-\d+-\d+\s+\S+·\S+\s+(?:清晨|黎明|晨|上午|中午|下午|傍晚|黄昏|日|夜)\s+(?:内|外)$",
+        slugline,
+    )
+    assert "出场人物" in blocks[1].text
+    assert all(b.text.startswith("▲") for b in blocks[1:4])
+    assert len(blocks[5].text) <= 15
+
+
 def test_provider_json_repair_can_restore_an_exact_embedded_block_tail() -> None:
     repaired = (
         _ScriptBlockPayload(type="slugline", text="诊所 夜 内"),
