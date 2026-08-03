@@ -128,5 +128,9 @@ def _format_script_paragraph(paragraph, block_type: str, script_format: ScriptFo
         if script_format in {"chinese", "chinese-short"}:
             paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
     elif block_type == "transition":
-        paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        paragraph.alignment = (
+            WD_ALIGN_PARAGRAPH.RIGHT
+            if script_format == "hollywood"
+            else WD_ALIGN_PARAGRAPH.LEFT
+        )
         paragraph.runs[0].bold = True

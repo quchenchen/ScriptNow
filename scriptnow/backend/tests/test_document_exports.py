@@ -62,6 +62,10 @@ def test_script_golden_document_has_distinct_china_and_hollywood_layouts() -> No
     for document in (china, short):
         dialogue = next(p for p in document.paragraphs if p.text == "林夏：这不可能。")
         assert dialogue.alignment in (None, WD_ALIGN_PARAGRAPH.LEFT)
+        transition = next(p for p in document.paragraphs if p.text == "切至：")
+        assert transition.alignment == WD_ALIGN_PARAGRAPH.LEFT
+    hollywood_transition = next(p for p in hollywood.paragraphs if p.text == "切至：")
+    assert hollywood_transition.alignment == WD_ALIGN_PARAGRAPH.RIGHT
 
     china_character = next(p for p in china.paragraphs if p.text == "林夏：这不可能。")
     hollywood_character = next(p for p in hollywood.paragraphs if p.text == "林夏")
