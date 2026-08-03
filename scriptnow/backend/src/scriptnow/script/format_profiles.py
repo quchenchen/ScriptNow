@@ -94,6 +94,16 @@ def _speaker_key(text: str) -> str:
     return name.strip()
 
 
+def _join_fragments(fragments: list[str]) -> str:
+    parts: list[str] = []
+    for text in fragments:
+        text = text.strip()
+        if parts and not parts[-1].endswith(("。", "！", "？", "…", "：", "，", "、", ";")):
+            parts[-1] = parts[-1] + _DIALOGUE_JOINER
+        parts.append(text)
+    return "".join(parts)
+
+
 def merge_same_speaker_dialogue(
     blocks: tuple[ScriptBlock, ...],
 ) -> tuple[ScriptBlock, ...]:
@@ -101,35 +111,59 @@ def merge_same_speaker_dialogue(
 
     The platform parser requires “人名：完整台词”. Models sometimes split one
     utterance into short fragments, each preceded by its own character block
-    (…character A, dialogue X, character A, dialogue Y…). This normalization
-    merges X and Y into one dialogue block under A so every line is a complete,
-    parseable utterance.
+    (…character A, dialogue X, [action], character A, dialogue Y…), with at most
+    a couple of storyboard action blocks in between. This normalization merges
+    X and Y into one dialogue block under A, keeping interleaved action blocks
+    after the complete line.
     """
-    result = list(blocks)
+    result: list[ScriptBlock] = []
     index = 0
-    while index + 3 < len(result):
-        c1, d1, c2, d2 = (
-            result[index],
-            result[index + 1],
-            result[index + 2],
-            result[index + 3],
-        )
-        if (
-            c1.type == "character"
-            and d1.type == "dialogue"
-            and c2.type == "character"
-            and d2.type == "dialogue"
-            and _speaker_key(c1.text) == _speaker_key(c2.text)
+    while index < len(blocks):
+        block = blocks[index]
+        if not (
+            block.type == "character"
+            and index + 1 < len(blocks)
+            and blocks[index + 1].type == "dialogue"
         ):
-            tail = d2.text
-            if not d1.text.rstrip().endswith(("。", "！", "？", "…", "：", "，", "、", ";")):
-                tail = _DIALOGUE_JOINER + tail
-            result[index + 1] = d1.model_copy(
-                update={"text": d1.text.rstrip() + tail}
-            )
-            del result[index + 2 : index + 4]
+            result.append(block)
+            index += 1
             continue
-        index += 1
+
+        speaker = _speaker_key(block.text)
+        fragments = [blocks[index + 1].text]
+        collected_actions: list[ScriptBlock] = []
+        cursor = index + 2
+        while cursor < len(blocks):
+            actions: list[ScriptBlock] = []
+            look = cursor
+            while (
+                look < len(blocks)
+                and blocks[look].type == "action"
+                and len(actions) < 2
+            ):
+                actions.append(blocks[look])
+                look += 1
+            if not (
+                look + 1 < len(blocks)
+                and blocks[look].type == "character"
+                and blocks[look + 1].type == "dialogue"
+                and _speaker_key(blocks[look].text) == speaker
+            ):
+                collected_actions.extend(actions)
+                cursor = look
+                break
+            collected_actions.extend(actions)
+            fragments.append(blocks[look + 1].text)
+            cursor = look + 2
+
+        result.append(block)
+        result.append(
+            blocks[index + 1].model_copy(
+                update={"text": _join_fragments(fragments)}
+            )
+        )
+        result.extend(collected_actions)
+        index = cursor
     return tuple(result)
 
 

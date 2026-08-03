@@ -163,6 +163,28 @@ def test_merge_same_speaker_dialogue_keeps_distinct_speakers_untouched() -> None
     ]
 
 
+def test_merge_same_speaker_dialogue_bridges_storyboard_action_blocks() -> None:
+    blocks = (
+        ScriptBlock(para_id="s1", type="slugline", text="3-1 茶室 日 内"),
+        ScriptBlock(para_id="c1", type="character", text="姜淮（量角器微笑）"),
+        ScriptBlock(para_id="d1", type="dialogue", text="老宋的女儿。"),
+        ScriptBlock(para_id="a1", type="action", text="▲ 他把茶杯推到她面前。"),
+        ScriptBlock(para_id="c2", type="character", text="姜淮"),
+        ScriptBlock(para_id="d2", type="dialogue", text="坐。就当陪叔叔喝杯茶。"),
+        ScriptBlock(para_id="a2", type="action", text="▲ 宋晚没碰杯子。"),
+    )
+
+    merged = merge_same_speaker_dialogue(blocks)
+
+    types = [block.type for block in merged]
+    assert types == ["slugline", "character", "dialogue", "action", "action"]
+    dialogue = next(block for block in merged if block.type == "dialogue")
+    assert dialogue.text == "老宋的女儿。坐。就当陪叔叔喝杯茶。"
+    actions = [block.text for block in merged if block.type == "action"]
+    assert "推到她面前" in actions[0]
+    assert "宋晚没碰杯子" in actions[1]
+
+
 def test_provider_json_repair_can_restore_an_exact_embedded_block_tail() -> None:
     repaired = (
         _ScriptBlockPayload(type="slugline", text="诊所 夜 内"),
