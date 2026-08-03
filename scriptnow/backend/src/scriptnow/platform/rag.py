@@ -5,7 +5,12 @@ from dataclasses import dataclass
 from sqlalchemy import delete, select
 
 from scriptnow.platform.database import Database
-from scriptnow.platform.models import RagChunkModel, WorkspaceFileModel, WorkspaceFileStatus
+from scriptnow.platform.models import (
+    RagChunkModel,
+    SourceEvidenceModel,
+    WorkspaceFileModel,
+    WorkspaceFileStatus,
+)
 
 
 class RagError(RuntimeError):
@@ -42,8 +47,33 @@ class RagService:
                 or source.status != WorkspaceFileStatus.READY
             ):
                 raise RagError("source is outside ready tenant workspace")
+            # Evidence rows reference chunks by id with an ondelete=RESTRICT
+            # foreign key. A re-index must never destroy chunks that already
+            # carry distillation evidence, otherwise the whole run becomes
+            # orphaned and the replacement fails with an integrity error.
+            referenced_chunk_ids = set(
+                (
+                    await session.scalars(
+                        select(SourceEvidenceModel.chunk_id).where(
+                            SourceEvidenceModel.chunk_id.in_(
+                                select(RagChunkModel.id).where(
+                                    RagChunkModel.source_file_id == source_file_id
+                                )
+                            )
+                        )
+                    )
+                ).all()
+            )
+            remove_chunks = delete(RagChunkModel).where(
+                RagChunkModel.source_file_id == source_file_id
+            )
+            if referenced_chunk_ids:
+                remove_chunks = delete(RagChunkModel).where(
+                    RagChunkModel.source_file_id == source_file_id,
+                    RagChunkModel.id.not_in(referenced_chunk_ids),
+                )
             await session.execute(
-                delete(RagChunkModel).where(RagChunkModel.source_file_id == source_file_id)
+                remove_chunks
             )
             chunks = self._chunks(parsed_text)
             session.add_all(

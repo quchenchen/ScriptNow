@@ -1,4 +1,5 @@
 import pytest
+from sqlalchemy import select
 
 from scriptnow.platform.context_retrieval import (
     ContextRequest,
@@ -11,6 +12,9 @@ from scriptnow.platform.database import Database
 from scriptnow.platform.models import (
     ProjectMedium,
     ProjectModel,
+    RagChunkModel,
+    SourceDistillationModel,
+    SourceEvidenceModel,
     TenantModel,
     WorkspaceFileModel,
     WorkspaceFileStatus,
@@ -135,6 +139,72 @@ async def test_lexical_retriever_preserves_source_version_and_explicit_dimension
     assert batch.evidence[0].source_version == f"sha256:{source.sha256}"
     assert batch.evidence[0].content_digest
     assert batch.evidence[0].excerpt == "Harbor fog hides the witness."
+
+
+@pytest.mark.asyncio
+async def test_reindex_preserves_chunks_referenced_by_evidence(rag_data) -> None:
+    rag, tenant, _, project, source = rag_data
+    await rag.index_text(
+        tenant_id=tenant.id,
+        project_id=project.id,
+        source_file_id=source.id,
+        parsed_text="Harbor fog hides the witness. " * 8,
+    )
+    async with rag.database.session() as session:
+        chunk = (
+            await session.scalars(
+                select(RagChunkModel).where(
+                    RagChunkModel.source_file_id == source.id
+                )
+            )
+        ).first()
+        assert chunk is not None
+        distillation = SourceDistillationModel(
+            tenant_id=tenant.id,
+            project_id=project.id,
+            idempotency_key="rag-reindex-distill",
+            source_file_ids=[source.id],
+            status="running",
+            pass_key="atomic_evidence",
+        )
+        session.add(distillation)
+        await session.flush()
+        session.add(
+            SourceEvidenceModel(
+                tenant_id=tenant.id,
+                project_id=project.id,
+                distillation_id=distillation.id,
+                evidence_key="evidence-refs-chunk",
+                source_file_id=source.id,
+                chunk_id=chunk.id,
+                source_unit="chapter-1",
+                ordinal=chunk.ordinal,
+                dimension="character_state",
+                claim="The chunk carries distillation evidence.",
+                confidence=90,
+                extraction_pass="atomic_evidence",
+            )
+        )
+
+    await rag.index_text(
+        tenant_id=tenant.id,
+        project_id=project.id,
+        source_file_id=source.id,
+        parsed_text="Mountain snow replaces every harbor reference.",
+    )
+
+    async with rag.database.session() as session:
+        referenced = (
+            await session.scalars(
+                select(SourceEvidenceModel).where(
+                    SourceEvidenceModel.evidence_key == "evidence-refs-chunk"
+                )
+            )
+        ).one()
+        preserved = await session.get(RagChunkModel, referenced.chunk_id)
+        assert preserved is not None
+        assert "Harbor fog" in preserved.content
+        assert "Mountain snow" not in preserved.content
 
 
 @pytest.mark.asyncio

@@ -876,6 +876,7 @@ class CreativeStageRunModel(Base):
     attempt: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     input_digest: Mapped[str | None] = mapped_column(String(64))
     error_code: Mapped[str | None] = mapped_column(String(120))
+    error: Mapped[dict[str, object] | None] = mapped_column(JSON)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)

@@ -1,3 +1,4 @@
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -23,6 +24,8 @@ from scriptnow.platform.models import (
     ProjectRunModel,
     utc_now,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class CreativeOperationError(RuntimeError):
@@ -656,6 +659,12 @@ class CreativeOperationStore:
             CreativeStageStatus.CANCELLED,
         }:
             raise CreativeOperationError("stage must finish as ready, failed or cancelled")
+        if error is not None:
+            logger.warning(
+                "creative stage finished %s with error: %s",
+                status,
+                error,
+            )
         async with self.database.session() as session:
             operation = await self._owned_operation(session, tenant_id, operation_id)
             stage = await session.get(CreativeStageRunModel, stage_run_id)
