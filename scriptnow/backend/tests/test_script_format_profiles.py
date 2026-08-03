@@ -56,9 +56,10 @@ def test_generation_profiles_do_not_mix_numbered_chinese_and_hollywood_rules() -
     assert "▲" in short_instructions
     assert "出场人物" in short_instructions
     assert "OS" in short_instructions and "VO" in short_instructions
-    assert "15 字" in short_instructions
     assert "拆成多段" not in short_instructions
     assert "合并为一条" in short_instructions
+    assert "严禁每个段落都加▲" in short_instructions
+    assert "严禁电报式短句堆叠" in short_instructions
     chinese = generation_instructions("chinese")
     hollywood = generation_instructions("hollywood")
     assert "人物（情绪）" in chinese
