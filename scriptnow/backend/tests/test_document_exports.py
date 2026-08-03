@@ -38,6 +38,19 @@ def test_script_golden_document_has_distinct_china_and_hollywood_layouts() -> No
     assert "第 1 集" in china_text
     assert "第 1-1 场 内景 客厅 夜" in china_text
     assert "人物：林夏" in china_text
+    short = Document(
+        io.BytesIO(
+            render_script_docx(
+                project_name="短剧项目",
+                script_format="chinese-short",
+                scenes=(scene,),
+            )
+        )
+    )
+    short_text = [p.text for p in short.paragraphs]
+    assert "1-1 内景 客厅 夜" in short_text
+    assert "出场人物：林夏" in short_text
+    assert "▲她拆开信封。" in short_text
     assert "△她拆开信封。" in china_text
     assert "林夏：这不可能。" in china_text
     assert "Golden" in hollywood_text

@@ -55,8 +55,8 @@ def render_script_docx(
                 episode.style = document.styles["Heading 1"]
                 episode.alignment = WD_ALIGN_PARAGRAPH.CENTER
             current_episode = scene.episode_title
-        if script_format == "chinese":
-            _render_chinese_scene(document, scene)
+        if script_format in {"chinese", "chinese-short"}:
+            _render_chinese_scene(document, scene, script_format)
         else:
             _render_hollywood_scene(document, scene)
 
@@ -65,11 +65,14 @@ def render_script_docx(
     return buffer.getvalue()
 
 
-def _render_chinese_scene(document, scene: ScriptExportScene) -> None:
+def _render_chinese_scene(document, scene: ScriptExportScene, script_format: str) -> None:
     slugline = next(block.text for block in scene.blocks if block.type == "slugline")
-    heading = document.add_paragraph(
-        f"第 {scene.episode_ordinal}-{scene.scene_ordinal} 场 {slugline}"
-    )
+    short_form = script_format == "chinese-short"
+    if short_form:
+        heading_text = f"{scene.episode_ordinal}-{scene.scene_ordinal} {slugline}"
+    else:
+        heading_text = f"第 {scene.episode_ordinal}-{scene.scene_ordinal} 场 {slugline}"
+    heading = document.add_paragraph(heading_text)
     heading.style = document.styles["Heading 2"]
 
     characters = list(
@@ -80,7 +83,8 @@ def _render_chinese_scene(document, scene: ScriptExportScene) -> None:
         )
     )
     if characters:
-        roster = document.add_paragraph(f"人物：{'、'.join(characters)}")
+        roster_label = "出场人物" if short_form else "人物"
+        roster = document.add_paragraph(f"{roster_label}：{'、'.join(characters)}")
         roster.runs[0].bold = True
 
     pending_character: str | None = None
@@ -92,12 +96,13 @@ def _render_chinese_scene(document, scene: ScriptExportScene) -> None:
             text = f"{pending_character or '人物'}：{block.text}"
             pending_character = None
         elif block.type == "action":
-            text = block.text if block.text.startswith("△") else f"△{block.text}"
+            marker = "▲" if short_form else "△"
+            text = block.text if block.text.startswith(marker) else f"{marker}{block.text}"
         else:
             text = block.text
         paragraph = document.add_paragraph(text)
         paragraph.style = document.styles["Normal"]
-        _format_script_paragraph(paragraph, block.type, "chinese")
+        _format_script_paragraph(paragraph, block.type, script_format)
 
 
 def _render_hollywood_scene(document, scene: ScriptExportScene) -> None:
@@ -115,11 +120,11 @@ def _format_script_paragraph(paragraph, block_type: str, script_format: ScriptFo
         paragraph.runs[0].bold = True
         paragraph.runs[0].text = paragraph.runs[0].text.upper()
     elif block_type == "character":
-        fmt.left_indent = Cm(6.35 if script_format == "hollywood" else 5.0)
+        fmt.left_indent = Cm(0 if script_format == "chinese-short" else (6.35 if script_format == "hollywood" else 5.0))
         paragraph.runs[0].bold = True
     elif block_type == "dialogue":
-        fmt.left_indent = Cm(3.8 if script_format == "hollywood" else 3.0)
-        fmt.right_indent = Cm(3.8 if script_format == "hollywood" else 3.0)
+        fmt.left_indent = Cm(0 if script_format == "chinese-short" else (3.8 if script_format == "hollywood" else 3.0))
+        fmt.right_indent = Cm(0 if script_format == "chinese-short" else (3.8 if script_format == "hollywood" else 3.0))
     elif block_type == "transition":
         paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         paragraph.runs[0].bold = True

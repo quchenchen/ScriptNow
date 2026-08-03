@@ -16,7 +16,7 @@ export interface ScriptCore {
 
 export interface ScriptState {
   phase: string
-  script_format: 'chinese' | 'hollywood'
+  script_format: 'chinese' | 'chinese-short' | 'hollywood'
   story_cores: ScriptCore[]
   blueprint: null | {
     id: string

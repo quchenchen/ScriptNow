@@ -51,6 +51,11 @@ def test_hollywood_profile_requires_master_scene_heading() -> None:
 
 
 def test_generation_profiles_do_not_mix_numbered_chinese_and_hollywood_rules() -> None:
+    short_instructions = generation_instructions("chinese-short")
+    assert "▲" in short_instructions
+    assert "出场人物" in short_instructions
+    assert "OS" in short_instructions and "VO" in short_instructions
+    assert "15 字" in short_instructions
     chinese = generation_instructions("chinese")
     hollywood = generation_instructions("hollywood")
     assert "人物（情绪）" in chinese

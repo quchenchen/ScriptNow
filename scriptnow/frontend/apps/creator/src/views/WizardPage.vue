@@ -22,7 +22,7 @@ const creativeLanguage = ref('')
 const sourceFile = ref<File | null>(null)
 const structure = ref('')
 const customStructure = ref('')
-const scriptFormat = ref<'chinese' | 'hollywood' | null>(null)
+const scriptFormat = ref<'chinese' | 'chinese-short' | 'hollywood' | null>(null)
 const volumeOne = ref<number | null>(null)
 const volumeTwo = ref<number | null>(null)
 const volumeThree = ref<number | null>(null)
@@ -599,7 +599,7 @@ async function finish() {
         <label v-if="structure === 'custom'">自定义叙事结构
           <input v-model="customStructure" required placeholder="描述阶段、节拍或循环规则" />
         </label>
-        <fieldset v-if="medium === 'script'" class="format-choice"><legend>剧本格式（创建后锁定）</legend><label><input v-model="scriptFormat" type="radio" value="chinese" /> 中国剧本格式</label><label><input v-model="scriptFormat" type="radio" value="hollywood" /> 好莱坞标准格式</label></fieldset>
+        <fieldset v-if="medium === 'script'" class="format-choice"><legend>剧本格式（创建后锁定）</legend><label><input v-model="scriptFormat" type="radio" value="chinese-short" /> 竖屏短剧剧本（分镜式）</label><label><input v-model="scriptFormat" type="radio" value="chinese" /> 中国剧本格式</label><label><input v-model="scriptFormat" type="radio" value="hollywood" /> 好莱坞标准格式</label></fieldset>
         <div class="volume-grid">
           <label>{{ medium === 'script' ? '篇章数量' : '卷数' }}<input v-model.number="volumeOne" type="number" min="1" required placeholder="请填写" /></label>
           <label>{{ medium === 'script' ? '每章场景' : '每卷章节' }}<input v-model.number="volumeTwo" type="number" min="1" required placeholder="请填写" /></label>
@@ -653,7 +653,7 @@ async function finish() {
       </div>
       <div v-else class="review-panel">
         <p class="eyebrow">04 · 确认种子</p><h2>{{ name }}</h2>
-        <dl><div><dt>形态</dt><dd>{{ medium === 'script' ? `剧本 · ${scriptFormat === 'chinese' ? '中国格式' : '好莱坞格式'}` : '小说' }}</dd></div><div><dt>来源</dt><dd>{{ sourceMode === 'original' ? '原创' : `改编 · ${sourceFile?.name || '尚未选择素材'}` }}</dd></div><div><dt>类型</dt><dd>{{ genre || '未指定' }}</dd></div><div><dt>创作语言</dt><dd>{{ ({ 'zh-CN': '简体中文', 'zh-TW': '繁體中文', 'en-US': 'English', 'ja-JP': '日本語', 'ko-KR': '한국어' } as Record<string, string>)[creativeLanguage] }}</dd></div><div><dt>结构</dt><dd>{{ structure }}</dd></div><div><dt>体量</dt><dd>{{ medium === 'novel' ? `${volumeOne} 卷 × ${volumeTwo} 章/卷 · 每章 ${novelChapterTargetWords} 词` : `${volumeOne} / ${volumeTwo} / ${volumeThree}` }}</dd></div><div><dt>核心设想</dt><dd>{{ premise }}</dd></div><div><dt>世界规则</dt><dd>{{ worldSetting || '由 Agent 在创意阶段提出' }}</dd></div><div><dt>风格边界</dt><dd>{{ tone || '未指定' }}</dd></div></dl>
+        <dl><div><dt>形态</dt><dd>{{ medium === 'script' ? `剧本 · ${({ chinese: '中国格式', 'chinese-short': '竖屏短剧', hollywood: '好莱坞格式' } as Record<string, string>)[scriptFormat ?? 'chinese']}` : '小说' }}</dd></div><div><dt>来源</dt><dd>{{ sourceMode === 'original' ? '原创' : `改编 · ${sourceFile?.name || '尚未选择素材'}` }}</dd></div><div><dt>类型</dt><dd>{{ genre || '未指定' }}</dd></div><div><dt>创作语言</dt><dd>{{ ({ 'zh-CN': '简体中文', 'zh-TW': '繁體中文', 'en-US': 'English', 'ja-JP': '日本語', 'ko-KR': '한국어' } as Record<string, string>)[creativeLanguage] }}</dd></div><div><dt>结构</dt><dd>{{ structure }}</dd></div><div><dt>体量</dt><dd>{{ medium === 'novel' ? `${volumeOne} 卷 × ${volumeTwo} 章/卷 · 每章 ${novelChapterTargetWords} 词` : `${volumeOne} / ${volumeTwo} / ${volumeThree}` }}</dd></div><div><dt>核心设想</dt><dd>{{ premise }}</dd></div><div><dt>世界规则</dt><dd>{{ worldSetting || '由 Agent 在创意阶段提出' }}</dd></div><div><dt>风格边界</dt><dd>{{ tone || '未指定' }}</dd></div></dl>
       </div>
       <footer class="wizard-actions">
         <p v-if="submissionError" class="form-error wizard-submit-error" role="alert">
