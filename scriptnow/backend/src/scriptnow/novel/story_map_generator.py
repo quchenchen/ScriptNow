@@ -203,16 +203,34 @@ class NovelStoryMapGenerator:
 
     @staticmethod
     def _settings(project: ProjectModel) -> tuple[int, int, int]:
-        try:
-            values = (
-                int(project.direction["volume_one"]),
-                int(project.direction["volume_two"]),
-                int(project.direction["chapter_target_words"]),
+        missing = []
+        malformed = []
+        for key in ("volume_one", "volume_two", "chapter_target_words"):
+            raw = project.direction.get(key)
+            if raw is None:
+                missing.append(key)
+                continue
+            try:
+                int(raw)
+            except (TypeError, ValueError):
+                malformed.append(f"{key}='{raw}' (expected integer)")
+        if missing or malformed:
+            parts = []
+            if missing:
+                parts.append(f"missing: {', '.join(missing)}")
+            if malformed:
+                parts.append(f"non-integer: {'; '.join(malformed)}")
+            hint = (
+                "project.direction must contain integer values: "
+                "volume_one=<chapters>, volume_two=<chapters>, "
+                "chapter_target_words=<words>"
             )
-        except (KeyError, TypeError, ValueError) as error:
-            raise NovelStoryMapGenerationError(
-                "set volume count, chapters per volume and per-chapter word target first"
-            ) from error
+            raise NovelStoryMapGenerationError(f"{'; '.join(parts)}. {hint}")
+        values = (
+            int(project.direction["volume_one"]),
+            int(project.direction["volume_two"]),
+            int(project.direction["chapter_target_words"]),
+        )
         if any(value < 1 for value in values):
             raise NovelStoryMapGenerationError(
                 "volume count, chapters per volume and per-chapter word target must be positive"
@@ -225,19 +243,57 @@ class NovelStoryMapGenerator:
         fenced = re.findall(r"```(?:json)?\s*(.*?)\s*```", value, re.DOTALL | re.IGNORECASE)
         if fenced:
             value = fenced[-1].strip()
+
+        # Attempt 1: strict JSON parse
+        first_error: str | None = None
         try:
             return _Payload.model_validate(json.loads(value))
-        except json.JSONDecodeError:
-            try:
-                return _Payload.model_validate(
-                    repair_json(value, schema=_Payload.model_json_schema())
-                )
-            except (ValidationError, ValueError, TypeError) as error:
-                raise NovelStoryMapGenerationError(
-                    "StoryMap 格式需要整理，旧版本已保留，请重新生成。"
-                ) from error
         except ValidationError as error:
-            raise NovelStoryMapGenerationError(str(error)) from error
+            first_error = str(error)
+        except json.JSONDecodeError:
+            pass
+
+        # Attempt 2: JSON repair with schema
+        try:
+            return _Payload.model_validate(
+                repair_json(value, schema=_Payload.model_json_schema())
+            )
+        except (ValidationError, ValueError, TypeError):
+            pass
+
+        # Attempt 3: extract volumes from any JSON structure
+        try:
+            raw = repair_json(value)
+            if isinstance(raw, dict):
+                raw_volumes = raw.get("volumes", raw.get("data", raw))
+                if isinstance(raw_volumes, list):
+                    cleaned_vols = []
+                    for v in raw_volumes:
+                        if not isinstance(v, dict):
+                            continue
+                        vol_title = str(v.get("title", v.get("name", "")))
+                        raw_chs = v.get("chapters", v.get("items", []))
+                        if not isinstance(raw_chs, list):
+                            continue
+                        cleaned_chs = []
+                        for ch in raw_chs:
+                            if not isinstance(ch, dict):
+                                continue
+                            cleaned_chs.append({
+                                "id": str(ch.get("id", ch.get("title", ""))),
+                                "title": str(ch.get("title", ch.get("name", ""))),
+                                "beat": str(ch.get("beat", ch.get("summary", ""))),
+                            })
+                        if cleaned_chs:
+                            cleaned_vols.append({"title": vol_title, "chapters": cleaned_chs})
+                    if cleaned_vols:
+                        return _Payload.model_validate({"volumes": cleaned_vols})
+        except Exception:
+            pass
+
+        raise NovelStoryMapGenerationError(
+            first_error or "StoryMap 格式需要整理，旧版本已保留，请重新生成。"
+        )
 
     @staticmethod
     def normalize(

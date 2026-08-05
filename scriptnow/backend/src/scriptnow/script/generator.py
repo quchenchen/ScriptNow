@@ -548,6 +548,12 @@ kind 只能使用以下六个稳定值：worldview、character、arc、character
         feedback: str | None,
     ) -> tuple[Episode, ...]:
         direction = dict(project.direction)
+        missing = [k for k in ("volume_one", "volume_two", "volume_three") if k not in direction]
+        if missing:
+            raise ScriptGenerationError(
+                f"项目缺少创作参数：{', '.join(missing)}。"
+                f"volume_one=集数, volume_two=每集场数, volume_three=每场分钟数"
+            )
         episode_count = self._positive(direction, "volume_one")
         scenes_per_episode = self._positive(direction, "volume_two")
         scene_minutes = self._positive(direction, "volume_three")

@@ -218,15 +218,46 @@ class NovelBlueprintGenerator:
         fenced = re.findall(r"```(?:json)?\s*(.*?)\s*```", value, re.DOTALL | re.IGNORECASE)
         if fenced:
             value = fenced[-1].strip()
+
+        # Attempt 1: strict JSON parse
+        first_error: str | None = None
         try:
             return _Payload.model_validate(json.loads(value))
         except ValidationError as error:
-            raise NovelBlueprintError(str(error)) from error
-        except json.JSONDecodeError as strict_error:
-            try:
-                repaired = repair_json(value, schema=_Payload.model_json_schema())
-                return _Payload.model_validate(repaired)
-            except (ValidationError, ValueError, TypeError) as repair_error:
-                raise NovelBlueprintError("蓝图格式需要整理，旧版本已保留，请重新生成。") from (
-                    repair_error or strict_error
-                )
+            first_error = str(error)
+        except json.JSONDecodeError:
+            pass
+
+        # Attempt 2: JSON repair with schema
+        try:
+            repaired = repair_json(value, schema=_Payload.model_json_schema())
+            return _Payload.model_validate(repaired)
+        except (ValidationError, ValueError, TypeError):
+            pass
+
+        # Attempt 3: extract anchors from any JSON structure
+        try:
+            raw = repair_json(value)
+            if isinstance(raw, dict):
+                raw_anchors = raw.get("anchors", raw.get("data", raw))
+                if isinstance(raw_anchors, list):
+                    cleaned = []
+                    for item in raw_anchors:
+                        if not isinstance(item, dict):
+                            continue
+                        aid = str(item.get("id", item.get("name", "")))
+                        kind = str(item.get("kind", item.get("type", "")))
+                        name = str(item.get("name", item.get("label", "")))
+                        payload = item.get("payload", item.get("data", item))
+                        if not isinstance(payload, dict):
+                            payload = {"description": str(payload)[:2000]}
+                        if aid and kind and name:
+                            cleaned.append({"id": aid, "kind": kind, "name": name, "payload": payload})
+                    if len(cleaned) >= 8:
+                        return _Payload.model_validate({"anchors": cleaned})
+        except Exception:
+            pass
+
+        raise NovelBlueprintError(
+            first_error or "蓝图格式需要整理，旧版本已保留，请重新生成。"
+        )
