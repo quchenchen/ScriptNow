@@ -564,6 +564,41 @@ class AgentRuntime:
         values = snapshot.values
         if values.get("provider_key") == "mock":
             raise AgentRuntimeError("real model is not configured for this role")
+        # Emit phase-start project event for Dock visibility
+        project_id = str(context_snapshot.get("project_id", run_id))
+        phase_labels: dict[str, str] = {
+            "director": "正在分析故事核心与创意方向", "architect": "正在建立故事结构与蓝图",
+            "writer": "正在生成创作内容", "reviewer": "正在审读与评估",
+        }
+        phase_title = phase_labels.get(role, f"正在执行 {role} 任务")
+        try:
+            from sqlalchemy import func as sa_func
+            from sqlalchemy import select as sa_select
+
+            from scriptnow.platform.models import ProjectEventModel, new_id, utc_now
+            async with self.database.session() as session:
+                stream_key = f"project:{project_id}"
+                event_key = f"agent:phase:{run_id}:start"
+                existing = (await session.scalars(
+                    sa_select(ProjectEventModel.id).where(
+                        ProjectEventModel.stream_key == stream_key,
+                        ProjectEventModel.event_key == event_key,
+                    )
+                )).one_or_none()
+                if existing is None:
+                    sequence = int((await session.scalar(
+                        sa_select(sa_func.coalesce(sa_func.max(ProjectEventModel.sequence), 0)).where(
+                            ProjectEventModel.stream_key == stream_key
+                        )
+                    )) or 0) + 1
+                    session.add(ProjectEventModel(
+                        id=new_id(), stream_key=stream_key, event_key=event_key,
+                        sequence=sequence, kind="node", occurred_at=utc_now(),
+                        payload={"title": phase_title, "content": f"Agent {role} 正在处理，请稍候。", "role": role, "run_id": run_id},
+                        schema_version=1,
+                    ))
+        except Exception:
+            pass  # Phase event is best-effort; never block generation
         provider_id = str(values["provider_id"])
         try:
             credential = await self.supply.get_credential_for_runtime(provider_id)
@@ -603,48 +638,12 @@ class AgentRuntime:
             )
         mcp_clients = await self._mcp_clients(list(values.get("tool_keys") or []))
         domain_tools: list[object] = []
-        if skill_domain == "novel" and role == "writer":
-            from agentscope.tool import FunctionTool
+        if skill_domain in {"novel", "script"} and role == "writer":
+            from scriptnow.platform.tool_provider import get_tool_provider
 
-            from scriptnow.novel.writer_tools import (
-                get_creative_graph_entities,
-                get_last_quality_report,
-                get_prior_chapter_summaries,
-            )
-
-            async def prior_summaries_tool(project_id: str, max_chapters: int = 6) -> str:
-                """Return condensed summaries of the most recently written chapters (project_id: novel project uuid)."""
-                return await get_prior_chapter_summaries(
-                    self.database, project_id=project_id, max_chapters=max_chapters
-                )
-
-            async def graph_entities_tool(
-                project_id: str,
-                entity_types: str | None = None,
-                max_nodes: int = 20,
-            ) -> str:
-                """Query creative-graph characters, locations, objects, events or concepts (project_id: novel project uuid)."""
-                return await get_creative_graph_entities(
-                    self.database,
-                    project_id=project_id,
-                    entity_types=entity_types,
-                    max_nodes=max_nodes,
-                )
-
-            async def quality_report_tool(project_id: str, chapter_id: str) -> str:
-                """Get the latest quality review for a chapter (project_id: novel project uuid, chapter_id: e.g. chapter-3-1)."""
-                return await get_last_quality_report(
-                    self.database, project_id=project_id, chapter_id=chapter_id
-                )
-
-            domain_tools = [
-                FunctionTool(fn, is_read_only=True, is_concurrency_safe=True)
-                for fn in (
-                    prior_summaries_tool,
-                    graph_entities_tool,
-                    quality_report_tool,
-                )
-            ]
+            provider = get_tool_provider(skill_domain)
+            if provider is not None:
+                domain_tools = provider.create_writer_tools(self.database, project_id=run_id)
         prompt = self._compose_prompt(
             content=content,
             creative_profile=dict(values.get("creative_profile") or {}),

@@ -81,6 +81,11 @@ class DeleteProjectRequest(BaseModel):
     confirmation_name: str = Field(min_length=1, max_length=200)
 
 
+class UpdateDirectionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    direction: dict[str, str]
+
+
 class InspirationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     medium: ProjectMedium
@@ -586,6 +591,38 @@ def create_core_router(
             outcome="succeeded",
             correlation_id=project_id,
             details={"mode": "recoverable"},
+        )
+
+    @router.patch("/projects/{project_id}/direction", response_model=ProjectResponse)
+    async def update_project_direction(
+        project_id: str,
+        body: UpdateDirectionRequest,
+        access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
+        csrf_token: Annotated[str | None, Header(alias="X-CSRF-Token")] = None,
+    ) -> ProjectResponse:
+        context = await action_context(access_token, csrf_token)
+        tenant_id = str(context.tenant_id)
+        async with database.session() as session:
+            project = await _tenant_project(session, tenant_id, project_id)
+            merged = dict(project.direction)
+            merged.update(body.direction)
+            project.direction = merged
+            await audit.record(
+                tenant_id=tenant_id,
+                actor_id=str(context.user_id),
+                action="project.direction.update",
+                resource_type="project",
+                resource_id=project_id,
+                outcome="succeeded",
+                correlation_id=project_id,
+            )
+        return ProjectResponse(
+            id=project_id,
+            name=project.name,
+            medium=str(project.medium),
+            source_mode=str(project.source_mode),
+            workflow_kind=str(project.workflow_kind),
+            direction=merged,
         )
 
     @router.get("/account/summary", response_model=AccountSummaryResponse)

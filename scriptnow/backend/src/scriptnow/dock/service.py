@@ -701,13 +701,31 @@ class DockService:
             )
         used = state.context_tokens if state and state.context_tokens is not None else 0
         limit = state.context_limit if state and state.context_limit else 0
+        skill_keys: list[str] = []
+        model_key: str | None = None
+        try:
+            runtime_status = await self.runtime.status(tenant_id=tenant_id, project_id=project_id)
+            role_status = dict(runtime_status.get("roles", {})).get(role, {})
+            if isinstance(role_status, dict):
+                model_key = str(role_status.get("model_key") or "")
+                connected = bool(role_status.get("connected"))
+            else:
+                connected = state is not None
+            if state and state.serialized_state:
+                raw_skills = state.serialized_state.get("skill_keys")
+                if isinstance(raw_skills, list):
+                    skill_keys = [str(s) for s in raw_skills]
+        except Exception:
+            connected = state is not None
         return {
             "context_tokens": used,
             "context_limit": limit,
             "context_percent": round(used / limit * 100, 1) if state and limit else None,
             "memory_entries": memories,
             "role": role,
-            "connected": state is not None,
+            "connected": connected,
+            "model_key": model_key,
+            "skill_keys": skill_keys,
         }
 
     async def runtime_status(self, *, tenant_id: str, project_id: str) -> dict[str, object]:

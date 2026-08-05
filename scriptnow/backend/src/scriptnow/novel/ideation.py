@@ -116,6 +116,15 @@ class NovelIdeationGenerator:
             max_tokens=self.settings.novel_ideation_reserved_tokens,
         )
         await self.runs.transition(tenant_id=tenant_id, run_id=run.id, target=RunStatus.RUNNING)
+        await self._project_event(
+            tenant_id=tenant_id,
+            project_id=project.id,
+            run_id=run.id,
+            step="phase-start",
+            type=RunEventType.NODE,
+            title="灵感导演正在分析故事核心",
+            content=f"正在为「{project.name}」生成三个独立的创意方向，比较因果链、场景引擎和制作取舍。",
+        )
         try:
             await self._project_event(
                 tenant_id=tenant_id,

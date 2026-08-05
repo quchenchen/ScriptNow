@@ -184,7 +184,8 @@ WRITER_TOOLS: dict[str, callable] = {
 
 # ── Toolkit factory ───────────────────────────────────────────────
 
-def create_writer_toolkit(database: Database) -> list:
+
+def create_writer_toolkit(database: Database, *, project_id: str = "") -> list:
     """Create AgentScope FunctionTool instances for the Writer agent.
 
     Returns a list of ToolBase objects that can be passed to
@@ -216,3 +217,19 @@ def create_writer_toolkit(database: Database) -> list:
             description="Get the planned StoryMap beat/outline for a specific chapter. Use before drafting to know what to write.",
         ),
     ]
+
+
+# ── Self-registration with platform tool provider ───────────────────
+
+def _register() -> None:
+    from scriptnow.platform.tool_provider import register_tool_provider
+
+    register_tool_provider("novel", _NovelToolProvider())
+
+
+class _NovelToolProvider:
+    def create_writer_tools(self, database: Database, *, project_id: str = "") -> list[object]:
+        return create_writer_toolkit(database)
+
+
+_register()
