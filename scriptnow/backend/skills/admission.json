@@ -48,7 +48,21 @@
       "script-format-hollywood": {"status": "admitted", "baseline": "script-skill-baseline-v1", "cases": ["hollywood-format-positive", "wrong-format-negative", "hollywood-format-regression"]},
       "script-cn-short-drama": {"status": "admitted", "baseline": "script-skill-baseline-v1", "cases": ["short-drama-positive", "wrong-language-negative", "short-drama-regression"]},
       "script-source-distiller": {"status": "admitted", "baseline": "script-skill-baseline-v1", "cases": ["script-source-distill-positive", "wrong-stage-negative", "script-source-distill-regression"]},
-      "script-doctor-roundtable": {"status": "admitted", "baseline": "script-skill-baseline-v1", "cases": ["roundtable-positive", "wrong-stage-negative", "roundtable-regression"]}
+      "script-doctor-roundtable": {"status": "admitted", "baseline": "script-skill-baseline-v1", "cases": ["roundtable-positive", "wrong-stage-negative", "roundtable-regression"]},
+      "script-drama-revenge": {"status": "admitted", "baseline": "script-skill-baseline-v1", "cases": ["drama-revenge-positive", "wrong-genre-negative", "drama-revenge-regression"]},
+      "script-drama-romance": {"status": "admitted", "baseline": "script-skill-baseline-v1", "cases": ["drama-romance-positive", "wrong-genre-negative", "drama-romance-regression"]},
+      "script-drama-counterattack": {"status": "admitted", "baseline": "script-skill-baseline-v1", "cases": ["drama-counterattack-positive", "wrong-genre-negative", "drama-counterattack-regression"]},
+      "script-drama-billionaire": {"status": "admitted", "baseline": "script-skill-baseline-v1", "cases": ["drama-billionaire-positive", "wrong-genre-negative", "drama-billionaire-regression"]},
+      "script-drama-wargod": {"status": "admitted", "baseline": "script-skill-baseline-v1", "cases": ["drama-wargod-positive", "wrong-genre-negative", "drama-wargod-regression"]},
+      "script-drama-werewolf": {"status": "admitted", "baseline": "script-skill-baseline-v1", "cases": ["drama-werewolf-positive", "wrong-genre-negative", "drama-werewolf-regression"]},
+      "script-hook-generator": {"status": "admitted", "baseline": "script-skill-baseline-v1", "cases": ["hook-generator-positive", "wrong-stage-negative", "hook-generator-regression"]},
+      "script-paywall-designer": {"status": "admitted", "baseline": "script-skill-baseline-v1", "cases": ["paywall-designer-positive", "wrong-stage-negative", "paywall-designer-regression"]},
+      "script-episode-planner": {"status": "admitted", "baseline": "script-skill-baseline-v1", "cases": ["episode-planner-positive", "wrong-stage-negative", "episode-planner-regression"]},
+      "script-cliffhanger": {"status": "admitted", "baseline": "script-skill-baseline-v1", "cases": ["cliffhanger-positive", "wrong-stage-negative", "cliffhanger-regression"]},
+      "script-character-prompt": {"status": "admitted", "baseline": "script-skill-baseline-v1", "cases": ["character-prompt-positive", "wrong-stage-negative", "character-prompt-regression"]},
+      "script-storyboard-seedance": {"status": "admitted", "baseline": "script-skill-baseline-v1", "cases": ["storyboard-seedance-positive", "wrong-stage-negative", "storyboard-seedance-regression"]},
+      "script-ad-creative": {"status": "admitted", "baseline": "script-skill-baseline-v1", "cases": ["ad-creative-positive", "wrong-stage-negative", "ad-creative-regression"]},
+      "script-novel-adaptation": {"status": "admitted", "baseline": "script-skill-baseline-v1", "cases": ["novel-adaptation-positive", "wrong-stage-negative", "novel-adaptation-regression"]}
     }
   }
 }

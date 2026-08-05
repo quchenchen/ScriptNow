@@ -459,6 +459,20 @@ def test_script_skills_require_executable_admission_baseline() -> None:
         "script-storymap",
         "script-structure-planning",
         "script-write",
+        "script-drama-revenge",
+        "script-drama-romance",
+        "script-drama-counterattack",
+        "script-drama-billionaire",
+        "script-drama-wargod",
+        "script-drama-werewolf",
+        "script-hook-generator",
+        "script-paywall-designer",
+        "script-episode-planner",
+        "script-cliffhanger",
+        "script-character-prompt",
+        "script-storyboard-seedance",
+        "script-ad-creative",
+        "script-novel-adaptation",
     }
     for skill in routed:
         assert skill.admission_status == "admitted", skill.name
