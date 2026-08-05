@@ -38,6 +38,11 @@ deploy.env
 *.log
 logs/
 
+# LoopX control plane (local agent state, do not commit)
+.loopx/
+.codex/goals/
+.local/
+
 # Local scratch
 .scratch/*
 !.scratch/scriptnow/
