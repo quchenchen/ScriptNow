@@ -608,8 +608,8 @@ def create_core_router(
             merged.update(body.direction)
             project.direction = merged
             # Sync to domain plan so state API reads the updated direction
-            from scriptnow.script.project import ScriptPlanModel
             from scriptnow.novel.project import NovelPlanModel
+            from scriptnow.script.project import ScriptPlanModel
 
             plan_model = (
                 ScriptPlanModel if project.medium == "script" else NovelPlanModel
