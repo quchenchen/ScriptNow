@@ -284,8 +284,6 @@ class SkillPlan:
 
 
 class SkillResolver:
-    _STYLE_PACK_LIMIT = 2
-
     def __init__(self, catalog: SkillCatalog, *, optional_limit: int = 6) -> None:
         self.catalog = catalog
         self.optional_limit = optional_limit
@@ -297,6 +295,7 @@ class SkillResolver:
         role_key: str,
         stage: str,
         explicit_skill_keys: tuple[str, ...] = (),
+        optional_limit: int | None = None,
     ) -> SkillPlan:
         domain_skills = self.catalog.for_domain(profile.medium)
         core = tuple(
@@ -353,7 +352,13 @@ class SkillResolver:
                     SkillSelection(skill, "style_pack", score + skill.selection_priority, reasons)
                 )
         optional.sort(key=lambda item: (-item.score, item.skill.name))
-        style_pack_limit = min(self.optional_limit, self._STYLE_PACK_LIMIT)
+        # Use resolver-configured budget by default; callers may override via
+        # `optional_limit` when a wider or narrower set is explicitly needed.
+        requested_optional_limit = (
+            self.optional_limit if optional_limit is None else optional_limit
+        )
+        requested_optional_limit = max(0, requested_optional_limit)
+        style_pack_limit = requested_optional_limit
         selections.extend(optional[:style_pack_limit])
         return SkillPlan(
             medium=profile.medium,

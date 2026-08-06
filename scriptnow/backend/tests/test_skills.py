@@ -255,6 +255,36 @@ def test_script_reviewer_uses_same_locked_format_as_writer() -> None:
     assert "script-format-chinese" not in selected
 
 
+def test_optional_limit_default_is_style_pack_budget_when_configured() -> None:
+    profile = CreativeProfile.from_direction(
+        medium="novel",
+        direction={"language": "en-US", "genre": "urban, mystery, thriller"},
+    )
+
+    resolver = SkillResolver(SkillCatalog(SKILLS_ROOT), optional_limit=2)
+    default_plan = resolver.resolve(
+        profile=profile,
+        role_key="writer",
+        stage="writing",
+    )
+    overridden_plan = resolver.resolve(
+        profile=profile,
+        role_key="writer",
+        stage="writing",
+        optional_limit=20,
+    )
+
+    default_optional = [
+        item for item in default_plan.selections if item.layer == "style_pack"
+    ]
+    overridden_optional = [
+        item for item in overridden_plan.selections if item.layer == "style_pack"
+    ]
+
+    assert len(default_optional) <= 2
+    assert len(overridden_optional) >= len(default_optional)
+
+
 def test_gothic_werewolf_project_mounts_voice_specific_writer_and_reviewer() -> None:
     profile = CreativeProfile.from_direction(
         medium="novel",
@@ -267,7 +297,10 @@ def test_gothic_werewolf_project_mounts_voice_specific_writer_and_reviewer() -> 
     )
 
     writer = SkillResolver(SkillCatalog(SKILLS_ROOT)).resolve(
-        profile=profile, role_key="writer", stage="writing"
+        profile=profile,
+        role_key="writer",
+        stage="writing",
+        optional_limit=20,
     )
     reviewer = SkillResolver(SkillCatalog(SKILLS_ROOT)).resolve(
         profile=profile, role_key="reviewer", stage="review"
@@ -292,7 +325,10 @@ def test_chinese_fanqie_project_composes_platform_genre_and_quality_layers() -> 
     )
 
     writer = SkillResolver(SkillCatalog(SKILLS_ROOT)).resolve(
-        profile=profile, role_key="writer", stage="writing"
+        profile=profile,
+        role_key="writer",
+        stage="writing",
+        optional_limit=20,
     )
     selected = {item.skill.name for item in writer.selections}
 
@@ -393,7 +429,10 @@ def test_novel_skill_selection_matrix(
 ) -> None:
     profile = CreativeProfile.from_direction(medium="novel", direction=direction)
     plan = SkillResolver(SkillCatalog(SKILLS_ROOT)).resolve(
-        profile=profile, role_key="writer", stage="writing"
+        profile=profile,
+        role_key="writer",
+        stage="writing",
+        optional_limit=20,
     )
     selected = {item.skill.name for item in plan.selections}
 
