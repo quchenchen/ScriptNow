@@ -75,3 +75,15 @@ def test_app_startup_reconciles_interrupted_runs_without_crashing(tmp_path) -> N
     with TestClient(app) as client:
         assert client.get("/health").status_code == 200
     asyncio.run(database.dispose())
+
+
+def test_default_security_headers_present() -> None:
+    response = TestClient(create_app()).get("/health")
+
+    assert response.status_code == 200
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["x-frame-options"] == "DENY"
+    assert response.headers["referrer-policy"] == "strict-origin-when-cross-origin"
+    assert response.headers["strict-transport-security"] == "max-age=63072000; includeSubDomains; preload"
+    assert response.headers["cross-origin-resource-policy"] == "same-origin"
+    assert response.headers["permissions-policy"] == "geolocation=(), microphone=(), camera=()"

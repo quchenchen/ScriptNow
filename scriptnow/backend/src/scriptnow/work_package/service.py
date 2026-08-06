@@ -1,14 +1,14 @@
+import ipaddress
 import json
 import logging
 import os
 import re
-import ipaddress
 import urllib.parse
-import urllib.request
-import ssl
 from contextlib import suppress
 from dataclasses import dataclass
+from urllib.parse import urljoin
 
+import httpx
 import json_repair
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy import func, select
@@ -55,6 +55,9 @@ def _is_safe_https_url(value: str) -> bool:
     if parsed.scheme != "https" or not parsed.netloc:
         return False
 
+    if parsed.username or parsed.password:
+        return False
+
     host = parsed.hostname or ""
     if not host:
         return False
@@ -66,15 +69,85 @@ def _is_safe_https_url(value: str) -> bool:
     except ValueError:
         return True
 
-    if (
+    return not (
         ip.is_private
         or ip.is_loopback
         or ip.is_link_local
         or ip.is_multicast
         or ip.is_reserved
-    ):
+    )
+
+
+def _looks_like_image(bytes_: bytes, content_type: str | None = None, *, filename: str | None = None) -> bool:
+    if not bytes_:
         return False
+
+    lower_name = filename.lower() if filename else ""
+    ext_like_image = lower_name.endswith((".jpg", ".jpeg", ".png", ".webp", ".gif"))
+    magic_like_image = bytes_.startswith(
+        (
+            b"\xff\xd8\xff",
+            b"\x89PNG\r\n\x1a\n",
+            b"GIF87a",
+            b"GIF89a",
+            b"RIFF",
+        )
+    )
+    if not magic_like_image:
+        if not content_type:
+            return ext_like_image
+        if not content_type.lower().startswith("image/"):
+            return False
+        return bool(ext_like_image)
+
     return True
+
+
+def _download_safe_asset(url: str, *, max_bytes: int | None = None) -> tuple[bytes, str | None]:
+    max_redirects = 3
+
+    if not _is_safe_https_url(url):
+        raise WorkPackageError("cover asset URL is not safe")
+
+    request_url = url
+    for _ in range(max_redirects + 1):
+        if not _is_safe_https_url(request_url):
+            raise WorkPackageError("cover asset URL is not safe")
+
+        with httpx.Client(timeout=30, follow_redirects=False) as client:
+            response = client.get(request_url)
+
+        if 300 <= response.status_code < 400:
+            location = response.headers.get("Location")
+            if not location:
+                raise WorkPackageError("cover redirect is missing Location header")
+            request_url = urljoin(request_url, location)
+            continue
+
+        if response.status_code >= 400:
+            raise WorkPackageError(f"cover download failed: {response.status_code}")
+
+        if response.status_code not in {200, 201, 202, 203, 204, 205, 206}:
+            raise WorkPackageError(f"cover download failed: {response.status_code}")
+
+        content_length = response.headers.get("content-length")
+        if max_bytes and content_length:
+            try:
+                if int(content_length) > max_bytes:
+                    raise WorkPackageError("cover asset exceeds platform size limit")
+            except ValueError as error:
+                raise WorkPackageError(
+                    "cover asset returned invalid content-length header"
+                ) from error
+
+        data = response.content
+        if max_bytes and len(data) > max_bytes:
+            raise WorkPackageError("cover asset exceeds platform size limit")
+
+        content_type = response.headers.get("content-type")
+        return data, content_type
+
+    raise WorkPackageError("cover redirect exceeds maximum hops")
 
 
 class WorkPackageError(RuntimeError):
@@ -396,25 +469,19 @@ class WorkPackageService:
                         ext = ".jpg"
                     filename = f"{spec.key}_{generated.request_id[:12]}{ext}"
                     filepath = os.path.join(local_path, filename)
-                    if not _is_safe_https_url(local_url):
-                        raise WorkPackageError("cover asset URL is not safe")
 
-                    with urllib.request.urlopen(
-                        local_url, timeout=30, context=ssl.create_default_context()
-                    ) as response:
-                        if response.status >= 400:
-                            raise WorkPackageError(
-                                f"cover download failed: {response.status}"
-                            )
-                        data = response.read()
-
-                    if spec.max_bytes and len(data) > spec.max_bytes:
-                        raise WorkPackageError("cover asset exceeds platform size limit")
+                    data, content_type = _download_safe_asset(
+                        local_url, max_bytes=spec.max_bytes
+                    )
+                    if not _looks_like_image(data, content_type, filename=filename):
+                        raise WorkPackageError("cover asset is not an image")
 
                     with open(filepath, "wb") as out_file:
                         out_file.write(data)
                     if os.path.getsize(filepath) > 0:
                         local_url = f"/files/covers/{project_id}/{filename}"
+                    else:
+                        local_url = generated.urls[0]
                 except Exception as error:
                     logger.warning(
                         "cover download to local storage failed, keeping provider URL: %s",

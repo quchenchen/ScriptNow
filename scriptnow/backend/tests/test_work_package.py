@@ -1,12 +1,16 @@
 import json
+
 import pytest
 
 from scriptnow.work_package.service import (
     COVER_OUTPUT_SPECS,
     DEFAULT_COVER_OUTPUTS,
     CoverBrief,
-    _is_safe_https_url,
+    WorkPackageError,
     WorkPackageService,
+    _download_safe_asset,
+    _is_safe_https_url,
+    _looks_like_image,
 )
 
 
@@ -113,3 +117,115 @@ def test_packaging_parser_repairs_a_missing_json_delimiter() -> None:
 )
 def test_cover_url_safety_gate(value: str, ok: bool) -> None:
     assert _is_safe_https_url(value) is ok
+
+
+def test_image_magic_check_accepts_common_headers() -> None:
+    assert _looks_like_image(b"\x89PNG\r\n\x1a\n", "image/png")
+    assert _looks_like_image(b"\xff\xd8\xff\xe0", "image/jpeg")
+    assert not _looks_like_image(b"<!DOCTYPE html>", "image/png")
+    assert not _looks_like_image(b"not image data", "text/plain")
+
+
+def test_safe_asset_download_rejects_private_redirect(monkeypatch) -> None:
+    class FakeResponse:
+        def __init__(self, status_code: int, location: str | None = None, content: bytes = b"", headers=None):
+            self.status_code = status_code
+            self.headers = headers or {}
+            if location:
+                self.headers["location"] = location
+            if not self.headers and location:
+                self.headers = {"Location": location}
+            self.content = content
+
+    class FakeClient:
+        def __init__(self, responses):
+            self.responses = iter(responses)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return None
+
+        def get(self, url: str):
+            return next(self.responses)
+
+    monkeypatch.setattr(
+        "scriptnow.work_package.service.httpx.Client",
+        lambda *args, **kwargs: FakeClient(
+            [
+                FakeResponse(
+                    302,
+                    location="https://127.0.0.1/evil.png",
+                ),
+                FakeResponse(200, content=b"\x89PNG\r\n\x1a\n"),
+            ]
+        ),
+    )
+
+    with pytest.raises(WorkPackageError):
+        _download_safe_asset("https://cdn.example.com/covers/sample.png", max_bytes=1024)
+
+
+def test_safe_asset_download_rejects_invalid_content_length(monkeypatch) -> None:
+    class FakeResponse:
+        def __init__(self, content_length: str | None) -> None:
+            self.status_code = 200
+            self.headers = {}
+            if content_length is not None:
+                self.headers["content-length"] = content_length
+            self.content = b"\x89PNG\r\n\x1a\n"
+
+    class FakeClient:
+        def __init__(self, response):
+            self.response = response
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return None
+
+        def get(self, url: str):
+            return self.response
+
+    monkeypatch.setattr(
+        "scriptnow.work_package.service.httpx.Client",
+        lambda *args, **kwargs: FakeClient(FakeResponse(content_length="not-a-number")),
+    )
+
+    with pytest.raises(WorkPackageError, match="invalid content-length"):
+        _download_safe_asset("https://cdn.example.com/covers/sample.png", max_bytes=1024)
+
+
+def test_safe_asset_download_limits_redirect_hops(monkeypatch) -> None:
+    class FakeResponse:
+        def __init__(self, status_code: int, location: str | None = None) -> None:
+            self.status_code = status_code
+            self.headers = {}
+            if location:
+                self.headers["Location"] = location
+            self.content = b"\x89PNG\r\n\x1a\n"
+
+    class FakeClient:
+        def __init__(self):
+            self.calls = 0
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return None
+
+        def get(self, url: str):
+            self.calls += 1
+            return FakeResponse(302, location="https://cdn.example.com/next.png")
+
+    fake_client = FakeClient()
+
+    monkeypatch.setattr(
+        "scriptnow.work_package.service.httpx.Client", lambda *args, **kwargs: fake_client
+    )
+
+    with pytest.raises(WorkPackageError, match="redirect exceeds maximum hops"):
+        _download_safe_asset("https://cdn.example.com/covers/sample.png")
