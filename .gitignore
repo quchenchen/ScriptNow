@@ -52,3 +52,5 @@ logs/
 .codex-tmp/
 *.inspect.ndjson
 *.mov
+audit-report-原创小说-20260806.md
+scriptnow/backend/skills/*/script-*-workspace/

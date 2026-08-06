@@ -1,6 +1,0 @@
-{
-  "eval_id": 0,
-  "eval_name": "Anti-AI labeling verification",
-  "prompt": "Write a scene opening (~200 words) for a Chinese vertical short drama.\nGenre: 都市悬疑. Setting: a rooftop at midnight.\nTwo characters: a CEO who just discovered his partner betrayed him,\nand the partner who doesn't know he's been caught.\n\nRules:\n- No AI-labeling phrases: 值得注意的是, 此外, 标志着, 关键转折点, 让人意识到, 显而易见, 综上所述, 总而言之\n- Use at least 2 concrete sensory details (sound, light, temperature, touch, smell)\n- Characters express emotion through action, not through narratorial description\n- Avoid emotional labels like \"他感到愤怒\", \"气氛紧张\"\n",
-  "assertions": null
-}
