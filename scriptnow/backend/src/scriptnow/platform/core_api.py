@@ -607,6 +607,22 @@ def create_core_router(
             merged = dict(project.direction)
             merged.update(body.direction)
             project.direction = merged
+            # Sync to domain plan so state API reads the updated direction
+            from scriptnow.script.project import ScriptPlanModel
+            from scriptnow.novel.project import NovelPlanModel
+
+            plan_model = (
+                ScriptPlanModel if project.medium == "script" else NovelPlanModel
+            )
+            plan = (
+                await session.scalars(
+                    select(plan_model).where(plan_model.project_id == project_id)
+                )
+            ).one_or_none()
+            if plan is not None:
+                plan_dir = dict(plan.direction)
+                plan_dir.update(body.direction)
+                plan.direction = plan_dir
             await audit.record(
                 tenant_id=tenant_id,
                 actor_id=str(context.user_id),
