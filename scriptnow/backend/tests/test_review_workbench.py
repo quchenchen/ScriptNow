@@ -10,7 +10,7 @@ from scriptnow.platform.agent_runtime import (
 from scriptnow.platform.config import Settings
 from scriptnow.platform.database import Database
 from scriptnow.platform.models import ProjectModel, ReviewMessageModel, TenantModel
-from scriptnow.review.workbench_service import ReviewWorkbenchService
+from scriptnow.review.workbench_service import ReviewWorkbenchError, ReviewWorkbenchService
 
 
 @pytest.fixture
@@ -46,6 +46,31 @@ async def test_uploaded_review_case_does_not_create_hidden_project(review_workbe
     assert case["messages"] == []
     async with database.session() as session:
         assert await session.scalar(select(func.count()).select_from(ProjectModel)) == 0
+
+
+@pytest.mark.asyncio
+async def test_create_case_surface_readable_parse_error(review_workbench, monkeypatch) -> None:
+    service, _, tenant_id = review_workbench
+
+    def _fail_extract_source_text(*_args, **_kwargs) -> str:
+        raise ValueError("parse failed")
+
+    monkeypatch.setattr(
+        "scriptnow.review.workbench_service.extract_source_text", _fail_extract_source_text
+    )
+
+    with pytest.raises(ReviewWorkbenchError) as error:
+        await service.create_case(
+            tenant_id=tenant_id,
+            filename="story.docx",
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            content=b"bad content",
+            document_kind="novel",
+            review_domain="novel",
+            title="Bad story",
+        )
+
+    assert "cannot be parsed or is not readable" in str(error.value)
 
 
 @pytest.mark.asyncio

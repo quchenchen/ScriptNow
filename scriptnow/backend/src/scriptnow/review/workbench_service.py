@@ -74,7 +74,12 @@ class ReviewWorkbenchService:
             raise ReviewWorkbenchError("document kind must be novel, script, or outline")
         if document_kind in {"novel", "script"} and document_kind != review_domain:
             raise ReviewWorkbenchError("document kind and review domain do not match")
-        text = extract_source_text(content, media_type)
+        try:
+            text = extract_source_text(content, media_type)
+        except Exception as error:
+            raise ReviewWorkbenchError(
+                "the uploaded file cannot be parsed or is not readable"
+            ) from error
         if not text.strip():
             raise ReviewWorkbenchError("the uploaded file does not contain readable text")
         case = ReviewCaseModel(
