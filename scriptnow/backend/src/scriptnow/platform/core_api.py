@@ -81,6 +81,11 @@ class DeleteProjectRequest(BaseModel):
     confirmation_name: str = Field(min_length=1, max_length=200)
 
 
+class UpdateProjectRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+
+
 class UpdateDirectionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     direction: dict[str, str]
@@ -591,6 +596,51 @@ def create_core_router(
             outcome="succeeded",
             correlation_id=project_id,
             details={"mode": "recoverable"},
+        )
+
+    @router.patch("/projects/{project_id}", response_model=ProjectResponse)
+    async def update_project(
+        project_id: str,
+        body: UpdateProjectRequest,
+        access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
+        csrf_token: Annotated[str | None, Header(alias="X-CSRF-Token")] = None,
+    ) -> ProjectResponse:
+        context = await action_context(access_token, csrf_token)
+        tenant_id = str(context.tenant_id)
+        from scriptnow.novel.project import NovelPlanModel
+        from scriptnow.script.project import ScriptPlanModel
+
+        async with database.session() as session:
+            project = await _tenant_project(session, tenant_id, project_id)
+            if body.name is not None:
+                project.name = body.name
+            # Sync to domain plans
+            for plan_model in [ScriptPlanModel, NovelPlanModel]:
+                plan = (
+                    await session.scalars(
+                        select(plan_model).where(plan_model.project_id == project_id)
+                    )
+                ).one_or_none()
+                if plan is not None and body.name is not None:
+                    plan_dir = dict(plan.direction)
+                    plan_dir["project_name"] = body.name
+                    plan.direction = plan_dir
+            await audit.record(
+                tenant_id=tenant_id,
+                actor_id=str(context.user_id),
+                action="project.update",
+                resource_type="project",
+                resource_id=project_id,
+                outcome="succeeded",
+                correlation_id=project_id,
+            )
+        return ProjectResponse(
+            id=project_id,
+            name=project.name,
+            medium=str(project.medium),
+            source_mode=str(project.source_mode),
+            workflow_kind=str(project.workflow_kind),
+            direction=project.direction,
         )
 
     @router.patch("/projects/{project_id}/direction", response_model=ProjectResponse)
