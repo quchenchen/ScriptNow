@@ -12,7 +12,7 @@ dependencies = [
   "pydantic==2.12.5",
   "pydantic-settings==2.10.1",
   "python-multipart==0.0.19",
-  "agentscope==2.0.4",
+  "agentscope==2.0.5",
   "sqlalchemy==2.0.51",
   "aiosqlite==0.22.1",
   "alembic==1.18.5",
