@@ -1,3 +1,7 @@
+from http import HTTPStatus
+from uuid import UUID
+
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from scriptnow.app import create_app
@@ -87,3 +91,38 @@ def test_default_security_headers_present() -> None:
     assert response.headers["strict-transport-security"] == "max-age=63072000; includeSubDomains; preload"
     assert response.headers["cross-origin-resource-policy"] == "same-origin"
     assert response.headers["permissions-policy"] == "geolocation=(), microphone=(), camera=()"
+
+
+def test_http_exception_detail_is_sanitized() -> None:
+    app = create_app()
+
+    @app.get("/__test-http-exception")
+    def test_http_exc() -> None:
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_REQUEST,
+            detail="invalid api_key=top-secret-should-redact and /Users/alice/.env",
+        )
+
+    response = TestClient(app).get("/__test-http-exception")
+    payload = response.json()
+
+    assert response.status_code == HTTPStatus.BAD_REQUEST
+    assert payload["detail"].startswith("invalid ")
+    assert "[REDACTED]" in payload["detail"]
+    assert "/Users/" not in payload["detail"]
+
+
+def test_unhandled_exception_returns_safe_error_id() -> None:
+    app = create_app()
+
+    @app.get("/__test-unhandled-exception")
+    def test_unhandled_exc() -> None:
+        raise RuntimeError("db password=super-secret path=/home/alice/.config")
+
+    response = TestClient(app, raise_server_exceptions=False).get("/__test-unhandled-exception")
+    payload = response.json()
+
+    assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
+    assert payload["detail"] == "internal server error"
+    assert "error_id" in payload
+    assert str(UUID(payload["error_id"])) == payload["error_id"]

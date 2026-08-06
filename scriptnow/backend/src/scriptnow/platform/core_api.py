@@ -30,6 +30,7 @@ from scriptnow.platform.billing import BillingError, BillingService, PaymentRequ
 from scriptnow.platform.config import Settings
 from scriptnow.platform.creative_setup import creative_genre_options
 from scriptnow.platform.database import Database
+from scriptnow.platform.error_utils import user_facing_exception_message
 from scriptnow.platform.models import (
     AgentTemplateVersionModel,
     LanguageModelModel,
@@ -354,7 +355,7 @@ def create_core_router(
                 type=RunEventType.TERMINAL,
                 payload={
                     "title": "来源作品分析暂时中断，可从检查点重试",
-                    "error": str(error),
+                    "error": user_facing_exception_message(error),
                 },
                 correlation_id=project_id,
             )

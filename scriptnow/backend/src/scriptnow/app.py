@@ -1,6 +1,9 @@
+import logging
 from contextlib import asynccontextmanager
+from uuid import uuid4
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 
 from scriptnow.dock.api import create_dock_router
 from scriptnow.novel.api import create_novel_router
@@ -16,6 +19,7 @@ from scriptnow.platform.auth_api import create_auth_router
 from scriptnow.platform.config import Settings, get_settings
 from scriptnow.platform.core_api import create_core_router
 from scriptnow.platform.database import Database
+from scriptnow.platform.error_utils import user_facing_exception_message
 from scriptnow.platform.narrative_graph_api import create_narrative_graph_router
 from scriptnow.platform.run_coordinator import RunCoordinator
 from scriptnow.platform.run_events import PersistentRunEventLog, RunEventType
@@ -65,6 +69,34 @@ def create_app(
             await resolved_database.dispose()
 
     app = FastAPI(title="ScriptNow", version=__version__, lifespan=lifespan)
+
+    logger = logging.getLogger("scriptnow.api")
+
+    @app.exception_handler(HTTPException)
+    async def _http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
+        del request
+        detail = user_facing_exception_message(exc.detail)
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": detail},
+        )
+
+    @app.exception_handler(Exception)
+    async def _unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+        error_id = str(uuid4())
+        logger.exception(
+            "Unhandled request failure [request_id=%s] for %s",
+            error_id,
+            request.url.path,
+            exc_info=exc,
+        )
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": "internal server error",
+                "error_id": error_id,
+            },
+        )
 
     @app.middleware("http")
     async def add_security_headers(request, call_next):
