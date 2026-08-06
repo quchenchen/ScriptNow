@@ -1,0 +1,22 @@
+id: coincidence-budget
+title: Coincidence budget enforcement
+description: Coincidences can only create problems, never solve them, max 1 per 5 episodes
+tag: quality
+input:
+  prompt: |
+    Review this plot point: 'The protagonist accidentally overhears the villain's complete plan while passing by a door at exactly the right moment, learning how to defeat them.' Identify whether this violates the coincidence budget rule and explain why. Write in Chinese.
+constraints:
+  timeout_seconds: 90
+  max_turns: 3
+expect:
+  must_contain:
+    - "。"
+judge:
+  type: agent_judge
+  model: deepseek-v4-flash
+  criteria:
+    - "Correctly identifies this as a coincidence that SOLVES a problem (violation)"
+    - "Explains that coincidences can only CREATE problems, not resolve them"
+    - "Suggests an alternative where the protagonist actively investigates instead"
+    - "Mentions the budget constraint (max 1 coincidence per 5 episodes)"
+  pass_threshold: 0.7

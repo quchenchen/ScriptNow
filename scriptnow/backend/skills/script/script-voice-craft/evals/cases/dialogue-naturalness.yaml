@@ -1,0 +1,32 @@
+id: dialogue-naturalness
+title: Dialogue naturalness verification
+description: Character dialogue must show cognitive gap and avoid information-reporting
+tag: quality
+input:
+  prompt: |
+    Write a dialogue exchange (~15 lines) for a Chinese vertical short drama.
+    Character A: just discovered Character B's biggest secret.
+    Character B: doesn't know the secret has been exposed yet.
+    Scene: a business dinner.
+    
+    Rules:
+    - Cognitive gap: characters must know different things and act on different information
+    - No character announces their feelings directly ("我很生气", "我感到被背叛了")
+    - Subtext: what's NOT said carries more weight
+    - No exposition dump ("as you know..." or explaining backstory)
+    - No information-reporting style dialogue
+constraints:
+  timeout_seconds: 90
+  max_turns: 3
+expect:
+  must_contain:
+    - "。"
+judge:
+  type: agent_judge
+  model: deepseek-v4-flash
+  criteria:
+    - "Cognitive gap is visible: characters know different things and react based on different information states"
+    - "No character verbally announces their emotional state in an expository way"
+    - "Subtext present: the unsaid tension is stronger than the spoken words"
+    - "Dialogue avoids information-reporting and exposition-dump patterns"
+  pass_threshold: 0.7

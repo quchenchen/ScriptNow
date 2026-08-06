@@ -1,0 +1,22 @@
+id: plant-signal-payoff
+title: Three-phase foreshadow verification
+description: Foreshadow must follow plant→signal→payoff lifecycle
+tag: quality
+input:
+  prompt: |
+    Design a foreshadowing element for a mystery story: a broken watch that appears in chapter 1. Show: (1) the plant — how it's introduced naturally, (2) the signal — a later subtle reminder that doesn't reveal its meaning, (3) the payoff — how it becomes crucial evidence in the climax. Write in Chinese.
+constraints:
+  timeout_seconds: 90
+  max_turns: 3
+expect:
+  must_contain:
+    - "。"
+judge:
+  type: agent_judge
+  model: deepseek-v4-flash
+  criteria:
+    - "Plant phase: the watch is introduced naturally, not spotlighted as important"
+    - "Signal phase: at least one later reference that hints without spoiling"
+    - "Payoff phase: the watch's significance is resolved in a way that recontextualizes earlier mentions"
+    - "The three phases are clearly distinguishable (not all in one scene)"
+  pass_threshold: 0.7

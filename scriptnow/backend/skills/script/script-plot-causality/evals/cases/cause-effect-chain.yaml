@@ -1,0 +1,22 @@
+id: cause-effect-chain
+title: Event cause-consequence-reaction verification
+description: Every plot event must have visible cause, consequence, and character reaction
+tag: quality
+input:
+  prompt: |
+    Write a plot outline (3 major events) for a Chinese short drama about a corporate takeover. For each event, explicitly show: what caused it (prior event/decision), what changed after, and how the protagonist reacted emotionally AND behaviorally. Write in Chinese.
+constraints:
+  timeout_seconds: 90
+  max_turns: 3
+expect:
+  must_contain:
+    - "。"
+judge:
+  type: agent_judge
+  model: deepseek-v4-flash
+  criteria:
+    - "Each of 3 events has a clearly traceable prior cause"
+    - "Each event changes something concrete in the story world"
+    - "Protagonist's reaction includes both emotional and behavioral components"
+    - "No event appears without a chainable cause (no 突然无因)"
+  pass_threshold: 0.7

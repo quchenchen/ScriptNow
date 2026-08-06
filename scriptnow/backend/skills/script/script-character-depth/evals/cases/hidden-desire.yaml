@@ -1,0 +1,22 @@
+id: hidden-desire
+title: Hidden desire and private habit verification
+description: Character must have an unstated desire that drives their actions
+tag: quality
+input:
+  prompt: |
+    Write a scene where a 霸道总裁 character interacts with someone they secretly admire. Show their hidden softness through private habits and micro-behaviors, not through direct confession. Write in Chinese.
+constraints:
+  timeout_seconds: 90
+  max_turns: 3
+expect:
+  must_contain:
+    - "。"
+judge:
+  type: agent_judge
+  model: deepseek-v4-flash
+  criteria:
+    - "Character's hidden desire is conveyed through action, not narration"
+    - "At least one private habit or ritual is shown that contradicts their public persona"
+    - "The gap between public and private self is visible without being explained"
+    - "No character directly states their feelings or motivation"
+  pass_threshold: 0.7

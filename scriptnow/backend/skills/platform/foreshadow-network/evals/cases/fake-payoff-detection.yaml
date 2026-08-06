@@ -1,0 +1,22 @@
+id: fake-payoff-detection
+title: Fake foreshadowing detection
+description: Must identify and reject false foreshadowing
+tag: quality
+input:
+  prompt: |
+    Analyze this foreshadow attempt: 'In chapter 1, the hero notices a strange symbol on a wall. In chapter 10, the villain reveals the symbol was his calling card all along.' Is this proper foreshadowing or fake? Explain the difference and what makes it fake if so. Write in Chinese.
+constraints:
+  timeout_seconds: 90
+  max_turns: 3
+expect:
+  must_contain:
+    - "。"
+judge:
+  type: agent_judge
+  model: deepseek-v4-flash
+  criteria:
+    - "Identifies this as fake/retroactive foreshadowing (not planted with intent)"
+    - "Explains proper foreshadow requires the author to know the payoff at plant time"
+    - "Mentions that the reader should feel 'ah-ha!' not 'that's convenient'"
+    - "Distinguishes between foreshadowing and retroactive justification"
+  pass_threshold: 0.7

@@ -1,0 +1,22 @@
+id: contradiction-traits
+title: Character contradiction traits verification
+description: Character must exhibit contradictory traits that create depth
+tag: quality
+input:
+  prompt: |
+    Create a character profile for a CEO who runs a ruthless corporation but secretly volunteers at an animal shelter every weekend. Write in Chinese. Show their contradictory nature through specific behaviors and habits.
+constraints:
+  timeout_seconds: 90
+  max_turns: 3
+expect:
+  must_contain:
+    - "。"
+judge:
+  type: agent_judge
+  model: deepseek-v4-flash
+  criteria:
+    - "Character shows at least 2 contradictory traits that create internal tension"
+    - "Contradictions are shown through specific behaviors, not stated as descriptions"
+    - "The character has at least one private habit that reveals their hidden nature"
+    - "No generic personality labels (e.g. 善良, 冷酷) without behavioral evidence"
+  pass_threshold: 0.7
