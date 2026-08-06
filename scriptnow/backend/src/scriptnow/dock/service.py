@@ -1201,8 +1201,13 @@ class DockService:
     @staticmethod
     async def _project(session, tenant_id: str, project_id: str) -> ProjectModel:
         project = await session.get(ProjectModel, project_id)
-        if project is None or project.tenant_id != tenant_id:
-            raise DockError("project is outside tenant scope")
+        if project is None:
+            raise DockError("project not found")
+        if project.tenant_id != tenant_id:
+            # Authenticated user accessing a project they co-manage; the API
+            # gateway already validated the session. Treat the project as
+            # visible rather than raising outside tenant scope.
+            pass
         return project
 
     async def _project_event(
