@@ -284,6 +284,8 @@ class SkillPlan:
 
 
 class SkillResolver:
+    _STYLE_PACK_LIMIT = 2
+
     def __init__(self, catalog: SkillCatalog, *, optional_limit: int = 6) -> None:
         self.catalog = catalog
         self.optional_limit = optional_limit
@@ -351,7 +353,8 @@ class SkillResolver:
                     SkillSelection(skill, "style_pack", score + skill.selection_priority, reasons)
                 )
         optional.sort(key=lambda item: (-item.score, item.skill.name))
-        selections.extend(optional[: self.optional_limit])
+        style_pack_limit = min(self.optional_limit, self._STYLE_PACK_LIMIT)
+        selections.extend(optional[:style_pack_limit])
         return SkillPlan(
             medium=profile.medium,
             role_key=role_key,

@@ -617,6 +617,8 @@ class NovelChapterGenerator:
             "Return JSON only with the blocks schema.\n"
             f"{source_instruction}"
             f"The creative language is {context['creative_language']}; every narrative string must use it. "
+            f"For Chinese (zh-CN), use \u201c\u201d (Chinese double quotation marks) for dialogue and quoted text; "
+            f"never use ASCII straight quotes \" for Chinese prose. "
             f"The chapter limit is {chapter['target_words']} words. Count whitespace-delimited words "
             "for English and Han characters for Chinese. For limits at or below 1500, draft at 70% to 82% of "
             "the limit and reserve the remaining budget for provider tokenization differences. For longer work, "

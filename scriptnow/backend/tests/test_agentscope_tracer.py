@@ -47,6 +47,7 @@ async def test_stream_event_sequence_and_usage_dedupe() -> None:
 
     assert event_names == [
         "ReplyStartEvent",
+        "HintBlockEvent",
         "ModelCallStartEvent",
         "TextBlockStartEvent",
         "TextBlockDeltaEvent",

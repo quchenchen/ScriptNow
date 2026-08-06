@@ -68,7 +68,6 @@ from scriptnow.platform.source_text import extract_source_text
 from scriptnow.platform.workspace import LocalWorkspaceService, StoredFile, WorkspaceViolation
 
 
-
 async def _sync_project_plan_direction(
     session: AsyncSession,
     project_id: str,

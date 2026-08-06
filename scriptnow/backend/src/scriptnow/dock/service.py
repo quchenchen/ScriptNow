@@ -708,7 +708,7 @@ class DockService:
             role_status = dict(runtime_status.get("roles", {})).get(role, {})
             if isinstance(role_status, dict):
                 model_key = str(role_status.get("model_key") or "")
-                connected = bool(role_status.get("connected"))
+                connected = bool(role_status.get("connected")) or state is not None
             else:
                 connected = state is not None
             if state and state.serialized_state:
@@ -1204,10 +1204,7 @@ class DockService:
         if project is None:
             raise DockError("project not found")
         if project.tenant_id != tenant_id:
-            # Authenticated user accessing a project they co-manage; the API
-            # gateway already validated the session. Treat the project as
-            # visible rather than raising outside tenant scope.
-            pass
+            raise DockError("project not found")
         return project
 
     async def _project_event(

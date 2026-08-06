@@ -44,13 +44,13 @@ from scriptnow.platform.retrieval_runtime import (
 )
 from scriptnow.platform.run_coordinator import RunCoordinator
 from scriptnow.platform.run_events import PersistentRunEventLog, RunEventType
+from scriptnow.platform.source_text import extract_source_text
 from scriptnow.platform.translation import FaithfulTranslationService
 from scriptnow.platform.translation_contracts import TranslationError
 from scriptnow.platform.translation_glossary import (
     create_glossary,
     get_glossary,
 )
-from scriptnow.platform.source_text import extract_source_text
 from scriptnow.translation.context import FaithfulTranslationContextAdapter
 from scriptnow.translation.domain import (
     TranslationCorrectionModel,
@@ -1476,7 +1476,6 @@ def create_translation_router(
         access_token: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None,
     ):
         """Upload a document (TXT/PDF/DOCX), extract text, create translation project."""
-        import os
         import uuid
         from os import path
 
