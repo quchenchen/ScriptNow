@@ -126,3 +126,18 @@ def test_unhandled_exception_returns_safe_error_id() -> None:
     assert payload["detail"] == "internal server error"
     assert "error_id" in payload
     assert str(UUID(payload["error_id"])) == payload["error_id"]
+
+
+def test_request_validation_error_is_sanitized() -> None:
+    app = create_app()
+
+    @app.post("/__test-validation")
+    def test_validation(value: str) -> dict[str, object]:
+        return {"value": value}
+
+    response = TestClient(app).post("/__test-validation", json={"value": 123})
+    payload = response.json()
+
+    assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
+    assert payload["detail"] != "value is not a valid string"
+    assert "REDACTED" not in payload["detail"]

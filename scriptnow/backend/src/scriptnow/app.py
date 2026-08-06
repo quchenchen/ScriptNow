@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from scriptnow.dock.api import create_dock_router
@@ -80,6 +81,14 @@ def create_app(
             status_code=exc.status_code,
             content={"detail": detail},
         )
+
+    @app.exception_handler(RequestValidationError)
+    async def _request_validation_error_handler(
+        request: Request, exc: RequestValidationError
+    ) -> JSONResponse:
+        del request
+        detail = user_facing_exception_message(exc.errors())
+        return JSONResponse(status_code=422, content={"detail": detail})
 
     @app.exception_handler(Exception)
     async def _unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
