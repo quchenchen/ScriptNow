@@ -14,7 +14,12 @@ from scriptnow.novel.domain import (
     NovelStoryCoreCandidateModel,
 )
 from scriptnow.novel.story_map import Chapter, NovelStoryBeat, Volume
-from scriptnow.platform.agent_runtime import AgentRuntime, AgentRuntimeError, AgentRuntimeResult
+from scriptnow.platform.agent_runtime import (
+    AgentRuntime,
+    AgentRuntimeError,
+    AgentRuntimeResult,
+    AgentRuntimeTimeoutError,
+)
 from scriptnow.platform.billing import BillingService
 from scriptnow.platform.config import Settings
 from scriptnow.platform.database import Database
@@ -143,44 +148,33 @@ class NovelStoryMapGenerator:
         )
         await self.runs.transition(tenant_id=tenant_id, run_id=run.id, target=RunStatus.RUNNING)
         try:
-            result = await self.runtime.generate(
+            volumes = await self._generate_single(
                 tenant_id=tenant_id,
                 run_id=run.id,
-                role="architect",
-                content=self._prompt(
-                    project=project,
-                    core=core,
-                    anchors=anchors,
-                    volume_count=volume_count,
-                    chapters_per_volume=chapters_per_volume,
-                    target_words=target_words,
-                    feedback=feedback,
-                ),
-                context_snapshot={
-                    "project_id": project.id,
-                    "creation_settings": {
-                        "volume_count": volume_count,
-                        "chapters_per_volume": chapters_per_volume,
-                        "chapter_target_words": target_words,
-                    },
-                    "adopted_story_core_id": core.id,
-                    "blueprint_version": max(anchor.blueprint_id for anchor in anchors),
-                },
-            )
-            payload = self.parse(result.text)
-            volumes = self.normalize(
-                payload,
+                project=project,
+                core=core,
+                anchors=anchors,
                 volume_count=volume_count,
                 chapters_per_volume=chapters_per_volume,
                 target_words=target_words,
-                valid_anchor_ids={item.anchor_key for item in anchors},
+                feedback=feedback,
             )
-            await self._record_usage(reservation.id, tenant_id, run.id, result)
-            await self.billing.finalize(reservation.id)
-            await self.runs.transition(
-                tenant_id=tenant_id, run_id=run.id, target=RunStatus.SUCCEEDED
+        except (AgentRuntimeTimeoutError, NovelStoryMapGenerationError) as batch_fallback:
+            logger.warning(
+                "novel StoryMap single-shot failed, falling back to batched generation",
+                extra={"run_id": run.id, "error": str(batch_fallback)},
             )
-            return volumes
+            volumes = await self._generate_batched(
+                tenant_id=tenant_id,
+                run_id=run.id,
+                project=project,
+                core=core,
+                anchors=anchors,
+                volume_count=volume_count,
+                chapters_per_volume=chapters_per_volume,
+                target_words=target_words,
+                feedback=feedback,
+            )
         except Exception as error:
             logger.exception(
                 "novel StoryMap generation failed",
@@ -200,6 +194,125 @@ class NovelStoryMapGenerator:
             if isinstance(error, AgentRuntimeError):
                 raise NovelStoryMapGenerationError(str(error)) from error
             raise NovelStoryMapGenerationError(f"invalid architect StoryMap output: {error}") from error
+        await self.billing.finalize(reservation.id)
+        await self.runs.transition(
+            tenant_id=tenant_id, run_id=run.id, target=RunStatus.SUCCEEDED
+        )
+        return volumes
+
+    async def _generate_single(
+        self,
+        *,
+        tenant_id: str,
+        run_id: str,
+        project: ProjectModel,
+        core,
+        anchors: list,
+        volume_count: int,
+        chapters_per_volume: int,
+        target_words: int,
+        feedback: str | None,
+    ) -> tuple[Volume, ...]:
+        result = await self.runtime.generate(
+            tenant_id=tenant_id,
+            run_id=run_id,
+            role="architect",
+            content=self._prompt(
+                project=project,
+                core=core,
+                anchors=anchors,
+                volume_count=volume_count,
+                chapters_per_volume=chapters_per_volume,
+                target_words=target_words,
+                feedback=feedback,
+            ),
+            context_snapshot={
+                "project_id": project.id,
+                "creation_settings": {
+                    "volume_count": volume_count,
+                    "chapters_per_volume": chapters_per_volume,
+                    "chapter_target_words": target_words,
+                },
+                "adopted_story_core_id": core.id,
+                "blueprint_version": max(anchor.blueprint_id for anchor in anchors),
+            },
+        )
+        payload = self.parse(result.text)
+        return self.normalize(
+            payload,
+            volume_count=volume_count,
+            chapters_per_volume=chapters_per_volume,
+            target_words=target_words,
+            valid_anchor_ids={item.anchor_key for item in anchors},
+        )
+
+    async def _generate_batched(
+        self,
+        *,
+        tenant_id: str,
+        run_id: str,
+        project: ProjectModel,
+        core,
+        anchors: list,
+        volume_count: int,
+        chapters_per_volume: int,
+        target_words: int,
+        feedback: str | None,
+    ) -> tuple[Volume, ...]:
+        batch_size = self.settings.novel_story_map_batch_chapters
+        per_call = max(batch_size // chapters_per_volume, 1) * chapters_per_volume
+        total_chapters = volume_count * chapters_per_volume
+        all_chapters: list[Chapter] = []
+        for offset in range(0, total_chapters, per_call):
+            chunk_count = min(per_call, total_chapters - offset)
+            chunk_volumes = chunk_count // chapters_per_volume
+            if chunk_count % chapters_per_volume:
+                chunk_volumes += 1
+            result = await self.runtime.generate(
+                tenant_id=tenant_id,
+                run_id=run_id,
+                role="architect",
+                content=self._prompt(
+                    project=project,
+                    core=core,
+                    anchors=anchors,
+                    volume_count=chunk_volumes,
+                    chapters_per_volume=min(chapters_per_volume, chunk_count),
+                    target_words=target_words,
+                    feedback=(feedback or "") + f" (batch: chapters {offset+1}-{offset+chunk_count} of {total_chapters})",
+                ),
+                context_snapshot={
+                    "project_id": project.id,
+                    "batch": f"{offset+1}-{offset+chunk_count}",
+                    "total_chapters": total_chapters,
+                    "volume_count": chunk_volumes,
+                    "chapters_per_volume": min(chapters_per_volume, chunk_count),
+                    "chapter_target_words": target_words,
+                },
+            )
+            payload = self.parse(result.text)
+            chunk_vols = self.normalize(
+                payload,
+                volume_count=chunk_volumes,
+                chapters_per_volume=min(chapters_per_volume, chunk_count),
+                target_words=target_words,
+                valid_anchor_ids={item.anchor_key for item in anchors},
+            )
+            for vol in chunk_vols:
+                all_chapters.extend(vol.chapters)
+        # Reassemble into original volume count
+        volumes: list[Volume] = []
+        chapter_idx = 0
+        for vi in range(volume_count):
+            vol_chapters = all_chapters[chapter_idx : chapter_idx + chapters_per_volume]
+            volumes.append(Volume(
+                id=f"v{vi+1}-batched",
+                ordinal=vi + 1,
+                title=f"Volume {vi + 1}",
+                chapters=tuple(vol_chapters),
+            ))
+            chapter_idx += chapters_per_volume
+        return tuple(volumes)
 
     @staticmethod
     def _settings(project: ProjectModel) -> tuple[int, int, int]:

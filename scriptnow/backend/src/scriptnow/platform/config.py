@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     novel_story_map_min_reserved_tokens: int = Field(default=12_000, ge=1)
     novel_story_map_max_reserved_tokens: int = Field(default=48_000, ge=1)
     novel_story_map_tokens_per_chapter: int = Field(default=1_200, ge=1)
+    novel_story_map_batch_chapters: int = Field(default=40, ge=10, le=200)
     work_package_reserved_tokens: int = Field(default=16_000, ge=1)
     translation_min_reserved_tokens: int = Field(default=4_000, ge=1)
     translation_max_reserved_tokens: int = Field(default=200_000, ge=1)
