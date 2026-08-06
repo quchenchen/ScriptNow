@@ -1,9 +1,11 @@
 import json
+import pytest
 
 from scriptnow.work_package.service import (
     COVER_OUTPUT_SPECS,
     DEFAULT_COVER_OUTPUTS,
     CoverBrief,
+    _is_safe_https_url,
     WorkPackageService,
 )
 
@@ -96,3 +98,18 @@ def test_packaging_parser_repairs_a_missing_json_delimiter() -> None:
 
     assert repaired.title == "Electric Beauty"
     assert len(repaired.tags) == 3
+
+
+@pytest.mark.parametrize(
+    "value,ok",
+    [
+        ("https://cdn.example.com/covers/sample.png", True),
+        ("http://cdn.example.com/covers/sample.png", False),
+        ("https://127.0.0.1/covers/sample.png", False),
+        ("https://localhost:8443/covers/sample.png", False),
+        ("https://[::1]/covers/sample.png", False),
+        ("not-a-url", False),
+    ],
+)
+def test_cover_url_safety_gate(value: str, ok: bool) -> None:
+    assert _is_safe_https_url(value) is ok

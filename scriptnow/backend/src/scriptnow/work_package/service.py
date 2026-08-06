@@ -2,7 +2,10 @@ import json
 import logging
 import os
 import re
+import ipaddress
+import urllib.parse
 import urllib.request
+import ssl
 from contextlib import suppress
 from dataclasses import dataclass
 
@@ -41,6 +44,37 @@ from scriptnow.script.domain import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _is_safe_https_url(value: str) -> bool:
+    try:
+        parsed = urllib.parse.urlparse(value)
+    except ValueError:
+        return False
+
+    if parsed.scheme != "https" or not parsed.netloc:
+        return False
+
+    host = parsed.hostname or ""
+    if not host:
+        return False
+    if host.lower() in {"localhost", "127.0.0.1", "::1"}:
+        return False
+
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return True
+
+    if (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_multicast
+        or ip.is_reserved
+    ):
+        return False
+    return True
 
 
 class WorkPackageError(RuntimeError):
@@ -362,7 +396,23 @@ class WorkPackageService:
                         ext = ".jpg"
                     filename = f"{spec.key}_{generated.request_id[:12]}{ext}"
                     filepath = os.path.join(local_path, filename)
-                    urllib.request.urlretrieve(local_url, filepath)
+                    if not _is_safe_https_url(local_url):
+                        raise WorkPackageError("cover asset URL is not safe")
+
+                    with urllib.request.urlopen(
+                        local_url, timeout=30, context=ssl.create_default_context()
+                    ) as response:
+                        if response.status >= 400:
+                            raise WorkPackageError(
+                                f"cover download failed: {response.status}"
+                            )
+                        data = response.read()
+
+                    if spec.max_bytes and len(data) > spec.max_bytes:
+                        raise WorkPackageError("cover asset exceeds platform size limit")
+
+                    with open(filepath, "wb") as out_file:
+                        out_file.write(data)
                     if os.path.getsize(filepath) > 0:
                         local_url = f"/files/covers/{project_id}/{filename}"
                 except Exception as error:

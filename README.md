@@ -14,6 +14,8 @@ See / 查看：[Docker deployment guide / Docker 部署指南](./docs/DOCKER-DEP
 
 Current version: **`0.2.0-rc.1`**
 
+Latest status: aligned to **ScriptNow v1.1** domain-separated contracts.
+
 ## Product preview · 产品预览
 
 ScriptNow is not a single text generator. It provides four distinct production modes that share project governance while preserving their own creative contracts.
@@ -68,6 +70,12 @@ make dev
 - 后端 API：<http://127.0.0.1:8000>
 
 也可以分别运行 `make backend`、`make creator` 或 `make admin`。
+
+部署参考（反向代理场景）：
+
+- 创作端：`/`（默认 `https` 域名托管到 `:5174`）
+- 管理端：`/admin/`
+- 后端 API：`/api/` 透传到 `:8000`
 
 ### 工程边界
 
@@ -143,6 +151,12 @@ Development endpoints:
 
 Run individual services with `make backend`, `make creator`, or `make admin`.
 
+Deployment convention (reverse-proxy):
+
+- Creator app: `/` (or mapped to port `5174`)
+- Admin app: `/admin/`
+- Backend API: `/api/` proxy to `:8000`
+
 ### Architecture boundary
 
 ```text
@@ -217,6 +231,12 @@ make dev
 
 個別に起動する場合は、`make backend`、`make creator`、`make admin` を使用します。
 
+デプロイ時の標準設定（リバースプロキシ）：
+
+- クリエイト：`/`（既定で `https` ドメイン→`:5174`）
+- 管理者：`/admin/`
+- API：`/api/` を `:8000` に転送
+
 ### アーキテクチャ境界
 
 ```text
@@ -290,6 +310,12 @@ make dev
 - 백엔드 API: <http://127.0.0.1:8000>
 
 개별 서비스는 `make backend`, `make creator`, `make admin`으로 실행할 수 있습니다.
+
+배포 구성을 위한 표준 방식(역방향 프록시):
+
+- 크리에이터 앱: `/` (또는 도메인에서 `:5174`로 매핑)
+- 관리자 앱: `/admin/`
+- 백엔드 API: `/api/`를 `:8000`으로 프록시
 
 ### 아키텍처 경계
 

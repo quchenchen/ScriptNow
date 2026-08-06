@@ -3,6 +3,7 @@
 import asyncio
 import hashlib
 import json
+import mimetypes
 from contextlib import suppress
 from typing import Annotated
 from uuid import uuid4
@@ -49,6 +50,7 @@ from scriptnow.platform.translation_glossary import (
     create_glossary,
     get_glossary,
 )
+from scriptnow.platform.source_text import extract_source_text
 from scriptnow.translation.context import FaithfulTranslationContextAdapter
 from scriptnow.translation.domain import (
     TranslationCorrectionModel,
@@ -183,6 +185,47 @@ async def _add_chapter_glossary_candidates(
             existing.add(name)
             added += 1
         return added
+
+
+def _validate_upload_filename(filename: str | None) -> str:
+    if not filename:
+        raise HTTPException(400, "invalid file name")
+    name = filename.strip()
+    if any(char in name for char in ("/", "\\", "..")):
+        raise HTTPException(400, "invalid file name")
+    return name
+
+
+def _detect_extension(filename: str | None, content_type: str | None) -> str:
+    path_ext = filename.rsplit(".", 1)[-1] if filename and "." in filename else ""
+    candidate = f".{path_ext.lower()}" if path_ext else ""
+    if candidate in {".txt", ".pdf", ".docx"}:
+        return candidate
+    if content_type:
+        guessed = mimetypes.guess_extension(content_type.lower().split(";")[0].strip())
+        if guessed in {".txt", ".pdf", ".docx"}:
+            return guessed
+    raise HTTPException(400, "unsupported file type")
+
+
+def _extract_uploaded_text(content: bytes, ext: str, filename: str) -> str:
+    media_type = {
+        ".txt": "text/plain",
+        ".pdf": "application/pdf",
+        ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    }[ext]
+
+    try:
+        text = extract_source_text(content, media_type).strip()
+    except Exception as error:
+        raise HTTPException(
+            400,
+            f"failed to parse {ext[1:].upper()} file: {filename}",
+        ) from error
+
+    if not text.strip():
+        raise HTTPException(400, f"document contains no extractable text: {filename}")
+    return text
 
 
 def create_translation_router(
@@ -1435,45 +1478,19 @@ def create_translation_router(
         """Upload a document (TXT/PDF/DOCX), extract text, create translation project."""
         import os
         import uuid
+        from os import path
 
         context = await auth.validate_access(access_token)
         tid = str(context.tenant_id)
 
-        # Read file content
-        raw = await file.read()
-        ext = os.path.splitext(file.filename or "")[1].lower()
-
-        # Extract text
-        text = ""
-        if ext == ".txt":
-            text = raw.decode("utf-8", errors="replace")
-        elif ext == ".pdf":
-            import subprocess
-            import tempfile
-            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-                tmp.write(raw)
-                tmp_path = tmp.name
-            try:
-                result = subprocess.run(
-                    ["pdftotext", "-layout", tmp_path, "-"],
-                    capture_output=True, text=True, timeout=30
-                )
-                text = result.stdout or raw.decode("utf-8", errors="replace")
-            except Exception:
-                text = f"[PDF: {file.filename} - binary content, {len(raw)} bytes]"
-            finally:
-                os.unlink(tmp_path)
-        elif ext == ".docx":
-            try:
-                import io
-
-                from docx import Document
-                doc = Document(io.BytesIO(raw))
-                text = "\n\n".join(p.text for p in doc.paragraphs if p.text.strip())
-            except Exception:
-                text = raw.decode("utf-8", errors="replace")
-        else:
-            raise HTTPException(400, f"unsupported file type: {ext}")
+        raw = await file.read(settings.upload_max_file_bytes + 1)
+        if len(raw) > settings.upload_max_file_bytes:
+            raise HTTPException(413, "file is too large")
+        filename = _validate_upload_filename(file.filename)
+        if len(filename) > 255:
+            raise HTTPException(400, "invalid file name")
+        ext = _detect_extension(filename, file.content_type)
+        text = _extract_uploaded_text(raw, ext, filename)
 
         if not text.strip():
             raise HTTPException(400, "document contains no extractable text")
@@ -1497,7 +1514,7 @@ def create_translation_router(
             chapters_text = [text]
 
         # Create translation project
-        project_name = os.path.splitext(file.filename or "translation")[0]
+        project_name = path.splitext(filename)[0] or "translation"
         async with database.session() as session:
             project = ProjectModel(
                 tenant_id=tid,
