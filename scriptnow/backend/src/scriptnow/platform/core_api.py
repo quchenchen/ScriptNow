@@ -18,7 +18,7 @@ from fastapi import (
 )
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from scriptnow.platform.agent_factory import AgentFactory, RuntimeConfigError
@@ -66,6 +66,29 @@ from scriptnow.platform.source_distillation_runner import (
 )
 from scriptnow.platform.source_text import extract_source_text
 from scriptnow.platform.workspace import LocalWorkspaceService, StoredFile, WorkspaceViolation
+
+
+
+async def _sync_project_plan_direction(
+    session: AsyncSession,
+    project_id: str,
+    medium: ProjectMedium,
+    direction: dict[str, str],
+) -> None:
+    table_name = "script_plans" if medium == ProjectMedium.SCRIPT else "novel_plans"
+    exists = await session.execute(
+        text(f"SELECT 1 FROM {table_name} WHERE project_id = :project_id"),
+        {"project_id": project_id},
+    )
+    if exists.scalar_one_or_none() is None:
+        return
+    await session.execute(
+        text(f"UPDATE {table_name} SET direction = :direction WHERE project_id = :project_id"),
+        {
+            "project_id": project_id,
+            "direction": json.dumps(direction, ensure_ascii=False),
+        },
+    )
 
 
 class CreateProjectRequest(BaseModel):
@@ -645,22 +668,7 @@ def create_core_router(
             merged = dict(project.direction)
             merged.update(body.direction)
             project.direction = merged
-            # Sync to domain plan so state API reads the updated direction
-            from scriptnow.novel.project import NovelPlanModel
-            from scriptnow.script.project import ScriptPlanModel
-
-            plan_model = (
-                ScriptPlanModel if project.medium == "script" else NovelPlanModel
-            )
-            plan = (
-                await session.scalars(
-                    select(plan_model).where(plan_model.project_id == project_id)
-                )
-            ).one_or_none()
-            if plan is not None:
-                plan_dir = dict(plan.direction)
-                plan_dir.update(body.direction)
-                plan.direction = plan_dir
+            await _sync_project_plan_direction(session, project_id, project.medium, merged)
             await audit.record(
                 tenant_id=tenant_id,
                 actor_id=str(context.user_id),
