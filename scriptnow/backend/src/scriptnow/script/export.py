@@ -115,6 +115,18 @@ def _format_script_paragraph(paragraph, block_type: str, script_format: ScriptFo
     fmt = paragraph.paragraph_format
     fmt.space_after = Pt(0 if block_type in {"character", "dialogue"} else 6)
     fmt.line_spacing = 1.0 if script_format == "hollywood" else 1.25
+
+    run = paragraph.runs[0]
+    if script_format in {"chinese", "chinese-short"}:
+        if block_type in {"slugline", "character", "transition"}:
+            run.font.name = "黑体"
+            run._element.rPr.rFonts.set(qn("w:eastAsia"), "黑体")
+        else:
+            run.font.name = "宋体"
+            run._element.rPr.rFonts.set(qn("w:eastAsia"), "宋体")
+    else:
+        run.font.name = "Courier New"
+
     if block_type == "slugline":
         paragraph.runs[0].bold = True
         paragraph.runs[0].text = paragraph.runs[0].text.upper()

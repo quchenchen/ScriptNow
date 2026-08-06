@@ -47,13 +47,20 @@ def render_novel_docx(*, project_name: str, chapters: tuple[NovelExportChapter, 
         for block in chapter.blocks:
             if block.type == "heading":
                 paragraph = document.add_paragraph(block.text, style="Heading 3")
+                paragraph.runs[0].font.name = "黑体"
+                paragraph.runs[0]._element.rPr.rFonts.set(qn("w:eastAsia"), "黑体")
+                paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
             elif block.type == "divider":
                 paragraph = document.add_paragraph("＊ ＊ ＊")
                 paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                paragraph.runs[0].font.name = "宋体"
+                paragraph.runs[0]._element.rPr.rFonts.set(qn("w:eastAsia"), "宋体")
             else:
                 paragraph = document.add_paragraph(block.text)
                 paragraph.paragraph_format.line_spacing = 1.5
                 paragraph.paragraph_format.space_after = Pt(6)
+                paragraph.runs[0].font.name = "宋体"
+                paragraph.runs[0]._element.rPr.rFonts.set(qn("w:eastAsia"), "宋体")
                 if block.type == "prose":
                     paragraph.paragraph_format.first_line_indent = Cm(0.74)
                 elif block.type == "quote":
@@ -129,11 +136,16 @@ def render_packaged_docx(
         for block in chapter.blocks:
             if block.type == "heading":
                 paragraph = document.add_paragraph(block.text, style="Heading 3")
+                paragraph.runs[0].font.name = "黑体"
+                paragraph.runs[0]._element.rPr.rFonts.set(qn("w:eastAsia"), "黑体")
+                paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
             elif block.type == "divider":
                 paragraph = document.add_paragraph("＊ ＊ ＊")
                 paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
             else:
                 paragraph = document.add_paragraph(block.text)
+                paragraph.runs[0].font.name = "宋体"
+                paragraph.runs[0]._element.rPr.rFonts.set(qn("w:eastAsia"), "宋体")
 
     output = io.BytesIO()
     document.save(output)
