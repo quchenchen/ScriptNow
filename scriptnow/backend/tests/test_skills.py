@@ -448,35 +448,43 @@ def test_script_skills_require_executable_admission_baseline() -> None:
     routed = [skill for skill in catalog.for_domain("script") if skill.roles]
 
     assert {skill.name for skill in routed} == {
+        "creator-persona",
+        "foreshadow-network",
+        "script-ad-creative",
+        "script-character-depth",
+        "script-character-prompt",
+        "script-cliffhanger",
         "script-cn-short-drama",
         "script-develop",
         "script-doctor-roundtable",
-        "script-format-chinese",
-        "script-format-hollywood",
-        "script-review",
-        "script-screen-creative-review",
-        "script-source-distiller",
-        "script-storymap",
-        "script-structure-planning",
-        "script-write",
+        "script-drama-billionaire",
+        "script-drama-counterattack",
         "script-drama-revenge",
         "script-drama-romance",
-        "script-drama-counterattack",
-        "script-drama-billionaire",
         "script-drama-wargod",
         "script-drama-werewolf",
-        "script-hook-generator",
-        "script-paywall-designer",
         "script-episode-planner",
-        "script-cliffhanger",
-        "script-character-prompt",
-        "script-storyboard-seedance",
-        "script-ad-creative",
+        "script-format-chinese",
+        "script-format-hollywood",
+        "script-hook-generator",
         "script-novel-adaptation",
+        "script-paywall-designer",
+        "script-plot-causality",
+        "script-review",
+        "script-scene-sensory",
+        "script-screen-creative-review",
+        "script-source-distiller",
+        "script-storyboard-seedance",
+        "script-storymap",
+        "script-structure-planning",
+        "script-voice-craft",
+        "script-write",
     }
+    cross_domain = {"foreshadow-network", "creator-persona"}
     for skill in routed:
         assert skill.admission_status == "admitted", skill.name
-        assert skill.admission_baseline == "script-skill-baseline-v1", skill.name
+        if skill.name not in cross_domain:
+            assert skill.admission_baseline == "script-skill-baseline-v1", skill.name
         assert len(skill.admission_cases) == 3, skill.name
         assert "positive" in skill.admission_cases[0], skill.name
         assert "negative" in skill.admission_cases[1], skill.name
