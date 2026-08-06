@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     agent_runtime_timeout_seconds: float = Field(default=600, ge=0.01, le=3_600)
     agent_runtime_default_max_iters: int = Field(default=12, ge=1, le=100)
     agent_runtime_hard_max_iters: int = Field(default=32, ge=1, le=100)
-    skill_plan_optional_limit: int = Field(default=2, ge=0, le=10)
+    skill_plan_optional_limit: int = Field(default=6, ge=0, le=20)
     skill_prompt_max_chars: int = Field(default=6_000, ge=500, le=40_000)
     agent_budget_mode: Literal["observe", "enforce"] = "observe"
     dock_reserved_tokens: int = Field(default=8_192, ge=1)

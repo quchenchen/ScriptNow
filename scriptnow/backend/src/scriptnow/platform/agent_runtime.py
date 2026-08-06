@@ -665,6 +665,7 @@ class AgentRuntime:
                         dict(values.get("creative_profile") or {}).get("language") or "zh-CN"
                     ),
                     skill_instructions=self._skill_instructions(values),
+                    persona_instructions=_render_persona(values),
                 ),
                 model=model,
                 toolkit=Toolkit(tools=domain_tools, skills_or_loaders=loaders, mcps=mcp_clients),
@@ -1066,6 +1067,7 @@ class AgentRuntime:
         *,
         language: str = "zh-CN",
         skill_instructions: str = "",
+        persona_instructions: str = "",
     ) -> str:
         # Development seed v1 used this delivery-oriented placeholder as the
         # writer's identity. Ignore it for existing databases so it cannot
@@ -1099,6 +1101,11 @@ class AgentRuntime:
                 "必须遵循；与正文交付契约冲突时，交付格式以契约为准，创作手法以本节为准。\n"
                 + skill_instructions.strip()
             )
+        if persona_instructions:
+            body += (
+                "\n\n【创作者偏好】以下为创作者自定义的偏好设置，"
+                "当技能规则与偏好冲突时，以偏好为准：\n" + persona_instructions
+            )
         return body.strip()
 
     def _skill_instructions(self, values: dict[str, object]) -> str:
@@ -1131,3 +1138,24 @@ class AgentRuntime:
         if provider.status != ProviderStatus.CONNECTED:
             return "provider_disconnected"
         return "credential_missing"
+
+
+def _render_persona(values: dict[str, object]) -> str:
+    profile = values.get("creative_profile")
+    if not isinstance(profile, dict):
+        return ""
+    prefs = profile.get("preferences")
+    if not isinstance(prefs, dict):
+        return ""
+    lines: list[str] = []
+    labels: dict[str, str] = {
+        "pacing": "节奏偏好", "emotional_temperature": "情绪温度",
+        "trope_tolerance": "类型化程度", "character_depth": "角色深度",
+        "language_register": "语言寄存器", "gender_orientation": "性别/受众取向",
+        "ending_rules": "结局规则", "morality_framework": "道德框架",
+    }
+    for key, label in labels.items():
+        value = prefs.get(key)
+        if value:
+            lines.append(f"- {label}：{value}")
+    return "\n".join(lines) if lines else ""

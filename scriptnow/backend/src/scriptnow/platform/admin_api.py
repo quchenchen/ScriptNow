@@ -51,6 +51,7 @@ from scriptnow.platform.skills import (
     SkillCatalog,
     SkillCatalogError,
     SkillConflictError,
+    resolve_skills_root,
 )
 
 
@@ -375,7 +376,7 @@ class AdminMemoryPolicyRequest(BaseModel):
 
 def create_admin_router(database: Database, auth: AuthService, settings: Settings) -> APIRouter:
     router = APIRouter(prefix="/admin/api", tags=["admin"])
-    skills = SkillCatalog(Path(__file__).parents[3] / "skills")
+    skills = SkillCatalog(resolve_skills_root())
     audit = AuditService(database)
     supply = ModelSupplyService(
         database,

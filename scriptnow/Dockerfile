@@ -70,6 +70,7 @@ RUN chmod -R 755 /app/static && \
     ln -sf /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
 
 ENV SCRIPTNOW_ENVIRONMENT=production
+ENV SCRIPTNOW_SKILLS_ROOT=/app/skills
 ENV PYTHONUNBUFFERED=1
 
 EXPOSE 80

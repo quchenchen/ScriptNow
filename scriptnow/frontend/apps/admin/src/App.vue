@@ -213,40 +213,38 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 async function load() {
   busy.value = true
   error.value = ''
-  try {
-    const [summary, result, tierResult, usageResult, supplyResult, capabilityResult, skillResult, mcpResult, memoryResult] = await Promise.all([
-      request<Overview>('/admin/api/overview'),
-      request<{ items: Tenant[]; total: number }>(`/admin/api/tenants?search=${encodeURIComponent(search.value)}&limit=${limit}&offset=${page.value * limit}`),
-      request<Tier[]>('/admin/api/tiers'),
-      request<{ summary: UsageSummary; items: UsageRun[] }>('/admin/api/usage/runs?limit=25&offset=0'),
-      request<{ providers: Provider[]; models: SupplyModel[]; image_models: ImageModel[]; tiers: Tier[] }>('/admin/api/supply'),
-      request<{ templates: AgentTemplate[]; tool_groups: ToolGroup[]; mounts: ToolMount[]; skill_plans: RuntimeSkillPlan[] }>('/admin/api/capabilities'),
-      request<{ skills: SkillItem[]; mounted_by_role: Record<string, string[]> }>('/admin/api/skills'),
-      request<{ servers: McpServer[]; tools: McpTool[]; policies: SandboxPolicy[] }>('/admin/api/mcp-governance'),
-      request<{ items: MemoryEntry[]; policies: MemoryPolicy[]; audit: MemoryAudit[] }>('/admin/api/memories'),
-    ])
-    overview.value = summary
-    tenants.value = result.items
-    total.value = result.total
-    tiers.value = tierResult
-    usageSummary.value = usageResult.summary
-    usageRuns.value = usageResult.items
-    providers.value = supplyResult.providers
-    if (!selectedProviderId.value || !supplyResult.providers.some((item) => item.id === selectedProviderId.value)) selectedProviderId.value = supplyResult.providers[0]?.id ?? ''
-    supplyModels.value = supplyResult.models
-    imageModels.value = supplyResult.image_models ?? []
-    agentTemplates.value = capabilityResult.templates
-    toolGroups.value = capabilityResult.tool_groups
-    toolMounts.value = capabilityResult.mounts
-    runtimeSkillPlans.value = (capabilityResult.skill_plans ?? []).map((item) => ({
+  const tasks = [
+    request<Overview>('/admin/api/overview').then((value) => { overview.value = value }),
+    request<{ items: Tenant[]; total: number }>(`/admin/api/tenants?search=${encodeURIComponent(search.value)}&limit=${limit}&offset=${page.value * limit}`).then((value) => {
+      tenants.value = value.items
+      total.value = value.total
+    }),
+    request<Tier[]>('/admin/api/tiers').then((value) => { tiers.value = value }),
+    request<{ summary: UsageSummary; items: UsageRun[] }>('/admin/api/usage/runs?limit=25&offset=0').then((value) => {
+      usageSummary.value = value.summary
+      usageRuns.value = value.items
+    }),
+    request<{ providers: Provider[]; models: SupplyModel[]; image_models: ImageModel[]; tiers: Tier[] }>('/admin/api/supply').then((value) => {
+      providers.value = value.providers
+      if (!selectedProviderId.value || !value.providers.some((item) => item.id === selectedProviderId.value)) selectedProviderId.value = value.providers[0]?.id ?? ''
+      supplyModels.value = value.models
+      imageModels.value = value.image_models ?? []
+    }),
+    request<{ templates: AgentTemplate[]; tool_groups: ToolGroup[]; mounts: ToolMount[]; skill_plans: RuntimeSkillPlan[] }>('/admin/api/capabilities').then((value) => {
+      agentTemplates.value = value.templates
+      toolGroups.value = value.tool_groups
+      toolMounts.value = value.mounts
+      runtimeSkillPlans.value = (value.skill_plans ?? []).map((item) => ({
       ...item,
       plan: {
         ...item.plan,
         creative_profile: item.plan.creative_profile ?? { genres: [], themes: [], styles: [], structures: [] },
         selections: item.plan.selections ?? [],
       },
-    }))
-    skills.value = skillResult.skills.map((skill) => ({
+      }))
+    }),
+    request<{ skills: SkillItem[]; mounted_by_role: Record<string, string[]> }>('/admin/api/skills').then((value) => {
+      skills.value = value.skills.map((skill) => ({
       ...skill,
       roles: skill.roles ?? [],
       stages: skill.stages ?? [],
@@ -261,16 +259,24 @@ async function load() {
       quality_status: skill.quality_status ?? 'not_measured',
       benchmark_suite: skill.benchmark_suite ?? null,
       benchmark_report: skill.benchmark_report ?? null,
-    }))
-    skillsByRole.value = skillResult.mounted_by_role
-    mcpServers.value = mcpResult.servers
-    mcpTools.value = mcpResult.tools
-    sandboxPolicies.value = mcpResult.policies
-    memoryEntries.value = memoryResult.items
-    memoryPolicies.value = memoryResult.policies
-    memoryAudit.value = memoryResult.audit
-  } catch (caught) { error.value = caught instanceof Error ? caught.message : '请求失败' }
-  finally { busy.value = false }
+      }))
+      skillsByRole.value = value.mounted_by_role
+    }),
+    request<{ servers: McpServer[]; tools: McpTool[]; policies: SandboxPolicy[] }>('/admin/api/mcp-governance').then((value) => {
+      mcpServers.value = value.servers
+      mcpTools.value = value.tools
+      sandboxPolicies.value = value.policies
+    }),
+    request<{ items: MemoryEntry[]; policies: MemoryPolicy[]; audit: MemoryAudit[] }>('/admin/api/memories').then((value) => {
+      memoryEntries.value = value.items
+      memoryPolicies.value = value.policies
+      memoryAudit.value = value.audit
+    }),
+  ]
+  const results = await Promise.allSettled(tasks)
+  const failures = results.filter((result) => result.status === 'rejected')
+  if (failures.length) error.value = `部分管理数据暂时不可用（${failures.length} 项），其余内容已正常加载。`
+  busy.value = false
 }
 async function login() {
   busy.value = true

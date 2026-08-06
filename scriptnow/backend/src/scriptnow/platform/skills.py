@@ -190,6 +190,7 @@ class CreativeProfile:
     pov: str | None
     audience: str | None
     constraints: tuple[str, ...]
+    preferences: dict[str, str] | None
     fingerprint: str
 
     @classmethod
@@ -219,6 +220,7 @@ class CreativeProfile:
             "pov": _optional_text(direction.get("pov")),
             "audience": _optional_text(direction.get("audience")),
             "constraints": _direction_tags(direction, "constraints", "must_keep", "forbidden"),
+            "preferences": _preferences(direction),
         }
         fingerprint = hashlib.sha256(
             json.dumps(values, ensure_ascii=False, sort_keys=True).encode("utf-8")
@@ -239,6 +241,7 @@ class CreativeProfile:
             "pov": self.pov,
             "audience": self.audience,
             "constraints": list(self.constraints),
+            "preferences": self.preferences,
             "fingerprint": self.fingerprint,
         }
 
@@ -385,6 +388,13 @@ def _raw_tags(value: object) -> tuple[str, ...]:
             if (tag := re.sub(r"[-_\s]+", "-", str(item).strip()).strip("-"))
         )
     )
+
+
+def _preferences(direction: dict[str, object]) -> dict[str, str] | None:
+    raw = direction.get("preferences")
+    if not isinstance(raw, dict):
+        return None
+    return {str(k): str(v) for k, v in raw.items() if v is not None}
 
 
 def _normalise_language(value: str) -> str:
