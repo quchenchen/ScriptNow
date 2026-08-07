@@ -1,8 +1,10 @@
 import asyncio
+import inspect
 import json
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from decimal import Decimal
+from importlib import import_module
 
 from agentscope.agent import Agent, ReActConfig
 from agentscope.credential import OpenAICredential
@@ -17,7 +19,7 @@ from agentscope.event import (
 )
 from agentscope.mcp import HttpMCPConfig, MCPClient, StdioMCPConfig
 from agentscope.message import Msg, TextBlock
-from agentscope.model import OpenAIChatModel
+from agentscope.model import ChatModelBase
 from agentscope.tool import Toolkit
 from pydantic import SecretStr
 from sqlalchemy import select
@@ -363,8 +365,7 @@ class AgentRuntime:
             model_record = await session.get(LanguageModelModel, str(values["model_id"]))
         if provider is None or model_record is None or not provider.base_url:
             raise AgentRuntimeError("reviewer runtime endpoint is incomplete")
-        if values.get("agentscope_class") != "OpenAIChatModel":
-            raise AgentRuntimeError("configured AgentScope model class is not supported yet")
+
 
         configured_skill_keys = tuple(values.get("skill_keys") or ())
         selected = list(
@@ -382,11 +383,12 @@ class AgentRuntime:
             )
         except Exception as error:
             raise AgentRuntimeError(str(error)) from error
-        model = self._openai_model(
+        model = self._build_model(
             credential=OpenAICredential(
                 api_key=SecretStr(credential),
                 base_url=provider.base_url,
             ),
+            agentscope_class=str(values.get("agentscope_class") or "OpenAIChatModel"),
             model_key=model_record.key,
             stream=False,
             thinking=False,
@@ -609,8 +611,6 @@ class AgentRuntime:
             model_record = await session.get(LanguageModelModel, str(values["model_id"]))
         if provider is None or model_record is None or not provider.base_url:
             raise AgentRuntimeError("provider runtime endpoint is incomplete")
-        if values.get("agentscope_class") != "OpenAIChatModel":
-            raise AgentRuntimeError("configured AgentScope model class is not supported yet")
 
         credential_config = OpenAICredential(
             api_key=SecretStr(credential), base_url=provider.base_url
@@ -620,8 +620,9 @@ class AgentRuntime:
         # is enabled. Keep the tool phase deterministic and observable; user-facing
         # reasoning is emitted as an explicit writing brief instead of leaking hidden
         # model reasoning into the manuscript channel.
-        model = self._openai_model(
+        model = self._build_model(
             credential=credential_config,
+            agentscope_class=str(values.get("agentscope_class") or "OpenAIChatModel"),
             model_key=model_record.key,
             stream=event_sink is not None,
             thinking=False,
@@ -725,8 +726,9 @@ class AgentRuntime:
                             },
                         )
                     )
-                    delivery_model = self._openai_model(
+                    delivery_model = self._build_model(
                         credential=credential_config,
+                        agentscope_class=str(values.get("agentscope_class") or "OpenAIChatModel"),
                         model_key=model_record.key,
                         stream=True,
                         thinking=False,
@@ -875,6 +877,87 @@ class AgentRuntime:
         )
 
     @staticmethod
+    def _build_model(
+        *,
+        credential: OpenAICredential,
+        agentscope_class: str,
+        model_key: str,
+        stream: bool,
+        thinking: bool,
+        context_size: int,
+    ) -> ChatModelBase:
+        """Create a phase-scoped model for the configured AgentScope model class."""
+        model_cls = AgentRuntime._resolve_agentscope_class(agentscope_class)
+        return AgentRuntime._instantiate_model(
+            model_cls=model_cls,
+            credential=credential,
+            model_key=model_key,
+            stream=stream,
+            thinking=thinking,
+            context_size=context_size,
+        )
+
+    @staticmethod
+    def _resolve_agentscope_class(agentscope_class: str) -> type[ChatModelBase]:
+        """Resolve a model class from agentscope package namespace."""
+        if "." in agentscope_class:
+            module_name, class_name = agentscope_class.rsplit(".", 1)
+        else:
+            module_name, class_name = "agentscope.model", agentscope_class
+        if not module_name.startswith("agentscope"):
+            raise AgentRuntimeError(
+                f"configured AgentScope class {agentscope_class} is not in allowed namespace"
+            )
+        try:
+            module = import_module(module_name)
+            candidate = getattr(module, class_name)
+        except Exception as error:
+            raise AgentRuntimeError(f"configured AgentScope class {agentscope_class} cannot be loaded") from error
+        if not isinstance(candidate, type) or not issubclass(candidate, ChatModelBase):
+            raise AgentRuntimeError(
+                f"configured AgentScope class {agentscope_class} is not a valid ChatModelBase subclass"
+            )
+        return candidate
+
+    @staticmethod
+    def _instantiate_model(
+        *,
+        model_cls: type[ChatModelBase],
+        credential: OpenAICredential,
+        model_key: str,
+        stream: bool,
+        thinking: bool,
+        context_size: int,
+    ) -> ChatModelBase:
+        """Instantiate model classes with best-effort compatible constructor arguments."""
+        parameters_class = getattr(model_cls, "Parameters", None)
+        if parameters_class is None:
+            raise AgentRuntimeError(
+                f"configured AgentScope model class {model_cls.__name__} missing Parameters"
+            )
+        parameter_kwargs: dict[str, object] = {}
+        try:
+            parameter_signature = inspect.signature(parameters_class)
+            if "thinking_enable" in parameter_signature.parameters:
+                parameter_kwargs["thinking_enable"] = thinking
+            model_parameters = parameters_class(**parameter_signature.bind_partial(**parameter_kwargs).arguments)
+        except TypeError:
+            model_parameters = parameters_class()
+
+        init_signature = inspect.signature(model_cls)
+        kwargs: dict[str, object] = {
+            "credential": credential,
+            "model": model_key,
+            "parameters": model_parameters,
+            "stream": stream,
+        }
+        if "context_size" in init_signature.parameters:
+            kwargs["context_size"] = context_size
+        if thinking and "extra_body" in init_signature.parameters:
+            kwargs["extra_body"] = {"enable_thinking": True}
+        return model_cls(**{k: v for k, v in kwargs.items() if k in init_signature.parameters})
+
+    @staticmethod
     def _openai_model(
         *,
         credential: OpenAICredential,
@@ -882,18 +965,15 @@ class AgentRuntime:
         stream: bool,
         thinking: bool,
         context_size: int,
-    ) -> OpenAIChatModel:
-        """Create a phase-scoped model so thinking/tools/prose never share a channel."""
-        return OpenAIChatModel(
+    ) -> ChatModelBase:
+        """Compatibility wrapper for legacy callsites."""
+        return AgentRuntime._build_model(
             credential=credential,
-            model=model_key,
-            parameters=OpenAIChatModel.Parameters(thinking_enable=thinking),
+            agentscope_class="OpenAIChatModel",
+            model_key=model_key,
             stream=stream,
+            thinking=thinking,
             context_size=context_size,
-            # AgentScope maps this to providers that implement the OpenAI-compatible
-            # thinking extension. Providers that ignore extension fields still receive
-            # the standard parameters above.
-            extra_body={"enable_thinking": thinking},
         )
 
     @staticmethod

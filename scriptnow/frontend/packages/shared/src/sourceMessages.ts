@@ -1036,6 +1036,15 @@ export const sourceMessages: Record<string, string> = {
   '发起评审': 'Send for review',
   '评审 Agent': 'Review agent',
   '评审': 'Review',
+  '部分管理数据暂时': 'Some admin data temporarily',
+  '其余': 'the rest',
+  '加载': 'Loading',
+  '后自动': 'Later automatically',
+  '结果会显示在这里': 'Results will display here',
+  '自动': 'Automatic',
+  '最近': 'Recent',
+  '分镜式': 'Shot-by-shot',
+  '竖屏短剧': 'Vertical short-form drama',
 }
 
 const orderedSourceMessages = Object.entries(sourceMessages).sort(
