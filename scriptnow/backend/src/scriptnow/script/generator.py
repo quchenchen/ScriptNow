@@ -630,6 +630,8 @@ anchor_ids 字段只能填写锚点目录中的短引用 ref（例如 A01），�
 顶层只能包含 episodes；不得增加 storymap、meta、result 或 data 包装层。
 episodes 内必须完整包含每一篇的 scenes，以及每场的 beats。
 篇章数与每篇场数必须服从项目参数；所有 anchor_ids 必须逐字复制锚点目录中的 A01、A02 等短引用。
+
+重要：每集场数必须不同。有的集 1 场（高潮戏浓缩在一场），有的集 2 场，有的集 3 场。绝不允许所有集都是同样的场数。各集场数必须像等差数列一样呈现变化——低开场（1-2场）→ 中段丰富（2-3场）→ 高潮收束（1场）。
 """.strip()
             try:
                 payload = await self._json(
@@ -656,6 +658,43 @@ episodes 内必须完整包含每一篇的 scenes，以及每场的 beats。
                 raise ScriptGenerationError(
                     "故事建筑师未能形成完整的 StoryMap，请保留当前蓝图后重试。"
                 ) from error
+        # Post-validation: if all episodes have the same scene count, retry once
+        # with explicit scene-variety instruction
+        scene_counts = [len(ep.scenes) for ep in payload.episodes]
+        if len(set(scene_counts)) == 1 and len(scene_counts) > 1:
+            logger.warning(
+                "all %d episodes have %d scenes — retrying with variety instruction",
+                len(scene_counts), scene_counts[0],
+            )
+            variety_prompt = f"""
+{prompt}
+
+⚠️ 致命问题：你的上一版输出中，所有 {episode_count} 集都是同样的 {scene_counts[0]} 场。
+根据项目参数 {max_scenes_per_episode} 场的上限，你必须让每集场数不同：
+- 开场集（第1-3集）用 1-2 场快速建立世界观
+- 发展集用 2-3 场展开冲突
+- 高潮集可用 1 场浓缩爆发
+- 过渡集用 1-2 场
+要求：60 集中至少混合使用 1 场、2 场、3 场三种数量。绝不允许所有集都是一个场数。
+""".strip()
+            try:
+                payload = await self._json(
+                    tenant_id,
+                    project.id,
+                    "architect",
+                    variety_prompt,
+                    {**context, "variety_retry": True},
+                    skills_enabled=False,
+                    validator=lambda value: _validate_story_map_contract(
+                        value,
+                        episode_count=episode_count,
+                        max_scenes_per_episode=max_scenes_per_episode,
+                        anchor_ids=anchor_ids,
+                        anchor_aliases=anchor_aliases,
+                    ),
+                )
+            except (ScriptGenerationError, ValidationError, ValueError) as error:
+                logger.warning("variety retry failed, using original: %s", error)
         episodes: list[Episode] = []
         for episode_index, episode in enumerate(payload.episodes, 1):
             scenes: list[Scene] = []
