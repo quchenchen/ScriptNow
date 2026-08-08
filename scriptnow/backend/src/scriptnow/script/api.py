@@ -1160,11 +1160,20 @@ async def _state(database: Database, tenant_id: str, project_id: str) -> ScriptS
                     )
                 )
             )
-        story_map = (
+        story_map_row = (
             await session.scalars(
                 select(ScriptStoryMapModel).where(ScriptStoryMapModel.project_id == project_id)
             )
-        ).one()
+        ).one_or_none()
+        story_map = (
+            {
+                "id": story_map_row.id,
+                "version": story_map_row.version,
+                "episodes": story_map_row.episodes,
+            }
+            if story_map_row
+            else {"version": 0, "episodes": []}
+        )
         story_map_candidates = list(
             await session.scalars(
                 select(ScriptStructureCandidateModel)
@@ -1207,11 +1216,7 @@ async def _state(database: Database, tenant_id: str, project_id: str) -> ScriptS
                 {"id": item.id, "status": str(item.status), "anchors": item.draft["anchors"]}
                 for item in blueprint_candidates
             ],
-            story_map={
-                "id": story_map.id,
-                "version": story_map.version,
-                "episodes": story_map.episodes,
-            },
+            story_map=story_map,
             story_map_candidates=[
                 {
                     "id": item.id,
