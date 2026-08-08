@@ -701,7 +701,11 @@ class ScriptService:
             await session.scalars(
                 select(ScriptStoryMapModel).where(ScriptStoryMapModel.project_id == project_id)
             )
-        ).one()
+        ).one_or_none()
+        if story_map is None:
+            story_map = ScriptStoryMapModel(project_id=project_id, version=0, episodes=[])
+            session.add(story_map)
+            await session.flush()
         return story_map
 
     @staticmethod
