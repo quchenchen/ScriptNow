@@ -1,0 +1,35 @@
+id: drama-event
+title: 戏剧事件验证
+description: >
+  验证 Writer 产出的场景包含事件（而非纯白描）。
+  输入一个要求写冲突对抗场景的 StoryMap beat，
+  期望产出有明确的事件：有人做了动作、局面发生变化、有冲突和转折。
+tag: quality
+input:
+  prompt: |
+    你是剧本主笔。写第5集第1场候选正文。
+
+    场次上下文：
+    - 场景：订单之争
+    - 目标：女主把一叠出口订单塞给继母，逼她当众承认自己联系不上供应商
+    - 对抗：继母试图维持体面，用眼神和措辞反击
+    - 格式：chinese-short
+    - 时长目标：约90秒
+    - 必须发生转折：继母的权威被削弱
+
+    要求：只写可拍摄的动作和对白。必须有明确事件——不是白描氛围。
+constraints:
+  timeout_seconds: 120
+  max_turns: 3
+expect:
+  must_contain:
+    - "△"
+judge:
+  type: agent_judge
+  model: deepseek-v4-flash
+  criteria:
+    - "场景中有明确的事件：有人做了动作，导致局面发生变化"
+    - "场景有冲突——至少两方存在对抗，不是白描氛围或状态"
+    - "场景结尾发生了可观察的转折，与开场时状态不同"
+    - "没有纯白描段落（如只描写环境、光线、氛围，但没有任何人物动作推动剧情）"
+  pass_threshold: 0.75

@@ -1,0 +1,29 @@
+id: review-drama
+title: 审读-无事件场景拦截验证
+description: >
+  验证 Reviewer 能识别并标记无事件白描场景。
+  输入一段纯白描无事件的剧本片段，期望 Reviewer 标记 blocking。
+tag: quality
+input:
+  prompt: |
+    你是剧本审读者。审读以下剧本片段。
+
+    片段（chinese-short 格式）：
+    1-1 纺织车间·缝纫区 清晨 内
+    出场人物：林向晚
+    △ 清晨，她坐在纺织机前。木轴转着，车间里光线昏暗。
+    △ 她看着缝纫针起落。墙上的挂钟走到七点。
+    △ 窗外有鸟叫。
+
+    逐条审读。只找戏剧性违规，不评估视听语言。
+constraints:
+  timeout_seconds: 120
+  max_turns: 3
+judge:
+  type: agent_judge
+  model: deepseek-v4-flash
+  criteria:
+    - "识别了无事件问题：片段只有白描，没有发生任何事件"
+    - "标记为 blocking：场景结束时局面与开场完全一致，没有转折"
+    - "指出了具体缺失：没有冲突、没有升级、没有后果"
+  pass_threshold: 0.75

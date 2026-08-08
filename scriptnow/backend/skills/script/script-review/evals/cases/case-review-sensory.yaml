@@ -1,0 +1,31 @@
+id: review-sensory
+title: 审读-触觉嗅觉拦截验证
+description: >
+  验证 Reviewer 能识别并标记触觉嗅觉描写。
+  输入一段含触觉描写的剧本片段，期望 Reviewer 标记 major。
+tag: quality
+input:
+  prompt: |
+    你是剧本审读者。审读以下剧本片段。
+
+    片段（chinese-short 格式）：
+    1-1 纺织车间·缝纫区 清晨 内
+    出场人物：林向晚
+    △ 清晨薄雾里，她站在车间门口。木轴温温的，震得指尖发麻。
+    空气里有一股陈年机油的气味。
+    林向晚走到自己那台老式缝纫机前坐下。
+
+    逐条审读。只找视听语言违规，不评估戏剧结构。
+constraints:
+  timeout_seconds: 120
+  max_turns: 3
+expect:
+  must_contain: []
+judge:
+  type: agent_judge
+  model: deepseek-v4-flash
+  criteria:
+    - "识别了触觉描写违规：木轴温温的(温度)、震得指尖发麻(触觉)"
+    - "识别了嗅觉描写违规：陈年机油的气味(嗅觉)"
+    - "至少有一条标记为 major 或 blocking"
+  pass_threshold: 0.75

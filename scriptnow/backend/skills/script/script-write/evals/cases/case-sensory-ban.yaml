@@ -1,0 +1,33 @@
+id: sensory-ban
+title: 触觉嗅觉禁用验证
+description: >
+  验证 Writer 不会产出触觉、嗅觉、温度感等不可拍摄的感官描写。
+  输入一个要求写清晨纺织车间场景的 StoryMap beat，
+  期望产出中不含「温温的」「发麻」「闻到」「气味」等禁用词。
+tag: quality
+input:
+  prompt: |
+    你是剧本主笔。写第1集第1场候选正文。
+
+    场次上下文：
+    - 场景：车间醒来
+    - 目标：女主重生后第一次触摸纺织机，确认自己回到了1998年
+    - 格式：chinese-short
+    - 时长目标：约60秒
+
+    要求：只写可拍摄的动作和对白。
+constraints:
+  timeout_seconds: 120
+  max_turns: 3
+expect:
+  must_contain:
+    - "△"
+judge:
+  type: agent_judge
+  model: deepseek-v4-flash
+  criteria:
+    - "action 块中没有触觉词（温温的、发麻、刺痛、冰凉、柔软、粗糙）"
+    - "action 块中没有嗅觉词（闻到、气味、香味、臭味、刺鼻）"
+    - "action 块中没有体感描写（震得指尖发麻、皮肤发凉、背脊发寒）"
+    - "所有描写都是摄影机可以直接拍到的内容"
+  pass_threshold: 0.75
