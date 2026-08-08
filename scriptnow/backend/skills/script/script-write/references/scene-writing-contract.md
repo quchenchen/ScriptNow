@@ -1,30 +1,44 @@
-# Screenplay scene writing contract
+# 剧本场景写作契约
 
-## Before writing
+## 写作前必须确认
 
-Read the accepted scene goal, entering state, participating characters, knowledge boundaries, required turn, continuity inputs, setup/payoff obligations, duration, language, and locked delivery format.
+从已采纳的 StoryMap 中读取：
+- 场景目标
+- 进入状态
+- 参与人物及其知识边界
+- 必须发生的转折类型
+- 连续性约束
+- 时长、语言、锁定交付格式
 
-## Dramatic pass
+## 视听语言红线
 
-1. Give one character a playable objective.
-2. Let that character choose tactics against active resistance.
-3. Make dialogue an action: probe, conceal, recruit, threaten, delay, seduce, deflect, or reframe.
-4. Express interior states through behavior, space, rhythm, sound, objects, silence, and choice.
-5. Cause a visible change in power, knowledge, relationship, risk, or commitment.
-6. End on the consequence, not a summary of the scene.
+以下类型的中文表述禁止出现在 action 块中：
 
-## Continuity pass
+| 禁止类型 | 禁用词/模式 | 正确做法 |
+|----------|-----------|---------|
+| 心理描写 | 心想、感到、内心、回忆、情绪、心情、意识 | 只写角色做了什么 |
+| 身体隐喻 | 骨节发白、指尖泛白、指甲掐进掌心、喉头发紧 | 只写动作本身，不给身体部位加形容词 |
+| 抽象氛围 | 气氛紧张、命运、宿命、人生、时光 | 写具体视听元素 |
+| 美术概括 | 精致、优雅、奢华、华丽 | 写具体视觉元素 |
+| 机械钩子 | 「他不知道…」「殊不知…」 | 直接删除 |
 
-Check time, place, entrances, exits, injuries, wardrobe, props, knowledge, promises, world rules, setup/payoff state, and the latest accepted manual revision.
+```
+本质区别：
+❌ 小说家写法（身体隐喻）：她攥紧账本，骨节发白。
+   问题：「骨节发白」是文学修辞，不是直接可见的动作。
+   导演不能指导演员「让骨节发白」。
 
-## Delivery pass
+✅ 编剧写法（动作）：她盯着账本。没翻页。
+   摄影机看到：一个角色，一个动作，一个对象。停顿本身说了全部。
+```
 
-Apply the loaded format projection last. Follow the runtime's exact structured-output schema. Do not emit analysis, Markdown, or fields outside that schema.
+## 对白红线
 
-## Red lines
+- 人物不替作者交代前史。
+- 人物不替作者做心理分析。
+- 同一人物一段完整台词是一条连续 dialogue。
+- 空洞情绪宣告不构成冲突。
 
-- No unfilmable interior explanation in action.
-- No dialogue that merely reports shared facts.
-- No camera list unless the project explicitly requests a shooting script.
-- No new canon introduced to solve the current scene.
-- No direct write to accepted text.
+## 提交格式
+
+最后一步做格式投影。严格遵循运行时的结构化输出 schema。

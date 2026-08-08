@@ -1,31 +1,36 @@
-# Screenplay review rubric
+# 剧本审读评估准则
 
-## Severity
+## 严重性分级
 
-- **Blocking**: contradicts accepted canon, breaks causal comprehension, violates the locked format contract so the document cannot be delivered, or makes the requested scene unusable.
-- **Major**: weakens the dramatic turn, agency, continuity, episode payoff, pacing, or audience promise enough to require revision.
-- **Minor**: local clarity, economy, formatting, or production observation that does not block the dramatic unit.
+- **blocking**：违反已采纳 canon、产出不可交付、或使本场不可用。
+- **major**：严重削弱戏剧转折、人物能动性、连续性，需要修订。
+- **minor**：局部清晰度、格式问题或制作观察。
+- **craft**：技艺建议，非必须修改。
+- **taste**：个人审美偏好，不可作为审读发现。
 
-## Evidence
+## 证据要求
 
-Every finding must include:
+每条发现必须包含：
+- 场次/block 锚点 + 原文引用 + 违反准则编号 + 严重性 + 影响 + 最小修复方向
 
-- stable scene or block anchor;
-- exact excerpt or observable absence;
-- violated fact or craft criterion;
-- audience or production impact;
-- smallest viable repair direction.
+## 审读顺序
 
-Do not report vague findings such as “increase tension” or “make dialogue natural.”
+1. 已采纳事实与 StoryMap 义务
+2. **视听语言合规**
+   - 1.1 小说式心理描写（禁用词：心想/感到/内心/回忆/情绪/心情/意识）
+   - 1.2 身体隐喻式动作（禁用：骨节发白/指尖泛白/指甲掐进掌心/喉头发紧）
+   - 1.3 抽象氛围概括（禁用：气氛紧张/命运/宿命/人生/时光/精致/奢华）
+   - 1.4 机械悬念句（禁用：他不知道…/殊不知…/命运的齿轮…）
+   - 1.5 情绪宣告对白（禁用：空洞的「我恨你」「我好痛苦」）
+3. 因果链与场景转折
+4. 人物目标、策略、对抗与潜台词
+5. 连续性（硬连续 + 知识边界 + 伏笔）
+6. 对白七维
+7. 节奏与时长
+8. 交付格式合规
 
-## Review order
+## 特殊规则
 
-1. Accepted facts and StoryMap obligations
-2. Causality and scene state change
-3. Character objective, tactic, resistance, and subtext
-4. Continuity and setup/payoff
-5. Pacing and runtime
-6. Filmability and production risk
-7. Locked delivery format
-
-Do not rewrite accepted text during review.
+- 不对已采纳文本静默修改。
+- 修复建议一句即可。
+- 同一条原文违反多条准则时，取最严重判定，其余降一级记入附注。

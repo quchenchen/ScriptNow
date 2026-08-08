@@ -1,27 +1,228 @@
 ---
 name: script-write
 core: true
-description: Use when writing or revising screenplay scenes from an accepted Script StoryMap through filmable action, playable objectives, tactics, subtext, visual and sound design opportunities, scene turns, and continuity-safe consequences.
+description: Use when writing or revising screenplay scenes from an accepted Script StoryMap through filmable action, playable objectives, tactics, subtext, and continuity-safe consequences.
 metadata:
   scriptnow:
     roles: [writer]
     stages: [writing]
     selection_priority: 100
-    keywords: [剧本, 竖屏剧, 短剧, 台词, 分镜, 场次, 对白]
+    keywords: [剧本, 竖屏剧, 短剧, 台词, 分镜, 场次, 对白, 写作]
 ---
 
-# Write screenplay scenes
+# 剧本写作
 
-Screenplay thinking comes before screenplay formatting. Treat Chinese-platform and Hollywood
-formats as delivery projections of the same dramatic scene, never as fill-in templates.
+## 核心铁律
 
-1. Confirm scene purpose, entering state, character objectives, required turn, continuity, location, time, and duration.
-2. Write only what can be seen or heard. Convert internal explanation into behavior, framing opportunity, sound, choice, or omission.
-3. Keep action paragraphs lean and playable. Introduce production detail only when it changes story meaning.
-4. Give dialogue tactics and subtext; characters should rarely state the shared truth directly.
-5. Make the scene turn before it ends, then carry the consequence into the next StoryMap beat.
-6. Verify that deleting the scene would damage causality, relationship state, knowledge boundaries, or the next decision. If it would not, redesign or merge it.
-7. Check runtime, continuity, repeated exposition, and only then the selected delivery format.
-8. Submit screenplay text as a candidate; never write into Novel-domain artifacts.
+**剧本只写摄影机和录音机能捕捉的内容。**
 
-Read [scene writing contract](references/scene-writing-contract.md) before drafting or revising a scene.
+编剧不是小说家。小说家的工具是「揭示内心」，编剧的工具是「呈现可见的动作」。
+任何一句 action，拿出来问「导演能不能拍？」——如果答案是「不能」，删除。
+
+---
+
+## 一、编剧的写法 vs 小说家的写法
+
+以下是同一段叙事，小说家的写法和编剧的写法。左边是 AI 最容易产出的「伪剧本」，
+右边是专业编剧的实际写法。注意：**编剧不描述内心状态，只写角色的动作和反应。**
+
+### 紧张/不安
+
+```
+❌ 她内心感到一阵不安，仿佛预感到危机的来临。
+   → 不可拍摄的心理活动
+
+❌ 她攥紧账本，骨节发白。
+   → 「骨节发白」是文学修辞——身体部位做情绪隐喻，不是直接可见的动作
+
+✅ 她盯着账本。没翻页。
+   → 摄影机看到：角色+动作+对象。停顿本身说明一切。
+
+✅ 她把账本合上。力气大了点——啪的一声。
+   → 摄影机看到：具体的动作+力度+可听到的后果。
+```
+
+### 犹豫/纠结
+
+```
+❌ 他内心翻江倒海，不知该如何抉择。
+   → 不可拍摄
+
+❌ 他的手指在桌面上敲了又停，停了又敲。（源自真实剧本但仍是文学修辞）
+   → 敲手指的动作本身可以拍，但这里的写法是为了「翻译情绪」
+
+✅ 他走到门口。停下。又走回来。
+   → 摄影机看到：三个动作。没有解释，只有行为。
+
+✅ 他把那张纸拿起来。放下。再拿起来。折了两折，塞进内兜。
+   → 摄影机看到：连续的选择动作。每个选择都在说话。
+```
+
+### 愤怒
+
+```
+❌ 他被她的话激怒了，一股怒火从心底升起。
+   → 不可拍摄的内心状态
+
+✅ 他盯着她。手里的杯子——放下了。放得很轻。太轻了。
+   → 摄影机看到：目光+动作+反常的力度。
+
+✅ 楚青反手卸下器械，锁住打手胳膊。
+   → 直接的动作链。无解释。无情绪标注。
+```
+
+### 悲伤
+
+```
+❌ 她陷入了深深的绝望，感觉世界抛弃了她。
+   → 不可拍摄
+
+✅ 她坐在墙角。额头抵着膝盖。肩膀不动了。一点声音都没有。
+   → 摄影机看到：位置+姿势+静止+沉默。
+
+✅ 余国伟动作缓慢，愣了一会儿，把手里的释放证明铺平递给了工作人员。
+   → 动作的速度+停顿+一个具体的递交动作。悲伤不在文字里，在速度里。
+```
+
+### 关系张力
+
+```
+❌ 两人之间的气氛变得紧张。
+   → 抽象氛围概括，不可拍摄
+
+✅ 他放下筷子。她也放下。两双筷子搁在碗沿。
+   → 摄影机看到：两个动作+一个画面。
+
+✅ 唐万财：你又来搞那样？
+   潘梅：给你送吃的。
+   唐万财看看手中的碗——还有小半碗没吃完。大口吃起来。
+   → 对话+动作的选择。不解释关系，用行为展示关系。
+```
+
+---
+
+## 二、编剧可以写的：动作、表情、位置、声音、节奏
+
+以下类别在剧本中合法，因为摄影机可以拍到：
+
+### 2.1 身体动作
+
+```
+✅ 余国伟穿过人群跑向李警官。
+✅ 他推开门。门轴嘎吱一声。
+✅ 克里斯提着一台仪器大步走着。
+✅ 她把箱子拖到门口。太重——停了一下，换了只手。
+✅ 他蹬了几脚踏板。没启动。停下，无奈地看着四周。
+```
+
+### 2.2 面部表情（用直述词，不用隐喻）
+
+```
+✅ 皱眉。微笑。阴沉。惊。呆滞。狞笑。
+✅ 唐万财一脸得意。
+✅ 余国伟眼神呆滞，满脸冒着傻气。
+✅ 姜郁眸光木讷。
+✅ 贺敛双目猩红，紧紧盯着她。
+
+❌ 眼神里闪过一丝不易察觉的忧伤。（隐喻）
+❌ 嘴角扬起一个若有若无的弧度。（文学修辞）
+```
+
+### 2.3 位置与空间
+
+```
+✅ 他走到她对面坐下。
+✅ 她退了一步。
+✅ 两个人隔着一张桌子。桌子上的杯子谁都没碰。
+✅ 他从门外走进来。站定。扫了一圈屋里的人。
+```
+
+### 2.4 声音
+
+```
+✅ 筷子搁在碗沿——啪的一声。
+✅ 门轴嘎吱一声，惊起一层灰。
+✅ 远处传来广播的声音，先是嘴吹话筒，然后是拍打话筒。
+✅ 手机铃声响了。她没接。铃声停了。又响了。
+```
+
+### 2.5 动作的节奏/速度/力度
+
+```
+✅ 他疾步向前走去。
+✅ 她愣了一下。
+✅ 他把杯子放下——动作很慢。
+✅ 唐万财忍着烫吞下最后一口，把碗一放。
+✅ 她继续切菜，刀刃落得比刚才重。
+```
+
+---
+
+## 三、编剧不能写的：心理、隐喻、抽象、判断
+
+| 禁止类别 | 禁用词/模式 | 为什么不能写 |
+|----------|-----------|-------------|
+| 心理活动 | 心想、感到、内心、回忆、情绪、心情、意识 | 摄影机拍不到 |
+| 身体隐喻 | 骨节发白、指甲掐进掌心、指尖泛白、喉头发紧 | 文学修辞，不是直接的动作 |
+| 抽象氛围 | 气氛紧张、命运、宿命、人生、时光、岁月 | 没有给出具体画面 |
+| 概括性形容词 | 精致、优雅、奢华、华丽、简陋 | 没有给出具体视觉元素 |
+| 机械钩子 | 「他不知道…」「殊不知…」「命运的齿轮…」 | 面向读者，不是面向拍摄 |
+| 情绪宣告对白 | 「我恨你」「我好痛苦」「太可怕了」 | 人物宣布情绪 = 作者偷懒 |
+
+---
+
+## 四、场景创作流程
+
+### 第 1 步：确认场景功能
+
+从 StoryMap 读取：
+- 进入状态
+- 本场唯一不可替代的功能
+- 必须发生的转折
+- 连续性约束
+
+**删除测试**：删掉本场会断裂因果吗？不会就重新设计。
+
+### 第 2 步：设计冲突
+
+主行动人物 + 可执行目标 + 具体对抗。
+
+```
+✅ 目标：让对方签协议。对抗：对方知道协议有陷阱，但不敢明说。
+✅ 目标：让父母相信她过得很好。对抗：袖口磨破的线头、冰箱里的过期牛奶。
+❌ 目标：他想要幸福。对抗：命运。→ 不可执行、不可拍摄。
+```
+
+### 第 3 步：用动作推进
+
+信息传递、情绪表达、关系变化通过：
+- 角色的动作（走、停、拿、放、推、拉、坐、站）
+- 动作的质量（快/慢、轻/重、连贯/停顿）
+- 空间关系（距离变化、朝向变化）
+- 道具的使用方式（怎么拿、怎么放、放了多久）
+- 声音（门响、筷子落、电话铃、沉默）
+- 省略（该做没做的事、该给没给的回应）
+
+### 第 4 步：写对白——台词是行动
+
+每句台词是一种策略：试探、遮掩、招募、威胁、拖延、引诱、转移、拒绝、妥协。
+
+参考 script-review 的对白七维检查。
+同一人物一段完整台词写成一条 dialogue。
+
+### 第 5 步：落在后果上
+
+场景结尾落在人物选择及其后果，不是总结。
+
+```
+✅ 「三分钟。逾时不到，南省除名。」→ 下一场就是验证这个威胁
+✅ 她把账本合上。啪的一声。→ 动作完成了，关系也变了
+❌ 「他不知道，更大的风暴还在后面等着他。」→ 删除
+```
+
+---
+
+## 五、格式提交
+
+最后一步做格式投影（见 script-format-chinese / script-voice-short-drama）。
+不输出 Markdown、分析或解释文字。

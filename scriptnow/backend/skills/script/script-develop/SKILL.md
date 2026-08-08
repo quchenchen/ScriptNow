@@ -1,23 +1,91 @@
 ---
 name: script-develop
 core: true
-description: Use when developing original screenplay, series, short-drama, or episodic concepts into distinct filmable directions with a repeatable dramatic engine, protagonist action, opposition, audience promise, and production trade-offs.
+description: Use when developing original screenplay, series, short-drama, or episodic concepts into distinct filmable directions with a repeatable dramatic engine, protagonist action, opposition, audience promise, production trade-offs, and for short-drama specifically, hook-density and commercial beat awareness.
 metadata:
   scriptnow:
     roles: [director]
     stages: [ideation]
     selection_priority: 100
+    keywords: [创意发散, 故事方向, 短剧, 竖屏, 商业定位]
 ---
 
-# Develop a screen story
+# 剧本创意发散
 
-1. Read the project facts, user constraints, target audience, production form, duration, language, genre, and protected material.
-2. Preserve the user's premise. Generate alternatives by changing the dramatic engine, not by merely changing titles, occupations, or surface settings.
-3. Define each direction through a protagonist who acts, a visible opposing system, escalating consequences, a relationship promise, a moral choice, and an ending cost.
-4. Test the scene engine: state at least three different conflicts the premise can generate without exposition or coincidence.
-5. Test screen identity: identify behavior, space, sound, objects, and recurring images that communicate the premise without narration.
-6. For episodic work, distinguish the series engine from each episode's local dramatic question.
-7. State creative, audience, and production trade-offs. Do not disguise a weak story as “low cost.”
-8. Return only the task's requested structured candidate. Never adopt a direction or write Script canon directly.
+## 一、核心原则
 
-Read [development contract](references/development-contract.md) when producing or repairing direction candidates.
+1. 从项目事实读取用户前提、目标受众、制式、时长、语言、类型和受保护素材。
+2. 保留用户前提。通过改变戏剧引擎来生成替代方案——不是换个标题、职业或表面设定。
+3. 缺少的参数视为未知。不默认为创造参数填补空白。
+
+---
+
+## 二、方向候选必须回答的问题
+
+每个候选方向必须让以下差异可见：
+
+### 基础层
+
+1. **主角行动与缺失**：谁？想要什么？为什么现在得不到？
+2. **对抗系统**：谁/什么在阻止？必须是具体的人、制度、环境或规则——不是「命运」「社会」。
+3. **可重复的场景引擎**：同一前提能否生成三种不同冲突（无巧合、无说明性对话）？
+4. **关系与情感承诺**：观众因什么情感投入？这个承诺会在故事中如何兑现？
+
+### 视听身份
+
+5. **银幕身份**：这个故事的视觉/空间/声音/道具/重复意象是什么？
+   ```
+   ✅ 《暴雪将至》：连绵的雨、泥泞的路、停转的摩托车、工厂烟囱的白烟
+   ✅ 《花繁叶茂》：黔北民居、石坎路、喇叭广播、红辣椒、摩托车
+   ❌ 「城市边缘」——不可拍摄的抽象概念
+   ```
+
+6. **系列引擎**（如为系列剧）：区分系列引擎（每集重复的结构）与每集的局部戏剧问题。
+
+### 制作考量
+
+7. **创意、观众与制作权衡**：不把弱故事包装为「低成本」。明确指出本方向的挑战。
+
+---
+
+## 三、竖屏短剧专项要求
+
+当项目制式为竖屏短剧（chinese-short）时，额外输出：
+
+### 3.1 Hook 密度设计
+
+短剧每集 1-2 分钟，观众划走的窗口是前 3 秒。每个候选方向必须说明：
+
+- **开场 Hook**（前 10 秒）：用怎样的画面/动作/台词让观众停下拇指？
+- **每集钩子**：每集结尾落在怎样的悬念/翻转/挑衅上，让观众点下一集？
+- **付费卡点**（如有付费模式）：第 N 集结尾是怎样的不可逆转折，足以让观众愿意付费？
+
+```
+参考模式：
+✅ 反转型钩子：「这就是任城森站在这，又能奈我何？」
+✅ 信息差钩子：观众知道了反派不知道的事——爽感来自「等着看你被打脸」
+✅ 身体动作钩子：亲吻、耳光、摔倒——身体行为本身就是悬念
+```
+
+### 3.2 商业定位
+
+- 目标平台（抖音/快手/小程序/付费短剧平台）
+- 目标受众画像：女频 25-35 岁 / 男频 20-30 岁 / 下沉市场
+- 对标作品（给出具体作品名，不是模糊类型描述）
+
+### 3.3 冲突密度承诺
+
+1-2 分钟内必须完成什么：
+- 至少一次关系/权力/信息翻转
+- 至少一个悬念钩子引向下一集
+- 对话不超过 8-10 个来回（含反应镜头）
+
+---
+
+## 四、红线
+
+- 不产出依赖内心解释的小说式梗概。
+- 不产出没有戏剧选择的主题陈述（「这是一个关于爱的故事」= 不及格）。
+- 不自动采纳任何方向。
+- 不假定未在项目事实中找到的集数、场景数、时长或预算数字。
+- 不创造只在标题/职业/表面设定上不同的「变体」——拒绝共享相同因果链的假替代。

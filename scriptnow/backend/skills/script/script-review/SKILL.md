@@ -1,42 +1,200 @@
 ---
 name: script-review
 core: true
-description: Use when reviewing screenplay scenes, episodes, or a full script for StoryMap fidelity, filmability, dramatic action, character tactics, subtext, pacing, continuity, runtime, production risk, and delivery-format compliance.
+description: Use when reviewing screenplay scenes for filmability, character agency, dialogue tactics, subtext, pacing, continuity, audiovisual language violations, and delivery-format compliance.
 metadata:
   scriptnow:
     roles: [reviewer]
     stages: [review]
     selection_priority: 100
+    keywords: [审读, 审查, 剧本质量, 视听语言, 电影化, 台词]
 ---
 
-# Review a screenplay
+# 剧本审读
 
-1. Compare each scene with its accepted StoryMap beat and identify intended versus actual state change.
-2. Flag unfilmable interior prose, exposition without conflict, passive protagonists, duplicate beats, and dialogue without tactics.
-3. Check continuity of props, geography, time, wardrobe, injuries, knowledge, and entrances/exits.
-4. Estimate runtime and distinguish story problems from production-cost observations.
-5. Check the selected delivery format only after dramatic and continuity checks; formatting cannot rescue an inert scene.
-6. Rank findings as blocking, major, or minor, with an exact scene/block anchor, quoted evidence, impact, and minimal repair direction.
-7. Separate fact violations, craft risks, optional taste, and production observations.
-8. Return the task's requested report or revision candidate; do not mutate accepted script.
+## 审读原则
 
-## Dialogue review: seven-dimension sweep (台词七维)
+1. 先审戏剧，再审格式。
+2. 证据驱动：每条发现必须锚定场次/block + 引用原文 + 违反准则 + 影响 + 最小修复方向。
+3. 分层判定：blocking > major > minor > craft > taste。
 
-For every dialogue line, check in order; dimensions 1-3 are hard gates, the rest are craft:
+---
 
-1. **角色辨识度**：遮住角色名能否凭语气认出说话人？全员同腔是 blocking。
-2. **潜台词**：表层与里层是否分层？直白解释剧情/情绪是 major。
-3. **冲突推进力**：这句是否改变目标/权力/关系/信息/风险至少一项？无推进的寒暄是 major。
-4. **类型语感**：古装混入网络梗、都市整段文言——越界即 major。
-5. **信息效率**：exposition 灌设定（双方都知道的信息）应删；表达精炼，但同一人物的一段完整台词必须是一条 dialogue，重复人名碎片化是 major。
-6. **节奏与音乐性**：长短句交替与停顿分布；长台词用标点断句保持完整一句；电报式短句堆叠（多条碎片拼成一句）是 major。
-7. **金句潜力**：加分项不是底线；一集 1-3 句，满篇金句等于没有。
+## 一、视听语言审查
 
-## Vertical short-drama format check (竖屏短剧)
+这是解决「AI 剧本小说化」的核心。以下每一类都有具体的判定标准。
 
-当项目为 `chinese-short` 格式时，额外校验分镜式交付：
-- slugline 符合“场-镜 地点·细地点 时间 内外”；关键分镜用 ▲ 或 ▲【…】标记，常规画面不加▲（△为可选符号），单段 20-30 字。
-- 场景开头有“出场人物”；对白带（语气/动作）注，同一人物一段完整台词一条 dialogue（长度不限）。
-- OS/VO/旁白显式标注且克制（约每 25-35 个分镜一次）；【特写】【闪回】标记成对/有明确落点。
+### 1.1 小说式心理描写（blocking）
 
-Read [review rubric](references/review-rubric.md) for evidence and severity rules.
+action 块中出现以下模式，直接判定 blocking：
+
+| 关键词/模式 | 问题 |
+|------------|------|
+| 心想、心中、内心、心里 | 不可拍摄的心理活动 |
+| 感到、感觉、觉得 | 主观感受陈述 |
+| 回忆、想起、浮现、思绪 | 不可拍摄的回忆触发 |
+| 情绪、心情、心态 | 不可拍摄的抽象状态 |
+| 意识、意识到 | 不可拍摄的认知变化 |
+
+修正方向：只写角色做了什么、在哪儿、怎么做的。
+
+```
+❌ 「她内心感到一阵不安。」
+   → blocking: 内心活动不可拍摄
+
+✅ 「她盯着账本。没翻页。」
+   → 摄影机看到：角色+动作+对象。停顿本身说明一切。
+```
+
+### 1.2 身体隐喻式动作（major）
+
+用身体部位做情绪隐喻——这是小说修辞，不是剧本动作。
+
+| 模式 | 示例 |
+|------|------|
+| 手指/骨节/指尖 + 形容词 | 「骨节发白」「指尖泛白」「手指捏得发青」 |
+| 指甲/掌心 + 动词 | 「指甲掐进掌心」 |
+| 喉头/喉咙 + 动词 | 「喉头发紧」「喉咙滚动了一下」 |
+
+关键区分：**写角色的动作，不写身体部位的状态。**
+
+```
+❌ 「她攥紧账本，骨节发白。」
+   → major: 「骨节发白」是文学修辞——用身体部位做情绪隐喻。
+      导演不能指导演员「让骨节发白」，只能指导「攥紧账本」。
+      但「攥紧账本」本身就够了——动作已经携带了情绪。
+
+✅ 修改方式一：「她盯着账本。没翻页。」
+✅ 修改方式二：「她把账本合上。力气大了点——啪的一声。」
+```
+
+### 1.3 抽象氛围概括（major）
+
+出现以下抽象词且无具体视听等价物时，判定 major：
+
+| 禁用词 | 为什么 |
+|--------|--------|
+| 气氛紧张/凝固/压抑 | 没写「谁做了什么导致气氛改变」 |
+| 命运、宿命、人生、时光、岁月 | 概念词，不是视听信息 |
+| 精致、优雅、奢华、华丽、简陋 | 美术概括，需给出具体视觉元素 |
+
+```
+❌ 「两人之间的气氛突然变得紧张起来。」
+   → major: 没有可拍摄的画面
+
+✅ 「他放下筷子。她也放下。两双筷子搁在碗沿，谁都没再动。」
+   → 摄影机看到：两个动作+一个画面。
+```
+
+### 1.4 机械悬念句（major）
+
+```
+❌ 「他不知道，更大的风暴还在后面等着他。」
+❌ 「殊不知，这一切只是开始。」
+```
+
+这些句子面向读者，不是面向拍摄。直接删除，不替换。
+
+### 1.5 情绪宣告式对白（major）
+
+人物的台词等同于作者直接宣布情绪，且没有伴随当场可见的后果行动：
+
+```
+❌ 「我恨你！」「你为什么要这样对我！」「我好痛苦！」
+   没有伴随当场可见的后果——判定 major。
+
+✅ 修正：人物不宣布情绪，而是做出一个不可逆的行为——
+   砸碎某物、转身离开、说出一个从此无法收回的秘密。
+```
+
+---
+
+## 二、对白七维审查
+
+对每句台词按顺序检查。维度 1-3 是硬门禁：
+
+### 1. 角色辨识度（blocking）
+
+遮住角色名，能否凭语气/用词/节奏认出说话人？
+
+```
+❌ 两个不同角色台词互换后场景仍然「通顺」→ blocking
+```
+
+### 2. 潜台词（major）
+
+表层文字与里层意图是否分层？直白解释剧情/情绪是 major。
+
+```
+❌ 刘思思：「念念姐，这件事情都怪我。你要是生气，打我两下出出气？」
+   表面道歉，里层道德绑架——这段是好的潜台词。
+
+✅ 好台词的标准是「话里有话」。
+```
+
+### 3. 冲突推进力（major）
+
+这句是否改变了目标/权力/关系/信息/风险至少一项？无推进的寒暄是 major。
+
+### 4. 类型语感（major）
+
+古装混入网络梗、都市整段文言——越界即 major。
+男频/女频短剧的对话节奏不同，混用判定 major（见 script-voice-short-drama）。
+
+### 5. 信息效率（major）
+
+- exposition 灌设定（双方已知的信息）——删除
+- 同一人物一段完整台词是一条 dialogue
+- 电报式碎片堆叠——major
+
+```
+❌ 「坐下。」「从第一页看。」「三年前。」「我做的。」
+   → major: 四条碎片应合并
+
+✅ 「坐下，从第一页看——三年前宋家尽调是我做的。」
+```
+
+### 6. 节奏与音乐性（minor）
+
+长短句交替、停顿分布。长台词用标点断句保持完整语流。
+
+### 7. 金句潜力（craft）
+
+加分项不是底线。一集 1-3 句。满篇金句等于没有。
+
+---
+
+## 三、戏剧结构审查
+
+- StoryMap 忠实度（blocking）
+- 因果链完整性（blocking）
+- 场景转折必须发生（major）
+
+---
+
+## 四、人物行动审查
+
+- 主角有可执行目标（major）
+- 对抗来自具体的人/制度/环境/规则（major）
+- 选择付出可见的、不可逆的代价（major）
+
+---
+
+## 五、竖屏短剧专项
+
+项目为 chinese-short 格式时，额外校验：
+- slugline 符合「场-镜 地点·细地点 时间 内/外」
+- 关键分镜用 ▲ 或 ▲【…】，常规画面不用
+- 场景开头有「人物：×××、×××」
+- OS/VO 使用克制
+- 【特写】【闪回】成对
+- 画面描述 20-30 字
+
+---
+
+## 六、审读产出
+
+每条发现：
+- 场次/block 锚点 + 引用原文 + 违反准则编号 + 严重性 + 影响 + 最小修复方向
+
+不输出模糊建议。不直接修改已采纳文本。

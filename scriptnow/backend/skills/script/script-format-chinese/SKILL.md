@@ -1,21 +1,181 @@
 ---
 name: script-format-chinese
-description: Use when writing or reviewing a project locked to Chinese-platform screenplay delivery, after the dramatic scene has been designed, to project it into scene heading, action, character, dialogue, OS, VO, and paired flashback conventions.
+description: Use when writing or reviewing a project locked to Chinese-platform screenplay delivery (chinese or chinese-short), after the dramatic scene has been designed, to project it into scene headings, action, character cues, dialogue, OS, VO, and paired flashback markers.
 metadata:
   scriptnow:
     roles: [writer, reviewer]
     stages: [writing, review]
-    formats: [chinese]
+    formats: [chinese, chinese-short]
     selection_priority: 90
-    keywords: [中文剧本, 中国格式, 场头, 对白]
+    keywords: [中文剧本, 中国格式, 场头, 对白, 竖屏短剧, 分镜]
 ---
 
-# Project a Chinese screenplay
+# 中文剧本格式投影
 
-1. Preserve the scene's accepted dramatic action and apply format only after the scene works.
-2. Start each scene with location, time of day, and interior/exterior.
-3. Keep action in filmable paragraphs. Do not repeat episode number, scene number, or cast list inside the generated block body when the renderer owns those fields.
-4. Put each spoken line after its character cue. Use OS for internal speech and VO for off-screen narration.
-5. Pair flashback start and end markers.
-6. Follow the runtime's requested block schema exactly. Do not add Markdown or explanations.
-7. Report format defects during review; do not silently change accepted text.
+## 核心原则
+
+格式投影是最后一步——先完成所有戏剧判断，再套格式。
+格式不能拯救空洞的场景。
+
+---
+
+## 一、标准中文格式（chinese）
+
+适用于电影、电视剧本。
+
+### 场景标题（slugline）
+
+三项必须齐全：**地点 + 时间标识 + 内外景**。
+
+```
+✅ 「警察局鉴定处  日  内」
+✅ 「乡间小路  夜  外」
+✅ 「工厂前田地  黄昏  外」
+```
+
+- 时间标识：日、夜、晨、黄昏
+- 内外景：内、外
+- 不要在正文中重复集号、场号或「人物：」——系统导出时生成
+
+### 动作描写（action）
+
+- 写可拍摄的画面、动作与神态
+- 段落简洁，一个段落一个可执行的动作单元
+- 不输出小说式心理分析
+
+### 人物与对白（character → dialogue）
+
+- 每段 dialogue 前必须紧邻 character 块
+- 人物可写「角色名（情绪）」如「唐万财（得意）」
+- 内心独白用「角色名（OS）」
+- 画外音用「角色名（VO）」
+- 同一人物一段完整台词是一条 dialogue，不可切成碎片
+
+### 闪回标记
+
+- 使用 transition 类型块输出「【闪回】」开始
+- 使用 transition 类型块输出「【闪出】」结束
+- 必须成对出现
+
+### 不输出
+
+- Markdown
+- 解释性文字
+- 集号、场号（系统导出时自动生成）
+- 人物清单（系统导出时自动生成）
+
+---
+
+## 二、竖屏短剧格式（chinese-short）
+
+适用于 1-2 分钟/集的竖屏短剧。此格式复用标准中文格式的所有规则，并增加以下规范：
+
+### 场景标题
+
+```
+格式：「场号-分镜号 地点·细地点 时间 内/外」
+
+✅ 「1-1 相府偏院·院墙外 清晨 外」
+✅ 「2-3 宋家客厅 日 内」
+✅ 「3-2 路边 日 外」
+```
+
+不要重复集号；集号由导出时自动拼接。
+
+### 开场必须输出
+
+每个场景开头，用 action 块输出出场人物：
+
+```
+△ 人物：唐万财、何老幺、欧阳采薇
+```
+
+全集开头如有新人物登场，用 action 块输出人设/声线要点：
+
+```
+△ 人设：姜郁，19 岁，外表呆萌，目光偶尔锐利。衣着素净但面料考究。
+△ 声线：软糯，语速偏慢，偶尔冷不丁冒出一句刺人的话。
+```
+
+### 动作描写
+
+- 每个 action 块是一个可拍画面（分镜级）
+- 单段 20-30 字，紧凑精炼
+
+#### ▲ 与 △ 的使用规范
+
+这是从前参考剧本中提炼的符号体系：
+
+| 符号 | 用途 | 何时使用 |
+|------|------|---------|
+| ▲ | 关键分镜标记 | 特写镜头、闪回触发、关键动作节拍、情绪转折点 |
+| ▲【特写】 | 标注特写对象 | 如：▲【特写】姜郁的手指停顿在画布上 |
+| ▲【闪回】 | 触发闪回序列 | 如：▲【闪回】童年走廊——母亲的背影 |
+| △ | 常规画面叙述 | 所有不需要特殊标记的常规画面 |
+
+**关键规则**：
+- ▲ 和 ▲【…】只在真正需要标注的分镜上使用
+- 常规画面一律用 △ 或不加任何前缀
+- **严禁每个段落都加 ▲**——这等于什么都没标
+
+```
+✅ 正确使用：
+△ 她盯着账本。没翻页。
+▲【特写】账本缺页的一角。
+△ 他瞥了一眼缺页处。什么都没说。
+
+❌ 错误使用：
+▲ 她盯着账本。没翻页。
+▲ 他看着窗外。
+▲ 雨还在下。
+（每个都是▲，等于没标）
+```
+
+### 对白格式
+
+人物使用「角色名（语气/动作）」格式：
+
+```
+✅ 贺敛（隐忍、克制）：手……别乱动。
+✅ 姜郁（声音软绵、委屈）：抱抱。
+✅ 苏合（急切）：阿郁小姐，小姐你快松手。
+```
+
+- OS = 内心独白（角色当下的心理活动，可被观众听到）
+- VO = 画外旁白（叙事者/后期配音，面向观众的解说）
+- 旁白控制密度：每 25-35 个分镜才出现一次，单段不超过 30 字
+
+### 台词连续性
+
+同一人物一段完整台词写成**一条 dialogue**，不可切成碎片：
+
+```
+❌ 「坐下。」「从第一页看。」「三年前。」「我做的。」
+    → 四条碎片，电报式短句堆叠
+
+✅ 「坐下，从第一页看——三年前宋家尽调是我做的。」
+    → 一条完整台词，用标点组织语流
+```
+
+单条台词长度不限——该长则长，不要为了视觉"轻"而断句。
+
+### 特殊标记
+
+- 【特写】标记关键镜头落点
+- 【闪回】与【闪回结束】必须成对
+- 闪回片段内的时间/地点需明确
+
+---
+
+## 三、格式校验检查清单
+
+提交前自查：
+
+- [ ] 每个场景 slugline 三项齐全（时间 + 内/外 + 地点）
+- [ ] 每个 dialogue 前紧邻 character
+- [ ] OS/VO 标注正确且克制
+- [ ] 同一人物完整台词是一条 dialogue（无碎片）
+- [ ] 【闪回】/【闪出】成对出现
+- [ ] ▲ 只在关键分镜上使用
+- [ ] 没有在正文块中输出集号/场号/人物清单
+- [ ] 没有 Markdown 或解释性文字

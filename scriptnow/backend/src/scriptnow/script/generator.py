@@ -213,7 +213,7 @@ def _validate_story_map_contract(
     value: object,
     *,
     episode_count: int,
-    scenes_per_episode: int,
+    max_scenes_per_episode: int,
     anchor_ids: set[str],
     anchor_aliases: dict[str, str] | None = None,
 ) -> _StoryMapPayload:
@@ -222,9 +222,14 @@ def _validate_story_map_contract(
     payload = _validate_story_map_payload(value)
     if len(payload.episodes) != episode_count:
         raise ValueError("episode count does not match the project setting")
-    for episode in payload.episodes:
-        if len(episode.scenes) != scenes_per_episode:
-            raise ValueError("scene count does not match the project setting")
+    for episode_index, episode in enumerate(payload.episodes, 1):
+        if len(episode.scenes) > max_scenes_per_episode:
+            raise ValueError(
+                f"第 {episode_index} 集场数 ({len(episode.scenes)}) "
+                f"超过上限 ({max_scenes_per_episode})"
+            )
+        if len(episode.scenes) == 0:
+            raise ValueError(f"第 {episode_index} 集至少需要 1 场")
         for scene in episode.scenes:
             for beat in scene.beats:
                 canonical_ids: list[str] = []
@@ -552,12 +557,11 @@ kind 只能使用以下六个稳定值：worldview、character、arc、character
         if missing:
             raise ScriptGenerationError(
                 f"项目缺少创作参数：{', '.join(missing)}。"
-                f"volume_one=集数, volume_two=每集场数, volume_three=每场分钟数"
+                f"volume_one=集数, volume_two=每集最大场数, volume_three=每集目标分钟"
             )
         episode_count = self._positive(direction, "volume_one")
-        scenes_per_episode = self._positive(direction, "volume_two")
-        scene_minutes = self._positive(direction, "volume_three")
-        duration_seconds = scene_minutes * 60
+        max_scenes_per_episode = self._positive(direction, "volume_two")
+        episode_minutes = self._positive(direction, "volume_three")
         anchor_ids = {str(item["id"]) for item in anchors}
         anchor_aliases = _anchor_aliases(anchors)
         anchor_refs = {
@@ -580,7 +584,7 @@ kind 只能使用以下六个稳定值：worldview、character、arc、character
         ]
         prompt = f"""
 你是剧本结构师。创建 StoryMap。故事语义由你完成，但必须严格服从用户在前端确定的体量。
-必须生成 {episode_count} 个篇章，每篇恰好 {scenes_per_episode} 场；每场目标时长由系统采用用户设定的 {scene_minutes} 分钟。
+必须生成 {episode_count} 个篇章，每篇不超过 {max_scenes_per_episode} 场（最少 1 场），由你根据戏剧需要决定每集写几场；每集目标时长 {episode_minutes} 分钟。
 每个 beat 只能引用给定蓝图锚点，不得虚构引用。
 anchor_ids 字段只能填写锚点目录中的短引用 ref（例如 A01），不要填写名称或内部 id。
 
@@ -607,7 +611,7 @@ anchor_ids 字段只能填写锚点目录中的短引用 ref（例如 A01），�
                 validator=lambda value: _validate_story_map_contract(
                     value,
                     episode_count=episode_count,
-                    scenes_per_episode=scenes_per_episode,
+                    max_scenes_per_episode=max_scenes_per_episode,
                     anchor_ids=anchor_ids,
                     anchor_aliases=anchor_aliases,
                 ),
@@ -638,7 +642,7 @@ episodes 内必须完整包含每一篇的 scenes，以及每场的 beats。
                     validator=lambda value: _validate_story_map_contract(
                         value,
                         episode_count=episode_count,
-                        scenes_per_episode=scenes_per_episode,
+                        max_scenes_per_episode=max_scenes_per_episode,
                         anchor_ids=anchor_ids,
                         anchor_aliases=anchor_aliases,
                     ),
@@ -666,7 +670,7 @@ episodes 内必须完整包含每一篇的 scenes，以及每场的 beats。
                         id=f"scene-{episode_index}-{scene_index}",
                         ordinal=scene_index,
                         title=scene.title,
-                        duration_seconds_target=duration_seconds,
+                        duration_seconds_target=episode_minutes * 60,
                         beats=tuple(beats),
                     )
                 )

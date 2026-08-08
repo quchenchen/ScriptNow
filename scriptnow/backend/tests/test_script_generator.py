@@ -555,7 +555,7 @@ def test_story_map_contract_rejects_unknown_blueprint_anchor():
                 ]
             },
             episode_count=1,
-            scenes_per_episode=1,
+            max_scenes_per_episode=1,
             anchor_ids={"event:witness-returns"},
         )
 
@@ -598,7 +598,7 @@ def test_story_map_normalizes_only_unambiguous_provider_anchor_aliases():
             ]
         },
         episode_count=1,
-        scenes_per_episode=1,
+        max_scenes_per_episode=1,
         anchor_ids={"event:footage_discovery", "event:first_confrontation"},
         anchor_aliases=aliases,
     )
