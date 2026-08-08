@@ -6,21 +6,65 @@ metadata:
     roles: [reviewer]
     stages: [review]
     selection_priority: 130
+    keywords: [银幕评审, 产业评估, IP评估, 剧本诊断]
 ---
 
-# Review screen-oriented work
+# 银幕创作评审
 
-Use this skill as a review lens, never as an automatic acceptance gate.
+此 skill 作为审读透镜使用，不是自动采纳门禁。
 
-1. Establish the requested review object, audience, market, format, and decision before scoring anything.
-2. Separate premise and IP potential, dramatic structure, character action, audiovisual expression, serial propulsion, production feasibility, and delivery compliance.
-3. Anchor every material claim to an exact scene, episode, beat, or quoted passage.
-4. Distinguish blocking defects, repairable craft risks, production observations, market hypotheses, and matters of taste.
-5. Explain the dramatic consequence of each finding and propose the smallest useful repair direction.
-6. Do not silently rewrite accepted work. Return findings or revision proposals for human confirmation.
-7. Treat numeric weights and thresholds as a selected rubric version, not universal truth.
+---
 
-Read [source and governance](references/source-and-governance.md) before applying the lens.
-Then select the matching user-facing review focus from
-[screen review lenses](references/screen-review-lenses.md). Use `overall` only when the user
-has not requested a narrower decision. Do not dump the lens catalog into the reply; apply it.
+## 一、评审前置
+
+在评分之前必须明确：
+- 评审对象（单场/单集/全剧/大纲/IP提案）
+- 目标受众与市场
+- 制式与格式要求
+- 评审决策类型（通过/修订/驳回/选方向）
+
+---
+
+## 二、评审维度
+
+将发现分层为以下独立维度，不得混淆：
+
+1. **前提与 IP 潜力**：故事概念是否独特？是否具有系列化/跨媒介潜力？
+2. **戏剧结构**：因果链是否完整？转折是否由人物行动驱动？结构是否与制式匹配？
+3. **人物行动**：主角是否有可执行的目标？对抗是否具象？选择是否有代价？
+4. **视听表达**：是否可拍摄？是否有银幕身份？声画设计是否有辨识度？
+5. **系列推进力**（如为系列剧）：单集回报、季弧推进、付费钩子密度
+6. **制作可行性**：成本、场景数量、特效需求、演员配置是否与项目预算匹配
+7. **交付合规**：格式是否与锁定交付契约一致
+
+---
+
+## 三、证据规范
+
+每条发现必须：
+- 锚定具体场次/集数/beat
+- 引用原文或可观察的缺失
+- 违反的事实或技艺准则
+- 对观众/市场的戏剧后果
+- 最小的修复方向（一句即可）
+
+---
+
+## 四、严重性分层
+
+明确区分以下层次：
+
+1. **阻断缺陷** — 不可交付。示例：因果断裂、人物动机缺失、格式契约破坏。
+2. **可修复的技艺风险** — 影响质量但可修订。示例：对白同腔、节奏拖沓、伏笔遗漏。
+3. **制作观察** — 与质量无关的实现问题。示例：场景数量过多、需要特效。
+4. **市场假设** — 基于市场判断的评估，可能因平台/地区不同而变化。
+5. **个人审美** — 不可作为评审发现提出。
+
+---
+
+## 五、红线
+
+- 不静默修改已采纳作品。
+- 不把数值权重当作绝对真理——评分是选定的准则版本，不是普适标准。
+- 不输出模糊建议（「增强感染力」「提升节奏」）。
+- 不在回复中 dump 整个评审维度目录——直接应用所选透镜。

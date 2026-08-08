@@ -7,18 +7,115 @@ metadata:
     roles: [architect]
     stages: [planning]
     selection_priority: 100
+    keywords: [蓝图, 分场, 故事地图, StoryMap, 因果链, 场景规划]
 ---
 
-# Build a Script StoryMap
+# 剧本 StoryMap 构建
 
-1. Load only Script-domain facts, the accepted direction, project constraints, and the selected structure.
-2. Build the blueprint before the scene list: dramatic world rules, playable characters, relationships, pressure lines, irreversible events, and setup-payoff obligations.
-3. Define the final dramatic choice and final image before arranging the causal spine.
-4. For every scene or beat record the active character, immediate objective, tactic, opposition, observable turn, consequence, knowledge change, setup/payoff links, and estimated duration.
-5. Connect adjacent beats by “therefore” or “but.” A beat connected only by “and then” must be redesigned, merged, or explicitly justified as contrast.
-6. Track changes in strategy, power, relationship, knowledge, risk, and commitment. Do not use theme labels as substitutes for action.
-7. For episodic work, give each episode a local question, escalation path, irreversible turn, payoff, and forward pressure while preserving the whole-series engine.
-8. Allocate runtime from user/project parameters. Do not invent a fixed number of scenes, beats, episodes, or minutes.
-9. Return only a candidate in the task's requested schema. Never overwrite an accepted blueprint or StoryMap.
+## 一、输入确认
 
-Read [StoryMap contract](references/storymap-contract.md). For the selected method, also read [screen structures](references/screen-structures.md).
+只读取 Script 领域的事实：
+- 已采纳的方向（StoryCore）
+- 项目约束（集数、时长、格式、类型、受众）
+- 选定的叙事结构
+- 已存在但未在本次构建中覆盖的已采纳素材
+
+---
+
+## 二、蓝图先行——先于场景列表
+
+在列出具体场景之前，先建立：
+
+### 戏剧世界规则
+```
+✅ 「在这个世界里，说出真名就会失去记忆」
+❌ 「这是一个关于信任的故事」——主题标签，不是可操作的规则
+```
+
+### 可行动的人物
+
+每个人物必须有：
+- 一个可执行的目标（不是「想要幸福」——是「想让父亲承认这个儿子」）
+- 一套可见的策略（不是「努力奋斗」——是「偷父亲的账本、挖出亏空证据」）
+- 一个对抗力量（具体的人/制度/规则——不是「命运」）
+
+### 压力线与不可逆事件
+
+- 因果链上的关键事件，发生后不可撤销
+- 每个不可逆事件改变至少一位人物的权力/关系/知识/风险状态
+
+### 伏笔-回收义务
+
+- 每一条铺设的伏笔必须标注回收位置
+- 不创建无回收计划的伏笔
+
+---
+
+## 三、场景/节拍序列
+
+为每个场景或 beat 记录：
+
+| 字段 | 说明 |
+|------|------|
+| 主动人物 | 谁在推动本场？ |
+| 即时目标 | 这一刻想要什么？ |
+| 策略 | 用什么方式去拿？ |
+| 对抗 | 谁/什么在阻止？ |
+| 可观察的转折 | 权力/关系/知识/风险至少一项改变 |
+| 后果 | 这场的结果如何推入下一场？ |
+| 知识变化 | 谁知道了什么不该知道的？ |
+| 伏笔/回收 | 触发或回收了哪条伏笔？ |
+| 预估时长 | 按项目参数分配合适的秒数/分钟 |
+
+---
+
+## 四、因果连接法则
+
+相邻节拍之间的连接必须是：
+
+```
+✅ 「因此……」（因果推进）
+✅ 「但是……」（冲突阻碍）
+
+❌ 「然后……」（并列事件——必须重新设计、合并、或显式论证为对比）
+```
+
+---
+
+## 五、状态变化追踪
+
+每个节拍之后，追踪以下维度的变化：
+
+- 策略变化：人物换了方法
+- 权力变化：谁压过谁、谁失去控制
+- 关系变化：信任/亲密/敌对状态移动
+- 知识变化：信息差被打破
+- 风险变化：赌注上升或下降
+- 承诺变化：人物做出了无法收回的承诺
+
+不把主题标签（「成长」「救赎」「爱」）当作状态变化——这些不是可观察的。
+
+---
+
+## 六、系列剧额外要求
+
+1. 每集有一个局部戏剧问题（本集的唯一不可替代功能）。
+2. 每集有独立的升级路径、不可逆转折、回报和推向下一集的压力。
+3. 保持全系列引擎不被单集消费——系列级伏笔和人物弧光必须跨集规划。
+4. 竖屏短剧特别要求：每集结尾必须是不可逆的悬念/翻转/挑衅——让观众必须点下一集。
+
+---
+
+## 七、时长分配
+
+- 从用户/项目参数读取时长，不硬编码固定场景数、节拍数、集数或分钟数。
+- 缺失的时长参数不默认为创造值。
+- 为关键节拍（开场钩子、中点翻转、终局选择、结尾钩子）分配更多时长。
+
+---
+
+## 八、提交规范
+
+- 只按任务要求的 schema 返回候选。
+- 不直接覆盖已采纳的蓝图或 StoryMap。
+- 不输出分析、解释或 schema 之外的字段。
