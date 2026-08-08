@@ -584,7 +584,11 @@ kind 只能使用以下六个稳定值：worldview、character、arc、character
         ]
         prompt = f"""
 你是剧本结构师。创建 StoryMap。故事语义由你完成，但必须严格服从用户在前端确定的体量。
-必须生成 {episode_count} 个篇章，每篇不超过 {max_scenes_per_episode} 场（最少 1 场），由你根据戏剧需要决定每集写几场；每集目标时长 {episode_minutes} 分钟。
+
+约束规则：
+1. 必须生成 {episode_count} 个篇章
+2. 每篇不超过 {max_scenes_per_episode} 场（最少 1 场），由你根据戏剧需要决定每集写几场。不需要每集场数相同——有的集可能只需 1 场高潮戏，有的需要 2-3 场推进
+3. 每集总目标时长 {episode_minutes} 分钟，各场时长由你根据该场戏剧需要自行分配——关键场次可长，过渡场次可短，不需要每场均等
 每个 beat 只能引用给定蓝图锚点，不得虚构引用。
 anchor_ids 字段只能填写锚点目录中的短引用 ref（例如 A01），不要填写名称或内部 id。
 
@@ -670,7 +674,7 @@ episodes 内必须完整包含每一篇的 scenes，以及每场的 beats。
                         id=f"scene-{episode_index}-{scene_index}",
                         ordinal=scene_index,
                         title=scene.title,
-                        duration_seconds_target=episode_minutes * 60,
+                        duration_seconds_target=0,
                         beats=tuple(beats),
                     )
                 )

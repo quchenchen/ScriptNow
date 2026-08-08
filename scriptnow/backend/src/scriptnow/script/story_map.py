@@ -15,7 +15,7 @@ class Scene(BaseModel):
     id: str
     ordinal: int = Field(ge=1)
     title: str
-    duration_seconds_target: int = Field(gt=0)
+    duration_seconds_target: int = Field(ge=0)
     beats: tuple[ScriptStoryBeat, ...] = ()
 
 
