@@ -1,6 +1,9 @@
 ---
 name: script-narrative-craft
-description: Use when writing, revising, or reviewing screenplay scenes to make narrative judgment calls: when to use dialogue vs action vs silence, how to establish information hierarchy, how to distinguish core dramatic beats from atmosphere, and how to avoid the "all details equal" trap.
+description: >-
+  Use when writing, revising, or reviewing screenplay scenes to make narrative judgment calls
+  (when to use dialogue vs action vs silence), how to establish information hierarchy,
+  how to distinguish core dramatic beats from atmosphere, and how to avoid the all-details-equal trap.
 metadata:
   scriptnow:
     roles: [writer, reviewer, director]
