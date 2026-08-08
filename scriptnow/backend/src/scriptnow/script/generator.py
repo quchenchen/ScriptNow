@@ -713,7 +713,7 @@ episodes 内必须完整包含每一篇的 scenes，以及每场的 beats。
                         id=f"scene-{episode_index}-{scene_index}",
                         ordinal=scene_index,
                         title=scene.title,
-                        duration_seconds_target=0,
+                        duration_seconds_target=episode_minutes * 60 // max(1, len(episode.scenes)),
                         beats=tuple(beats),
                     )
                 )
